@@ -428,43 +428,50 @@ def _voci_map() -> Dict[str, Dict[str, Any]]:
 
 @api.get("/packages")
 async def list_packages(user: Dict[str, Any] = Depends(get_current_user)):
-    lavs = _voci_map()
+    # try DB first; fallback to seed (handled by ensure_global_seeds in biz routes)
+    voci = {v["id"]: v for v in await db.voci_backoffice.find({}, {"_id": 0}).to_list(2000)}
+    docs = await db.packages.find({}, {"_id": 0}).to_list(50)
+    if not docs:
+        # fallback to in-memory seed (no DB packages yet)
+        lavs = _voci_map()
+        out = []
+        for p in DEFAULT_PACKAGES:
+            items = []
+            for lid, meta in p["included"].items():
+                lav = lavs.get(lid)
+                if not lav:
+                    continue
+                items.append({**lav, "qty_ratio": meta["qty_ratio"], "unit_price_pkg": meta["unit_price_pkg"]})
+            items.sort(key=lambda x: (x["category"], x["name"]))
+            out.append({"id": p["id"], "name": p["name"], "subtitle": p["subtitle"], "price_per_m2": p["price_per_m2"], "color": p["color"], "description": p["description"], "items": items})
+        return out
     out = []
-    for p in DEFAULT_PACKAGES:
+    for p in docs:
         items = []
-        for lid, meta in p["included"].items():
-            lav = lavs.get(lid)
-            if not lav:
+        for it in p.get("items", []):
+            v = voci.get(it.get("voce_id"))
+            if not v:
                 continue
-            items.append({
-                **lav,
-                "qty_ratio": meta["qty_ratio"],
-                "unit_price_pkg": meta["unit_price_pkg"],
-            })
+            items.append({"id": v["id"], "name": v["name"], "category": v["category"], "unit": v["unit"],
+                          "qty_ratio": it["qty_ratio"], "unit_price_pkg": it.get("unit_price_pkg") or round(v["prezzo_acquisto"] * v["ricarico"], 2)})
         items.sort(key=lambda x: (x["category"], x["name"]))
-        out.append({
-            "id": p["id"],
-            "name": p["name"],
-            "subtitle": p["subtitle"],
-            "price_per_m2": p["price_per_m2"],
-            "color": p["color"],
-            "description": p["description"],
-            "items": items,
-        })
-    return out
-
-
-@api.get("/packages/optional")
-async def list_optional(package_id: Optional[str] = None, user: Dict[str, Any] = Depends(get_current_user)):
-    out = DEFAULT_OPTIONAL
-    if package_id:
-        out = [o for o in out if package_id in o["package_ids"]]
+        out.append({"id": p["id"], "name": p["name"], "subtitle": p.get("subtitle", ""), "price_per_m2": p["price_per_m2"], "color": p.get("color", "#475569"), "description": p.get("description", ""), "items": items})
     return out
 
 
 @api.get("/packages/bathroom-tiers")
 async def bathroom_tiers(user: Dict[str, Any] = Depends(get_current_user)):
     return BATHROOM_TIERS
+
+
+@api.get("/packages/optional")
+async def list_packages_optional(package_id: Optional[str] = None, user: Dict[str, Any] = Depends(get_current_user)):
+    docs = await db.optional_pkg.find({}, {"_id": 0}).to_list(500)
+    if not docs:
+        docs = [dict(o) for o in DEFAULT_OPTIONAL]
+    if package_id:
+        docs = [o for o in docs if package_id in (o.get("package_ids") or [])]
+    return docs
 
 
 @api.get("/lavorazioni")

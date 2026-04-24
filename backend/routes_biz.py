@@ -27,6 +27,7 @@ def build_biz_router(db, get_current_user):
 
     # ---------- Seeds helpers ----------
     async def ensure_global_seeds():
+        from packages_seed import DEFAULT_PACKAGES, DEFAULT_OPTIONAL
         if await db.voci_backoffice.count_documents({}) == 0:
             await db.voci_backoffice.insert_many([dict(v) for v in DEFAULT_VOCI_BACKOFFICE])
         if await db.fasi_commessa.count_documents({}) == 0:
@@ -39,6 +40,98 @@ def build_biz_router(db, get_current_user):
             await db.dati_azienda.insert_one(dict(DEFAULT_DATI_AZIENDA))
         if await db.impostazioni.count_documents({}) == 0:
             await db.impostazioni.insert_one({"id": "main", **DEFAULT_IMPOSTAZIONI})
+        if await db.packages.count_documents({}) == 0:
+            for p in DEFAULT_PACKAGES:
+                doc = {"id": p["id"], "name": p["name"], "subtitle": p["subtitle"],
+                       "price_per_m2": p["price_per_m2"], "color": p["color"], "description": p["description"],
+                       "items": [{"voce_id": vid, "qty_ratio": meta["qty_ratio"], "unit_price_pkg": meta["unit_price_pkg"]} for vid, meta in p["included"].items()]}
+                await db.packages.insert_one(doc)
+        if await db.optional_pkg.count_documents({}) == 0:
+            await db.optional_pkg.insert_many([dict(o) for o in DEFAULT_OPTIONAL])
+
+    # ---------- Packages CRUD ----------
+    @r.post("/packages")
+    async def create_pkg(body: Dict[str, Any], user=Depends(get_current_user)):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        body.pop("_id", None)
+        if not body.get("id"):
+            body["id"] = f"pkg-{uuid.uuid4().hex[:8]}"
+        body.setdefault("items", [])
+        await db.packages.insert_one(body)
+        body.pop("_id", None)
+        return body
+
+    @r.put("/packages/{pid}")
+    async def update_pkg(pid: str, body: Dict[str, Any], user=Depends(get_current_user)):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        body.pop("_id", None); body.pop("id", None)
+        await db.packages.update_one({"id": pid}, {"$set": body})
+        doc = await db.packages.find_one({"id": pid}, {"_id": 0})
+        return doc
+
+    @r.delete("/packages/{pid}")
+    async def delete_pkg(pid: str, user=Depends(get_current_user)):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        await db.packages.delete_one({"id": pid})
+        return {"ok": True}
+
+    # ---------- Sync voci → packages (when prezzo_acquisto×ricarico changes) ----------
+    @r.post("/voci-backoffice/sync")
+    async def sync_voci(user=Depends(get_current_user)):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        voci = {v["id"]: v for v in await db.voci_backoffice.find({}, {"_id": 0}).to_list(2000)}
+        updated = 0
+        async for p in db.packages.find({}):
+            new_items = []
+            for it in p.get("items", []):
+                v = voci.get(it.get("voce_id"))
+                if v:
+                    new_items.append({**it, "unit_price_pkg": round(v["prezzo_acquisto"] * v["ricarico"], 2)})
+                else:
+                    new_items.append(it)
+            await db.packages.update_one({"id": p["id"]}, {"$set": {"items": new_items}})
+            updated += 1
+        return {"ok": True, "packages_updated": updated}
+
+    # ---------- Optional CRUD ----------
+    @r.get("/optional")
+    async def list_optional_pkg(package_id: Optional[str] = None, user=Depends(get_current_user)):
+        await ensure_global_seeds()
+        q = {}
+        if package_id:
+            q = {"package_ids": package_id}
+        return await db.optional_pkg.find(q, {"_id": 0}).to_list(500)
+
+    @r.post("/optional")
+    async def create_optional(body: Dict[str, Any], user=Depends(get_current_user)):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        body.pop("_id", None)
+        if not body.get("id"):
+            body["id"] = f"opt-{uuid.uuid4().hex[:8]}"
+        body.setdefault("package_ids", [])
+        await db.optional_pkg.insert_one(body)
+        body.pop("_id", None)
+        return body
+
+    @r.put("/optional/{oid}")
+    async def update_optional(oid: str, body: Dict[str, Any], user=Depends(get_current_user)):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        body.pop("_id", None); body.pop("id", None)
+        await db.optional_pkg.update_one({"id": oid}, {"$set": body})
+        return {"ok": True}
+
+    @r.delete("/optional/{oid}")
+    async def delete_optional(oid: str, user=Depends(get_current_user)):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        await db.optional_pkg.delete_one({"id": oid})
+        return {"ok": True}
 
     # ---------- Dashboard stats ----------
     @r.get("/stats/dashboard")

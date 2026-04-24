@@ -222,7 +222,7 @@ async def register(body: RegisterReq, response: Response):
     set_auth_cookies(response, access, refresh)
     # seed default catalog for user
     await seed_user_catalog(user_id)
-    return {"id": user_id, "email": email, "name": body.name, "role": "user"}
+    return {"id": user_id, "email": email, "name": body.name, "role": "user", "access_token": access, "refresh_token": refresh}
 
 
 @api.post("/auth/login")
@@ -252,7 +252,7 @@ async def login(body: LoginReq, response: Response, request: Request):
     access = create_access_token(user["id"], email)
     refresh = create_refresh_token(user["id"])
     set_auth_cookies(response, access, refresh)
-    return {"id": user["id"], "email": user["email"], "name": user["name"], "role": user.get("role", "user")}
+    return {"id": user["id"], "email": user["email"], "name": user["name"], "role": user.get("role", "user"), "access_token": access, "refresh_token": refresh}
 
 
 @api.post("/auth/logout")

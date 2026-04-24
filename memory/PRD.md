@@ -29,28 +29,58 @@
 - Per item: `qty × unitPrice`
 
 ## Implemented (Feb 2026)
-- ✅ JWT httpOnly-cookie auth (register/login/logout/me/refresh) + brute-force guard + admin seed
+- ✅ JWT httpOnly-cookie auth + **Bearer token fallback in localStorage** (iframe/Safari compatible)
 - ✅ Projects CRUD (MongoDB, per-user scoped)
-- ✅ Materials catalog: 31 default items, per-user editable, reset endpoint
-- ✅ 2D SVG editor: walls, doors (with hinge arc), windows, room polygons with area labels, furniture boxes, snap-to-grid 10cm, pan/zoom, measurements, crosshair
-- ✅ Real-time 3D viewer (Three.js imperative) with walls extruded with door/window holes, textured floors, light emissive materials, orbit camera
-- ✅ Cost panel: live updates with per-room breakdown + items
-- ✅ AI photorealistic render modal: captures 3D snapshot → Gemini Nano Banana (`gemini-3.1-flash-image-preview`)
-- ✅ PDF export: header, floor plan image, rooms table, items table, totals
-- ✅ Materials editor page with tabs per category and instant price editing
-- ✅ Landing page (Swiss-style, Outfit/JetBrains Mono), Login, Register
-- ✅ Swiss-style dashboard with project cards + empty state
+- ✅ Materials catalog: 31 default items, per-user editable
+- ✅ **CAD Editor v2 (improved)**:
+  - Labeled toolbar with descriptions + keyboard hints
+  - **Stanze rapide** (Cucina/Bagno/Camera/Soggiorno) — one-click room templates with walls
+  - Always-visible wall measurements
+  - Double-click room to rename
+  - Real-time 3D viewer (imperative Three.js)
+- ✅ AI photorealistic render via Gemini Nano Banana
+- ✅ Cost panel live + PDF export
+- ✅ **PREVENTIVATORE PACCHETTI** (based on user's .numbers files):
+  - 4 pacchetti: SOFT €380, EASY €490, PLUS €790, TOP €1180 per m²
+  - 30+ lavorazioni across MURATURA/IMPIANTI/ACCESSORI/BUROCRAZIA
+  - Quantità incluse auto-calcolate sui m²; extras addebitati
+  - 13 optional con sconto pacchetto
+  - 3 tier bagno (Silver/Gold/Platinum)
+  - Wizard a 7 step: pacchetto → mq → lavorazioni → optional → bagno → cliente → riepilogo
+  - Auto-numerazione PRV-YYYY-NNNN, stati (bozza/inviato/accettato/rifiutato)
+  - Sconto %, IVA 10/22%, PDF professionale
+- ✅ Multi-user dashboard, Swiss-style UI
 
-## Next Action Items
-- [ ] **P0**: Auto-orient 3D camera to framed initial view after first walls are drawn (currently requires user to orbit)
-- [ ] **P1**: Drag-to-move items/walls in 2D (currently only place-then-edit via properties panel)
-- [ ] **P1**: Thumbnail snapshot of 2D canvas on save → show on dashboard cards
-- [ ] **P1**: Multi-undo / redo stack
-- [ ] **P2**: Wall snap to existing wall endpoints (currently snaps to grid only)
-- [ ] **P2**: Shareable read-only project link for clients
-- [ ] **P2**: Labor-hours breakdown in preventivo, Iva 10/22%, discount support
-- [ ] **P2**: Import DWG/DXF, export to IFC/DWG
-- [ ] **P2**: Stripe monetization (free: 1 project; pro: unlimited + AI renders)
+## Next Action Items (backlog)
+**P0 — CRM & Vendita**
+- CRM Leads (stato trattativa, venditore assegnato)
+- AdminVenditori + assegnazione preventivi
+
+**P1 — Gestione Commesse** (dal preventivo accettato)
+- Commesse con fasi, DettaglioCommessa
+- AdminFasiCommessa (Workflow kanban)
+- Subappaltatori + DashboardSubappaltatore
+- CentroCosto + ComputoMetrico
+
+**P1 — Backoffice admin**
+- AdminDatiAzienda, AdminImpostazioni, AdminNegozi
+- AdminPacchetti (editor per pacchetti custom), AdminOptional
+- AdminVociBackoffice (prezzario parametrico)
+
+**P2 — Preventivi specializzati**
+- PreventivoBagno, PreventivoInfissi (wizard isolati)
+- ConfiguratoreEsigenze (lead magnet per cliente finale)
+
+**P2 — Report & Email**
+- AdminReportBudget (P&L per commessa)
+- AdminTemplateEmail + invio preventivi
+- DashboardCliente (cliente finale vede i propri preventivi)
+
+**Ulteriori miglioramenti CAD**
+- Drag-to-move per spostare elementi
+- Snap a endpoint pareti (oltre griglia)
+- Tools aggiuntivi: scale, termosifoni, doors variants (scorrevole, doppia anta)
+- Undo/redo stack
 
 ## Testing
 - Backend: 15/15 pytest pass (auth, projects, materials, AI render error handling)

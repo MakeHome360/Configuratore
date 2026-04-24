@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field, EmailStr, ConfigDict
 from bson import ObjectId
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+from packages_seed import LAVORAZIONI_CATALOG, DEFAULT_PACKAGES, DEFAULT_OPTIONAL, BATHROOM_TIERS
 
 # ---------------- Setup ----------------
 mongo_url = os.environ["MONGO_URL"]
@@ -412,7 +413,152 @@ async def ai_render(body: AIRenderReq, user: Dict[str, Any] = Depends(get_curren
 # ---------------- Health ----------------
 @api.get("/")
 async def root():
-    return {"message": "Ristruttura CAD API online", "version": "1.0"}
+    return {"message": "Ristruttura CAD API online", "version": "2.0"}
+
+
+# ---------------- Packages / Preventivi ----------------
+def lavorazioni_map() -> Dict[str, Dict[str, Any]]:
+    return {
+        lv[0]: {"id": lv[0], "name": lv[1], "category": lv[2], "unit": lv[3], "unit_consigliato": lv[4]}
+        for lv in LAVORAZIONI_CATALOG
+    }
+
+
+@api.get("/packages")
+async def list_packages(user: Dict[str, Any] = Depends(get_current_user)):
+    lavs = lavorazioni_map()
+    out = []
+    for p in DEFAULT_PACKAGES:
+        items = []
+        for lid, meta in p["included"].items():
+            lav = lavs.get(lid)
+            if not lav:
+                continue
+            items.append({
+                **lav,
+                "qty_ratio": meta["qty_ratio"],
+                "unit_price_pkg": meta["unit_price"],
+            })
+        items.sort(key=lambda x: (x["category"], x["name"]))
+        out.append({
+            "id": p["id"],
+            "name": p["name"],
+            "subtitle": p["subtitle"],
+            "price_per_m2": p["price_per_m2"],
+            "color": p["color"],
+            "description": p["description"],
+            "items": items,
+        })
+    return out
+
+
+@api.get("/packages/optional")
+async def list_optional(package_id: Optional[str] = None, user: Dict[str, Any] = Depends(get_current_user)):
+    out = DEFAULT_OPTIONAL
+    if package_id:
+        out = [o for o in out if package_id in o["package_ids"]]
+    return out
+
+
+@api.get("/packages/bathroom-tiers")
+async def bathroom_tiers(user: Dict[str, Any] = Depends(get_current_user)):
+    return BATHROOM_TIERS
+
+
+@api.get("/lavorazioni")
+async def list_lavorazioni(user: Dict[str, Any] = Depends(get_current_user)):
+    return list(lavorazioni_map().values())
+
+
+class PreventivoIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    cliente: Dict[str, Any]  # {nome, cognome, indirizzo, email, telefono}
+    package_id: str
+    mq: float
+    items: List[Dict[str, Any]] = []       # [{id, qty_richiesta, unit_price, included_qty}]
+    optional: List[Dict[str, Any]] = []    # [{id, qty, total}]
+    bathroom_tier: Optional[str] = None
+    note: Optional[str] = None
+    sconto_pct: float = 0.0
+    iva_pct: float = 10.0
+
+
+@api.post("/preventivi")
+async def create_preventivo(body: PreventivoIn, user: Dict[str, Any] = Depends(get_current_user)):
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "numero": await next_preventivo_number(),
+        "stato": "bozza",
+        "cliente": body.cliente,
+        "package_id": body.package_id,
+        "mq": body.mq,
+        "items": body.items,
+        "optional": body.optional,
+        "bathroom_tier": body.bathroom_tier,
+        "note": body.note,
+        "sconto_pct": body.sconto_pct,
+        "iva_pct": body.iva_pct,
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.preventivi.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+async def next_preventivo_number() -> str:
+    year = datetime.now(timezone.utc).year
+    count = await db.preventivi.count_documents({})
+    return f"PRV-{year}-{count + 1:04d}"
+
+
+@api.get("/preventivi")
+async def list_preventivi(user: Dict[str, Any] = Depends(get_current_user)):
+    docs = await db.preventivi.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return docs
+
+
+@api.get("/preventivi/{prev_id}")
+async def get_preventivo(prev_id: str, user: Dict[str, Any] = Depends(get_current_user)):
+    doc = await db.preventivi.find_one({"id": prev_id, "user_id": user["id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Preventivo non trovato")
+    return doc
+
+
+@api.put("/preventivi/{prev_id}")
+async def update_preventivo(prev_id: str, body: PreventivoIn, user: Dict[str, Any] = Depends(get_current_user)):
+    update_doc = {
+        "cliente": body.cliente, "package_id": body.package_id, "mq": body.mq,
+        "items": body.items, "optional": body.optional, "bathroom_tier": body.bathroom_tier,
+        "note": body.note, "sconto_pct": body.sconto_pct, "iva_pct": body.iva_pct,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.preventivi.update_one({"id": prev_id, "user_id": user["id"]}, {"$set": update_doc})
+    doc = await db.preventivi.find_one({"id": prev_id, "user_id": user["id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Preventivo non trovato")
+    return doc
+
+
+@api.delete("/preventivi/{prev_id}")
+async def delete_preventivo(prev_id: str, user: Dict[str, Any] = Depends(get_current_user)):
+    await db.preventivi.delete_one({"id": prev_id, "user_id": user["id"]})
+    return {"ok": True}
+
+
+@api.patch("/preventivi/{prev_id}/stato")
+async def update_stato(prev_id: str, body: Dict[str, Any], user: Dict[str, Any] = Depends(get_current_user)):
+    stato = body.get("stato")
+    if stato not in ["bozza", "inviato", "accettato", "rifiutato"]:
+        raise HTTPException(status_code=400, detail="Stato non valido")
+    await db.preventivi.update_one(
+        {"id": prev_id, "user_id": user["id"]},
+        {"$set": {"stato": stato, "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"ok": True, "stato": stato}
 
 
 app.include_router(api)
@@ -436,6 +582,8 @@ async def on_startup():
     await db.projects.create_index("id", unique=True)
     await db.materials.create_index([("user_id", 1), ("id", 1)])
     await db.login_attempts.create_index("identifier")
+    await db.preventivi.create_index([("user_id", 1), ("created_at", -1)])
+    await db.preventivi.create_index("id", unique=True)
     # seed admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@example.com").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")

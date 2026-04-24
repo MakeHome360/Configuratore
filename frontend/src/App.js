@@ -11,6 +11,8 @@ import Register from "@/pages/Register";
 import Dashboard from "@/pages/Dashboard";
 import Editor from "@/pages/Editor";
 import Materials from "@/pages/Materials";
+import Preventivi from "@/pages/Preventivi";
+import PreventivoEditor from "@/pages/PreventivoEditor";
 
 function RootRedirect() {
   const { user, loading } = useAuth();
@@ -31,6 +33,8 @@ function App() {
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/editor/:id" element={<ProtectedRoute><Editor /></ProtectedRoute>} />
             <Route path="/materials" element={<ProtectedRoute><Materials /></ProtectedRoute>} />
+            <Route path="/preventivi" element={<ProtectedRoute><Preventivi /></ProtectedRoute>} />
+            <Route path="/preventivi/:id" element={<ProtectedRoute><PreventivoEditor /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>

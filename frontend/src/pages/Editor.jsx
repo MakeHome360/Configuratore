@@ -15,19 +15,27 @@ import { Separator } from "../components/ui/separator";
 import { Textarea } from "../components/ui/textarea";
 import {
   MousePointer2, Minus, Square, DoorClosed, RectangleHorizontal, Sofa, Trash2,
-  Save, Download, Sparkles, Eye, EyeOff, Box, Ruler, X,
+  Save, Download, Sparkles, Eye, EyeOff, Box, Ruler, X, Home, Bath, ChefHat, Bed,
+  Plus,
 } from "lucide-react";
-import { estimateProject, fmtEuro, fmtNum, emptyProjectData } from "../editor/utils";
+import { estimateProject, fmtEuro, fmtNum, emptyProjectData, uid } from "../editor/utils";
 import jsPDF from "jspdf";
 
 const TOOLS = [
-  { id: "select", icon: MousePointer2, label: "Seleziona" },
-  { id: "wall", icon: Minus, label: "Parete" },
-  { id: "room", icon: Square, label: "Stanza" },
-  { id: "door", icon: DoorClosed, label: "Porta" },
-  { id: "window", icon: RectangleHorizontal, label: "Finestra" },
-  { id: "item", icon: Sofa, label: "Arredi" },
-  { id: "delete", icon: Trash2, label: "Elimina" },
+  { id: "select", icon: MousePointer2, label: "Seleziona", hint: "Clicca per selezionare elementi" },
+  { id: "wall", icon: Minus, label: "Parete", hint: "Clicca due punti · doppio click per terminare" },
+  { id: "room", icon: Square, label: "Stanza", hint: "Clicca i vertici · doppio click per chiudere" },
+  { id: "door", icon: DoorClosed, label: "Porta", hint: "Clicca su una parete per inserire" },
+  { id: "window", icon: RectangleHorizontal, label: "Finestra", hint: "Clicca su una parete per inserire" },
+  { id: "item", icon: Sofa, label: "Arredo", hint: "Seleziona un arredo dal catalogo e piazzalo" },
+  { id: "delete", icon: Trash2, label: "Elimina", hint: "Clicca un elemento per rimuoverlo" },
+];
+
+const QUICK_ROOMS = [
+  { id: "kitchen", icon: ChefHat, label: "Cucina", w: 400, h: 350, name: "Cucina", floorMaterial: "floor-ceramic" },
+  { id: "bathroom", icon: Bath, label: "Bagno", w: 250, h: 200, name: "Bagno", floorMaterial: "floor-ceramic", wallMaterial: "wall-tile", plumbing: true },
+  { id: "bedroom", icon: Bed, label: "Camera", w: 400, h: 350, name: "Camera", floorMaterial: "floor-parquet" },
+  { id: "living", icon: Home, label: "Soggiorno", w: 500, h: 400, name: "Soggiorno", floorMaterial: "floor-parquet" },
 ];
 
 const ITEM_CATEGORIES = [
@@ -94,6 +102,50 @@ export default function Editor() {
       const newData = typeof fnOrVal === "function" ? fnOrVal(prj.data) : fnOrVal;
       return { ...prj, data: newData };
     });
+  };
+
+  const addQuickRoom = (q) => {
+    const existing = project?.data?.rooms || [];
+    // Compute placement: place next to the rightmost room bbox, or start at 200,200
+    let startX = 200, startY = 200;
+    if (existing.length > 0) {
+      let maxX = 0;
+      existing.forEach((r) => {
+        r.points.forEach((p) => { if (p.x > maxX) maxX = p.x; });
+      });
+      startX = maxX + 30;
+    }
+    const w = q.w, h = q.h;
+    const roomId = uid();
+    const wallIds = [uid(), uid(), uid(), uid()];
+    const corners = [
+      { x: startX, y: startY },
+      { x: startX + w, y: startY },
+      { x: startX + w, y: startY + h },
+      { x: startX, y: startY + h },
+    ];
+    const walls = [
+      { id: wallIds[0], x1: corners[0].x, y1: corners[0].y, x2: corners[1].x, y2: corners[1].y, thickness: 10 },
+      { id: wallIds[1], x1: corners[1].x, y1: corners[1].y, x2: corners[2].x, y2: corners[2].y, thickness: 10 },
+      { id: wallIds[2], x1: corners[2].x, y1: corners[2].y, x2: corners[3].x, y2: corners[3].y, thickness: 10 },
+      { id: wallIds[3], x1: corners[3].x, y1: corners[3].y, x2: corners[0].x, y2: corners[0].y, thickness: 10 },
+    ];
+    const room = {
+      id: roomId,
+      name: q.name + (existing.filter((r) => r.name.startsWith(q.name)).length ? ` ${existing.filter((r) => r.name.startsWith(q.name)).length + 1}` : ""),
+      points: corners,
+      floorMaterial: q.floorMaterial || "floor-ceramic",
+      wallMaterial: q.wallMaterial || "wall-paint",
+      ceilingMaterial: "ceil-paint",
+      electrical: true,
+      plumbing: !!q.plumbing,
+    };
+    setProjectData((p) => ({
+      ...p,
+      walls: [...(p.walls || []), ...walls],
+      rooms: [...(p.rooms || []), room],
+    }));
+    toast.success(`${q.label} aggiunta`);
   };
 
   const estimate = useMemo(() => (project ? estimateProject(project.data, catalog) : null), [project, catalog]);
@@ -243,19 +295,42 @@ export default function Editor() {
 
       {/* Main layout */}
       <div className="flex-1 flex min-h-0">
-        {/* Left tools */}
-        <aside className="w-14 border-r border-zinc-200 flex flex-col items-center py-3 gap-1 bg-white">
+        {/* Left tools with labels */}
+        <aside className="w-44 border-r border-zinc-200 flex flex-col py-3 gap-1 bg-white overflow-y-auto">
+          <div className="label-kicker px-4 pb-2">Strumenti</div>
           {TOOLS.map((t) => (
             <button
               key={t.id}
-              title={t.label}
+              title={t.hint}
               onClick={() => { setTool(t.id); setSelected(null); }}
-              className={`tool-btn ${tool === t.id ? "active" : ""}`}
+              className={`mx-2 px-3 py-2 flex items-center gap-3 text-sm transition-colors border-l-2 ${tool === t.id ? "bg-zinc-900 text-white border-zinc-900" : "border-transparent text-zinc-700 hover:bg-zinc-50"}`}
               data-testid={`tool-${t.id}`}
             >
-              <t.icon size={18} />
+              <t.icon size={16} strokeWidth={tool === t.id ? 2.4 : 2} />
+              <span className="font-medium">{t.label}</span>
             </button>
           ))}
+
+          <div className="label-kicker px-4 pt-5 pb-2">Stanze rapide</div>
+          {QUICK_ROOMS.map((q) => (
+            <button key={q.id}
+              onClick={() => addQuickRoom(q)}
+              className="mx-2 px-3 py-2 flex items-center gap-3 text-sm transition-colors text-zinc-700 hover:bg-zinc-50"
+              title={`Aggiungi ${q.label} ${q.w / 100}×${q.h / 100}m`}
+              data-testid={`quick-room-${q.id}`}
+            >
+              <q.icon size={16} />
+              <span>{q.label}</span>
+              <span className="ml-auto mono text-[10px] text-zinc-400">{q.w / 100}×{q.h / 100}m</span>
+            </button>
+          ))}
+
+          <div className="mx-2 mt-5 px-3 py-2 text-[11px] leading-relaxed text-zinc-500">
+            <div className="mono text-zinc-700 mb-1">Suggerimenti:</div>
+            <div>• <b>snap</b> automatico a 10 cm</div>
+            <div>• <b>alt+drag</b> per panorare</div>
+            <div>• <b>doppio click</b> stanza per rinominare</div>
+          </div>
         </aside>
 
         {/* Center canvases */}

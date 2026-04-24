@@ -205,7 +205,18 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
           const cy = r.points.reduce((s, p) => s + p.y, 0) / r.points.length;
           const areaM2 = polygonArea(r.points) / 10000;
           return (
-            <g key={r.id} onMouseDown={(e) => { e.stopPropagation(); handleElementClick("rooms", r.id); }} style={{ cursor: "pointer" }}>
+            <g key={r.id}
+              onMouseDown={(e) => { e.stopPropagation(); handleElementClick("rooms", r.id); }}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                const newName = window.prompt("Nome stanza:", r.name || "");
+                if (newName !== null) {
+                  setProject((prj) => ({ ...prj, rooms: (prj.rooms || []).map((x) => x.id === r.id ? { ...x, name: newName } : x) }));
+                }
+              }}
+              style={{ cursor: "pointer" }}
+              data-testid={`room-${r.id}`}
+            >
               <polygon
                 points={pts}
                 fill={mat?.color || "#F4F4F5"}
@@ -214,7 +225,7 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
                 strokeWidth={isSel ? 2 : 0.6}
                 strokeDasharray="4 3"
               />
-              <text x={cx} y={cy - 6} fontSize="13" textAnchor="middle" fontFamily="Outfit" fill="#0A0A0A" fontWeight="500">
+              <text x={cx} y={cy - 6} fontSize="14" textAnchor="middle" fontFamily="Outfit" fill="#0A0A0A" fontWeight="600">
                 {r.name}
               </text>
               <text x={cx} y={cy + 12} fontSize="11" textAnchor="middle" fontFamily="JetBrains Mono" fill="#71717A">
@@ -227,6 +238,7 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
         {/* walls */}
         {walls.map((w) => {
           const isSel = selected?.kind === "walls" && selected.id === w.id;
+          const len = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
           return (
             <g key={w.id} onMouseDown={(e) => { e.stopPropagation(); handleElementClick("walls", w.id); }} style={{ cursor: "pointer" }}>
               <line
@@ -235,7 +247,13 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
                 strokeWidth={w.thickness || 10}
                 strokeLinecap="butt"
               />
-              {isSel && <Measurement x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2} />}
+              {/* hit area for easier selection */}
+              <line
+                x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2}
+                stroke="transparent" strokeWidth="20"
+              />
+              {/* always show measurement */}
+              {len > 30 && <Measurement x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2} />}
             </g>
           );
         })}

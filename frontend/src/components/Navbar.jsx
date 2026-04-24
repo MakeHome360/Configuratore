@@ -2,15 +2,15 @@ import React from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "./ui/button";
-import { Ruler, LogOut, FolderOpen, Package } from "lucide-react";
+import { Ruler, LogOut, FolderOpen, Package, Receipt, LayoutDashboard } from "lucide-react";
 
 export default function Navbar({ compact = false }) {
   const { user, logout } = useAuth();
   const nav = useNavigate();
   const { pathname } = useLocation();
 
-  const linkCls = (p) =>
-    `text-sm px-3 py-1.5 transition-colors ${pathname.startsWith(p) ? "text-zinc-900" : "text-zinc-500 hover:text-zinc-900"}`;
+  const linkCls = (active) =>
+    `text-sm px-3 py-1.5 transition-colors flex items-center gap-1.5 ${active ? "text-zinc-900" : "text-zinc-500 hover:text-zinc-900"}`;
 
   return (
     <header
@@ -28,11 +28,14 @@ export default function Navbar({ compact = false }) {
 
       {user && (
         <nav className="flex items-center gap-1">
-          <Link to="/dashboard" className={linkCls("/dashboard")} data-testid="nav-dashboard">
-            <span className="flex items-center gap-1.5"><FolderOpen size={14} /> Progetti</span>
+          <Link to="/dashboard" className={linkCls(pathname === "/dashboard" || pathname.startsWith("/editor"))} data-testid="nav-dashboard">
+            <LayoutDashboard size={14} /> Progetti
           </Link>
-          <Link to="/materials" className={linkCls("/materials")} data-testid="nav-materials">
-            <span className="flex items-center gap-1.5"><Package size={14} /> Catalogo</span>
+          <Link to="/preventivi" className={linkCls(pathname.startsWith("/preventivi"))} data-testid="nav-preventivi">
+            <Receipt size={14} /> Preventivi
+          </Link>
+          <Link to="/materials" className={linkCls(pathname.startsWith("/materials"))} data-testid="nav-materials">
+            <Package size={14} /> Catalogo
           </Link>
         </nav>
       )}

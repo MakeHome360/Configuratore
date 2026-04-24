@@ -17,17 +17,25 @@ import { PX_PER_CM, snap, uid, polygonArea, polygonPerimeter, fmtNum } from "./u
 const WORLD_W = 1600; // cm
 const WORLD_H = 1200;
 const GRID = 10;      // 10cm grid
+const INITIAL_VIEW = { x: -300, y: -200, w: WORLD_W + 600, h: WORLD_H + 400 }; // zoomed out a bit
 
-function Measurement({ x1, y1, x2, y2 }) {
+function Measurement({ x1, y1, x2, y2, big = false }) {
   const dx = x2 - x1, dy = y2 - y1;
   const len = Math.hypot(dx, dy);
   const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
-  const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+  // perpendicular offset so label sits ABOVE the line
+  const nx = -dy / (len || 1), ny = dx / (len || 1);
+  const off = big ? 38 : 24;
+  const lx = mx + nx * off, ly = my + ny * off;
+  const fs = big ? 28 : 18;
+  const padY = big ? 14 : 9;
+  const padX = big ? 32 : 20;
+  const txt = `${(len / 100).toFixed(2)} m`;
   return (
-    <g transform={`translate(${mx},${my}) rotate(${angle})`} pointerEvents="none">
-      <text y={-8} textAnchor="middle" fontSize="12" fontFamily="JetBrains Mono" fill="#2563EB">
-        {fmtNum(len / 100, 2)} m
-      </text>
+    <g pointerEvents="none">
+      <line x1={mx} y1={my} x2={lx} y2={ly} stroke={big ? "#16A34A" : "#2563EB"} strokeWidth={big ? 1.5 : 1} strokeDasharray="3,3" opacity="0.6" />
+      <rect x={lx - padX} y={ly - padY} width={padX * 2} height={padY * 2} rx={6} fill="white" stroke={big ? "#16A34A" : "#2563EB"} strokeWidth={big ? 2.5 : 1.5} opacity={0.97} />
+      <text x={lx} y={ly + 6} textAnchor="middle" fontSize={fs} fontFamily="JetBrains Mono" fontWeight="800" fill={big ? "#16A34A" : "#2563EB"}>{txt}</text>
     </g>
   );
 }
@@ -37,7 +45,7 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
   const [wallDraft, setWallDraft] = useState(null); // {x1,y1}
   const [roomDraft, setRoomDraft] = useState([]);   // [{x,y}]
   const [cursor, setCursor] = useState({ x: 0, y: 0 });
-  const [viewBox, setViewBox] = useState({ x: 0, y: 0, w: WORLD_W, h: WORLD_H });
+  const [viewBox, setViewBox] = useState(INITIAL_VIEW);
   const [pan, setPan] = useState(null);
 
   const catalogById = useMemo(() => Object.fromEntries((catalog || []).map((m) => [m.id, m])), [catalog]);
@@ -72,14 +80,18 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
     const p = snapPt(toWorld(e));
 
     if (tool === "wall") {
+      // Use timeout so doubleclick can cancel: when dblclick fires, we clear the timer & don't add wall.
+      if (e.detail >= 2) return; // ignore the 2nd click of a dblclick — onDblClick will handle stop
       if (!wallDraft) { setWallDraft(p); return; }
-      // add wall
+      // detect zero-length / closing click (same point) → stop
+      if (Math.hypot(p.x - wallDraft.x, p.y - wallDraft.y) < 8) { setWallDraft(null); return; }
       const newWall = { id: uid(), x1: wallDraft.x, y1: wallDraft.y, x2: p.x, y2: p.y, thickness: 10 };
       setProject((prj) => ({ ...prj, walls: [...(prj.walls || []), newWall] }));
       setWallDraft(p); // chain
       return;
     }
     if (tool === "room") {
+      if (e.detail >= 2) return; // dblclick handler will close the polygon
       setRoomDraft((arr) => [...arr, p]);
       return;
     }
@@ -253,7 +265,7 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
                 stroke="transparent" strokeWidth="20"
               />
               {/* always show measurement */}
-              {len > 30 && <Measurement x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2} />}
+              {len > 30 && <Measurement x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2} big />}
             </g>
           );
         })}
@@ -309,8 +321,10 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
         {/* wall draft preview */}
         {tool === "wall" && wallDraft && (
           <g pointerEvents="none">
-            <line x1={wallDraft.x} y1={wallDraft.y} x2={cursor.x} y2={cursor.y} stroke="#2563EB" strokeWidth="10" strokeOpacity="0.35" />
-            <Measurement x1={wallDraft.x} y1={wallDraft.y} x2={cursor.x} y2={cursor.y} />
+            <line x1={wallDraft.x} y1={wallDraft.y} x2={cursor.x} y2={cursor.y} stroke="#16A34A" strokeWidth="12" strokeOpacity="0.55" />
+            <circle cx={wallDraft.x} cy={wallDraft.y} r="6" fill="#16A34A" />
+            <circle cx={cursor.x} cy={cursor.y} r="8" fill="white" stroke="#16A34A" strokeWidth="3" />
+            <Measurement x1={wallDraft.x} y1={wallDraft.y} x2={cursor.x} y2={cursor.y} big />
           </g>
         )}
 

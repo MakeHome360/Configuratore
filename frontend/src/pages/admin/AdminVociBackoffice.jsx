@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Save, Trash2, Plus, RefreshCcw, X, Edit2 } from "lucide-react";
+import { Save, Trash2, Plus, RefreshCcw, X, Edit2, Upload } from "lucide-react";
+import CsvImportDialog from "@/components/CsvImportDialog";
 
 const CATS = ["MURATURA", "IMPIANTI", "INFISSI", "SERVIZI"];
 
@@ -15,6 +16,7 @@ export default function AdminVociBackoffice() {
   const [dirty, setDirty] = useState({});
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [importing, setImporting] = useState(false);
 
   const load = () => api.get("/voci-backoffice").then((r) => setRows(r.data || []));
   useEffect(() => { load(); }, []);
@@ -39,6 +41,7 @@ export default function AdminVociBackoffice() {
     <div>
       <PageHeader title="Voci Backoffice" subtitle="Gestisci costi di acquisto e ricarichi per calcolare i margini"
         actions={<div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImporting(true)} data-testid="vb-import"><Upload className="h-4 w-4 mr-1" />Importa CSV</Button>
           <Button variant="outline" onClick={sync} data-testid="vb-sync"><RefreshCcw className="h-4 w-4 mr-1" />Sincronizza Tutti</Button>
           <Button onClick={() => setCreating(true)} data-testid="vb-new" style={{ background: "var(--brand)", color: "white" }}><Plus className="h-4 w-4 mr-1" />Nuova Voce</Button>
         </div>} />
@@ -92,6 +95,7 @@ export default function AdminVociBackoffice() {
         </div>
       </Page>
       {(creating || editing) && <VoceDialog voce={editing} onClose={() => { setEditing(null); setCreating(false); }} onSaved={load} isNew={creating} />}
+      {importing && <CsvImportDialog endpoint="/voci-backoffice/bulk-import" header="name,category,unit,prezzo_acquisto,ricarico" example='Punto luce LED,IMPIANTI,punto,15,1.8' title="Importa Voci Backoffice da CSV" onClose={() => setImporting(false)} onSuccess={load} />}
     </div>
   );
 }
@@ -120,7 +124,13 @@ function VoceDialog({ voce, onClose, onSaved, isNew }) {
             </div>
             <div><Label>Unità</Label>
               <select className="w-full h-10 px-2 border border-zinc-300 rounded" value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })}>
-                <option value="m²">m²</option><option value="ml">ml</option><option value="pz">pz</option><option value="forfait">forfait</option>
+                <option value="m²">m² (metro quadro)</option>
+                <option value="ml">ml (metro lineare)</option>
+                <option value="pz">pz (pezzo)</option>
+                <option value="punto">punto (es. punto luce/acqua)</option>
+                <option value="forfait">forfait</option>
+                <option value="h">h (ora di lavoro)</option>
+                <option value="kg">kg</option>
               </select>
             </div>
             <div><Label>Prezzo Acquisto €</Label><Input type="number" step="0.01" value={f.prezzo_acquisto} onChange={(e) => setF({ ...f, prezzo_acquisto: Number(e.target.value) })} /></div>

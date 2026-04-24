@@ -4,7 +4,8 @@ import { Button } from "../components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { api } from "../lib/api";
 import { toast } from "sonner";
-import { RotateCcw, Save } from "lucide-react";
+import { RotateCcw, Save, Upload } from "lucide-react";
+import CsvImportDialog from "../components/CsvImportDialog";
 import { fmtEuro } from "../editor/utils";
 
 const CATEGORIES = [
@@ -23,6 +24,7 @@ export default function Materials() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dirty, setDirty] = useState({});
+  const [importing, setImporting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -71,6 +73,9 @@ export default function Materials() {
             <p className="text-sm text-zinc-500 mt-2">Personalizza i costi che useremo nei preventivi.</p>
           </div>
           <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setImporting(true)} className="rounded-sm" data-testid="materials-import-csv">
+              <Upload size={14} className="mr-2" /> Importa CSV
+            </Button>
             <Button variant="outline" onClick={resetCatalog} className="rounded-sm" data-testid="materials-reset-button">
               <RotateCcw size={14} className="mr-2" /> Reset default
             </Button>
@@ -138,6 +143,7 @@ export default function Materials() {
           </Tabs>
         )}
       </main>
+      {importing && <CsvImportDialog endpoint="/materials/bulk-import" header="category,name,unit,cost,color" example='floor,Gres porcellanato 60x60,€/m²,42.50,#D4D4D8' title="Importa Materiali da CSV" onClose={() => setImporting(false)} onSuccess={load} />}
     </div>
   );
 }

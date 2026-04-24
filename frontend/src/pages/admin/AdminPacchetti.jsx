@@ -44,8 +44,14 @@ export default function AdminPacchetti() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {packages.map((p) => {
               const mq = 70;
+              const ml = mq * 0.4; // approximate ml from mq
+              const calcQty = (it, m, l) => {
+                if (it.qty_mode === "fissa") return it.qty_value || 0;
+                if (it.qty_mode === "ml") return (it.qty_ratio || 0) * l;
+                return (it.qty_ratio || 0) * m; // default mq
+              };
               const ricavo = p.price_per_m2 * mq;
-              const costi = (p.items || []).reduce((s, it) => s + (it.qty_ratio * mq * it.unit_price_pkg), 0);
+              const costi = (p.items || []).reduce((s, it) => s + calcQty(it, mq, ml) * it.unit_price_pkg, 0);
               const margine = ricavo - costi;
               const marginePct = ricavo ? (margine / ricavo) * 100 : 0;
               const isOpen = expanded === p.id;
@@ -79,8 +85,10 @@ export default function AdminPacchetti() {
                   {isOpen && (
                     <div className="mt-3 grid grid-cols-4 gap-2 text-xs">
                       {MQ_SIM.map((m) => {
+                        const ml2 = m * 0.4;
+                        const calcQty2 = (it) => it.qty_mode === "fissa" ? (it.qty_value || 0) : (it.qty_mode === "ml" ? (it.qty_ratio || 0) * ml2 : (it.qty_ratio || 0) * m);
                         const r = p.price_per_m2 * m;
-                        const cc = (p.items || []).reduce((s, it) => s + (it.qty_ratio * m * it.unit_price_pkg), 0);
+                        const cc = (p.items || []).reduce((s, it) => s + calcQty2(it) * it.unit_price_pkg, 0);
                         return <div key={m} className="p-2 bg-zinc-50 rounded"><div className="font-mono">{m} mq</div><div>{fmtEur(r)}</div><div className={((r-cc)/r*100) >= 0 ? "text-emerald-600" : "text-rose-600"}>{((r-cc)/r*100).toFixed(1)}%</div></div>;
                       })}
                     </div>
@@ -126,19 +134,36 @@ function PackageDialog({ pkg, voci, onClose, onSaved, isNew }) {
           </div>
           <div>
             <div className="flex items-center justify-between mb-2"><Label>Voci incluse ({(form.items || []).length})</Label>
-              <Button size="sm" variant="outline" onClick={() => setForm({ ...form, items: [...(form.items || []), { voce_id: voci[0]?.id, qty_ratio: 1, unit_price_pkg: voci[0]?.prezzo_rivendita || 0 }] })}><Plus className="h-3 w-3 mr-1" />Voce</Button>
+              <Button size="sm" variant="outline" onClick={() => setForm({ ...form, items: [...(form.items || []), { voce_id: voci[0]?.id, qty_mode: "mq", qty_value: 1, qty_ratio: 1, unit_price_pkg: voci[0]?.prezzo_rivendita || 0 }] })}><Plus className="h-3 w-3 mr-1" />Voce</Button>
             </div>
-            <div className="space-y-1 max-h-72 overflow-y-auto">
-              {(form.items || []).map((it, i) => (
+            <div className="text-xs text-zinc-500 mb-2 bg-blue-50 p-2 rounded">
+              <strong>Modalità qtà:</strong>
+              <ul className="ml-4 list-disc mt-1 space-y-0.5">
+                <li><strong>Fissa</strong>: quantità sempre uguale (es. 1 caldaia, 6 punti luce)</li>
+                <li><strong>MQ</strong>: qtà = MQ abitazione × coefficiente</li>
+                <li><strong>ML</strong>: qtà = metri lineari × coefficiente</li>
+              </ul>
+            </div>
+            <div className="space-y-1 max-h-80 overflow-y-auto">
+              {(form.items || []).map((it, i) => {
+                const voce = voci.find(v => v.id === it.voce_id);
+                return (
                 <div key={i} className="grid grid-cols-12 gap-2 items-center p-2 bg-zinc-50 rounded">
-                  <select className="col-span-6 border border-zinc-300 rounded h-8 px-2 text-sm" value={it.voce_id} onChange={(e) => { const c = [...form.items]; c[i].voce_id = e.target.value; setForm({ ...form, items: c }); }}>
-                    {voci.map((v) => <option key={v.id} value={v.id}>[{v.category.slice(0,3)}] {v.name}</option>)}
+                  <select className="col-span-4 border border-zinc-300 rounded h-9 px-2 text-sm" value={it.voce_id} onChange={(e) => { const c = [...form.items]; c[i].voce_id = e.target.value; const v = voci.find(x => x.id === e.target.value); if (v) c[i].unit_price_pkg = v.prezzo_rivendita; setForm({ ...form, items: c }); }}>
+                    {voci.map((v) => <option key={v.id} value={v.id}>[{v.category.slice(0,3)}] {v.name} ({v.unit})</option>)}
                   </select>
-                  <Input className="col-span-2" type="number" step="0.001" placeholder="qty/mq" value={it.qty_ratio} onChange={(e) => { const c = [...form.items]; c[i].qty_ratio = Number(e.target.value); setForm({ ...form, items: c }); }} />
+                  <select className="col-span-2 border border-zinc-300 rounded h-9 px-2 text-sm" value={it.qty_mode || "mq"} onChange={(e) => { const c = [...form.items]; c[i].qty_mode = e.target.value; setForm({ ...form, items: c }); }} data-testid={`pkg-qtymode-${i}`}>
+                    <option value="fissa">Fissa</option>
+                    <option value="mq">MQ</option>
+                    <option value="ml">ML</option>
+                  </select>
+                  <Input className="col-span-2" type="number" step="0.001" placeholder={it.qty_mode === "fissa" ? "qty fissa" : "coefficiente"} value={it.qty_mode === "fissa" ? (it.qty_value ?? 1) : (it.qty_ratio ?? 1)} onChange={(e) => { const c = [...form.items]; if (c[i].qty_mode === "fissa") c[i].qty_value = Number(e.target.value); else c[i].qty_ratio = Number(e.target.value); setForm({ ...form, items: c }); }} />
                   <Input className="col-span-3" type="number" step="0.01" placeholder="€/u" value={it.unit_price_pkg} onChange={(e) => { const c = [...form.items]; c[i].unit_price_pkg = Number(e.target.value); setForm({ ...form, items: c }); }} />
                   <button className="col-span-1" onClick={() => setForm({ ...form, items: form.items.filter((_, j) => j !== i) })}><Trash2 className="h-4 w-4 text-rose-600 mx-auto" /></button>
+                  {voce && <div className="col-span-12 text-[10px] text-zinc-500 -mt-1 px-1">{voce.unit} · acq {voce.prezzo_acquisto?.toFixed(2)}€ × {voce.ricarico}x = {voce.prezzo_rivendita?.toFixed(2)}€/u</div>}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -164,17 +189,22 @@ function VociIncluseTab({ packages, voci, reload }) {
       </div>
       <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr><th className="px-3 py-2 text-left">Voce</th><th className="px-3 py-2 text-left">Categoria</th><th className="px-3 py-2 text-right">qty/mq</th><th className="px-3 py-2 text-right">€/u</th><th className="px-3 py-2 text-right">Costo @70mq</th></tr></thead>
+          <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr><th className="px-3 py-2 text-left">Voce</th><th className="px-3 py-2 text-left">Categoria</th><th className="px-3 py-2 text-center">Modo</th><th className="px-3 py-2 text-right">Quantità</th><th className="px-3 py-2 text-right">€/u</th><th className="px-3 py-2 text-right">Costo @70mq</th></tr></thead>
           <tbody className="divide-y divide-zinc-100">
-            {(pkg?.items || []).map((it) => (
+            {(pkg?.items || []).map((it) => {
+              const qtyDisplay = it.qty_mode === "fissa" ? `${it.qty_value || 0} ${it.unit}` : it.qty_mode === "ml" ? `${(it.qty_ratio || 0).toFixed(3)} × ml` : `${(it.qty_ratio || 0).toFixed(3)} × mq`;
+              const qty70 = it.qty_mode === "fissa" ? (it.qty_value || 0) : it.qty_mode === "ml" ? (it.qty_ratio || 0) * 70 * 0.4 : (it.qty_ratio || 0) * 70;
+              return (
               <tr key={it.id}>
                 <td className="px-3 py-2">{it.name}</td>
                 <td className="px-3 py-2 text-xs text-zinc-500">{it.category}</td>
-                <td className="px-3 py-2 text-right font-mono">{(it.qty_ratio || 0).toFixed(3)}</td>
+                <td className="px-3 py-2 text-center text-xs">{(it.qty_mode || "mq").toUpperCase()}</td>
+                <td className="px-3 py-2 text-right font-mono text-xs">{qtyDisplay}</td>
                 <td className="px-3 py-2 text-right font-mono">{fmtEur2(it.unit_price_pkg)}</td>
-                <td className="px-3 py-2 text-right font-mono">{fmtEur(it.qty_ratio * 70 * it.unit_price_pkg)}</td>
+                <td className="px-3 py-2 text-right font-mono">{fmtEur(qty70 * it.unit_price_pkg)}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

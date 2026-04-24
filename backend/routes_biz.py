@@ -208,6 +208,39 @@ def build_biz_router(db, get_current_user):
         await db.voci_backoffice.delete_one({"id": voce_id})
         return {"ok": True}
 
+    @r.post("/voci-backoffice/bulk-import")
+    async def bulk_import_voci(body: Dict[str, Any], user=Depends(get_current_user)):
+        """CSV header: name,category,unit,prezzo_acquisto,ricarico (id optional).
+        Categorie ammesse: MURATURA / IMPIANTI / INFISSI / SERVIZI."""
+        import csv as _csv, io as _io
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        text = body.get("csv", "")
+        if not text.strip():
+            raise HTTPException(400, "CSV vuoto")
+        reader = _csv.DictReader(_io.StringIO(text))
+        rows = []
+        for r in reader:
+            if not r.get("name"):
+                continue
+            cat = (r.get("category") or "MURATURA").upper().strip()
+            if cat not in ("MURATURA", "IMPIANTI", "INFISSI", "SERVIZI"):
+                cat = "MURATURA"
+            rows.append({
+                "id": (r.get("id") or "").strip() or f"voce-{uuid.uuid4().hex[:8]}",
+                "name": r["name"].strip(),
+                "category": cat,
+                "unit": (r.get("unit") or "pz").strip(),
+                "prezzo_acquisto": float(r.get("prezzo_acquisto") or 0),
+                "ricarico": float(r.get("ricarico") or 1.8),
+            })
+        if not rows:
+            raise HTTPException(400, "Nessuna riga valida")
+        if body.get("replace"):
+            await db.voci_backoffice.delete_many({})
+        await db.voci_backoffice.insert_many(rows)
+        return {"ok": True, "imported": len(rows)}
+
     # ---------- Fasi Commessa ----------
     @r.get("/fasi-commessa")
     async def list_fasi(user=Depends(get_current_user)):

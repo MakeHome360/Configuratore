@@ -373,6 +373,37 @@ async def reset_materials(user: Dict[str, Any] = Depends(get_current_user)):
     return out
 
 
+@api.post("/materials/bulk-import")
+async def bulk_import_materials(body: Dict[str, Any], user: Dict[str, Any] = Depends(get_current_user)):
+    """Import materials from CSV. Body: {csv: '<text>', replace: bool}.
+    CSV header (first line): id,category,name,unit,cost,color,thumb (id and color optional)."""
+    import csv as _csv, io as _io, uuid as _uuid
+    text = body.get("csv", "")
+    if not text.strip():
+        raise HTTPException(400, "CSV vuoto")
+    reader = _csv.DictReader(_io.StringIO(text))
+    rows = []
+    for r in reader:
+        if not (r.get("name") and r.get("category")):
+            continue
+        rows.append({
+            "id": (r.get("id") or "").strip() or f"mat-{_uuid.uuid4().hex[:8]}",
+            "category": r["category"].strip(),
+            "name": r["name"].strip(),
+            "unit": (r.get("unit") or "pz").strip(),
+            "cost": float(r.get("cost") or 0),
+            "color": (r.get("color") or "#94A3B8").strip(),
+            "thumb": (r.get("thumb") or "").strip(),
+            "user_id": user["id"],
+        })
+    if not rows:
+        raise HTTPException(400, "Nessuna riga valida nel CSV")
+    if body.get("replace"):
+        await db.materials.delete_many({"user_id": user["id"]})
+    await db.materials.insert_many(rows)
+    return {"ok": True, "imported": len(rows)}
+
+
 # ---------------- AI Render ----------------
 @api.post("/ai-render")
 async def ai_render(body: AIRenderReq, user: Dict[str, Any] = Depends(get_current_user)):
@@ -452,8 +483,13 @@ async def list_packages(user: Dict[str, Any] = Depends(get_current_user)):
             v = voci.get(it.get("voce_id"))
             if not v:
                 continue
-            items.append({"id": v["id"], "name": v["name"], "category": v["category"], "unit": v["unit"],
-                          "qty_ratio": it["qty_ratio"], "unit_price_pkg": it.get("unit_price_pkg") or round(v["prezzo_acquisto"] * v["ricarico"], 2)})
+            items.append({
+                "id": v["id"], "name": v["name"], "category": v["category"], "unit": v["unit"],
+                "qty_mode": it.get("qty_mode", "mq"),
+                "qty_ratio": it.get("qty_ratio", 0),
+                "qty_value": it.get("qty_value", 0),
+                "unit_price_pkg": it.get("unit_price_pkg") or round(v["prezzo_acquisto"] * v["ricarico"], 2)
+            })
         items.sort(key=lambda x: (x["category"], x["name"]))
         out.append({"id": p["id"], "name": p["name"], "subtitle": p.get("subtitle", ""), "price_per_m2": p["price_per_m2"], "color": p.get("color", "#475569"), "description": p.get("description", ""), "items": items})
     return out

@@ -1,88 +1,459 @@
-from fastapi import FastAPI, APIRouter
 from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-import os
-import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
-import uuid
-from datetime import datetime, timezone
-
 
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+load_dotenv(ROOT_DIR / ".env")
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
+import os
+import uuid
+import base64
+import logging
+import secrets
+from datetime import datetime, timezone, timedelta
+from typing import List, Optional, Any, Dict
+
+import bcrypt
+import jwt
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response
+from starlette.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
+from pydantic import BaseModel, Field, EmailStr, ConfigDict
+from bson import ObjectId
+
+from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+
+# ---------------- Setup ----------------
+mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+db = client[os.environ["DB_NAME"]]
 
-# Create the main app without a prefix
-app = FastAPI()
+app = FastAPI(title="Ristruttura CAD API")
+api = APIRouter(prefix="/api")
 
-# Create a router with the /api prefix
-api_router = APIRouter(prefix="/api")
+JWT_ALGO = "HS256"
+JWT_SECRET_KEY_NAME = "JWT_SECRET"
+EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
-    
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+# ---------------- Auth helpers ----------------
+def hash_password(pw: str) -> str:
+    return bcrypt.hashpw(pw.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
 
-# Add your routes to the router instead of directly to app
-@api_router.get("/")
+def verify_password(pw: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(pw.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
+
+
+def jwt_secret() -> str:
+    return os.environ[JWT_SECRET_KEY_NAME]
+
+
+def create_access_token(user_id: str, email: str) -> str:
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=60),
+        "type": "access",
+    }
+    return jwt.encode(payload, jwt_secret(), algorithm=JWT_ALGO)
+
+
+def create_refresh_token(user_id: str) -> str:
+    payload = {
+        "sub": user_id,
+        "exp": datetime.now(timezone.utc) + timedelta(days=7),
+        "type": "refresh",
+    }
+    return jwt.encode(payload, jwt_secret(), algorithm=JWT_ALGO)
+
+
+def set_auth_cookies(response: Response, access: str, refresh: str):
+    response.set_cookie("access_token", access, httponly=True, secure=True, samesite="none", max_age=3600, path="/")
+    response.set_cookie("refresh_token", refresh, httponly=True, secure=True, samesite="none", max_age=604800, path="/")
+
+
+def clear_auth_cookies(response: Response):
+    response.delete_cookie("access_token", path="/")
+    response.delete_cookie("refresh_token", path="/")
+
+
+async def get_current_user(request: Request) -> Dict[str, Any]:
+    token = request.cookies.get("access_token")
+    if not token:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth[7:]
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(token, jwt_secret(), algorithms=[JWT_ALGO])
+        if payload.get("type") != "access":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+        user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        return user
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+# ---------------- Models ----------------
+class RegisterReq(BaseModel):
+    email: EmailStr
+    password: str
+    name: str
+
+
+class LoginReq(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class UserOut(BaseModel):
+    id: str
+    email: str
+    name: str
+    role: str = "user"
+
+
+class ProjectIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    name: str
+    data: Dict[str, Any]
+    thumbnail: Optional[str] = None
+
+
+class ProjectOut(BaseModel):
+    id: str
+    user_id: str
+    name: str
+    data: Dict[str, Any]
+    thumbnail: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+class MaterialItem(BaseModel):
+    id: str
+    category: str       # floor, wall, ceiling, plumbing, electrical, furniture, fixture, appliance, light
+    name: str
+    unit: str           # m2, ml, pz
+    price: float
+    color: Optional[str] = "#D4D4D8"
+
+
+class AIRenderReq(BaseModel):
+    image_base64: str
+    prompt: str
+    style: Optional[str] = "photorealistic interior"
+
+
+# ---------------- Default Catalog ----------------
+DEFAULT_CATALOG: List[Dict[str, Any]] = [
+    # Floors (€/m²)
+    {"id": "floor-parquet", "category": "floor", "name": "Parquet in rovere", "unit": "m2", "price": 85.0, "color": "#B48A60"},
+    {"id": "floor-ceramic", "category": "floor", "name": "Gres porcellanato", "unit": "m2", "price": 45.0, "color": "#E4E4E7"},
+    {"id": "floor-marble", "category": "floor", "name": "Marmo Carrara", "unit": "m2", "price": 180.0, "color": "#F4F4F5"},
+    {"id": "floor-laminate", "category": "floor", "name": "Laminato", "unit": "m2", "price": 28.0, "color": "#C9A37B"},
+    {"id": "floor-concrete", "category": "floor", "name": "Resina / Microcemento", "unit": "m2", "price": 95.0, "color": "#A1A1AA"},
+    # Walls (€/m²)
+    {"id": "wall-paint", "category": "wall", "name": "Pittura lavabile", "unit": "m2", "price": 12.0, "color": "#FFFFFF"},
+    {"id": "wall-wallpaper", "category": "wall", "name": "Carta da parati", "unit": "m2", "price": 35.0, "color": "#E7D9C4"},
+    {"id": "wall-tile", "category": "wall", "name": "Rivestimento ceramico", "unit": "m2", "price": 55.0, "color": "#DCE4EC"},
+    {"id": "wall-woodpanel", "category": "wall", "name": "Boiserie in legno", "unit": "m2", "price": 120.0, "color": "#8B6A43"},
+    # Ceiling
+    {"id": "ceil-paint", "category": "ceiling", "name": "Tinteggio soffitto", "unit": "m2", "price": 10.0, "color": "#FFFFFF"},
+    {"id": "ceil-plaster", "category": "ceiling", "name": "Cartongesso controsoffitto", "unit": "m2", "price": 42.0, "color": "#F4F4F5"},
+    # Systems (€/m² room)
+    {"id": "sys-electrical", "category": "electrical", "name": "Rifacimento impianto elettrico", "unit": "m2", "price": 55.0, "color": "#FBBF24"},
+    {"id": "sys-plumbing", "category": "plumbing", "name": "Impianto idraulico", "unit": "m2", "price": 65.0, "color": "#3B82F6"},
+    # Furniture (per piece)
+    {"id": "furn-sofa", "category": "furniture", "name": "Divano", "unit": "pz", "price": 1200.0, "color": "#71717A"},
+    {"id": "furn-bed", "category": "furniture", "name": "Letto matrimoniale", "unit": "pz", "price": 900.0, "color": "#A8A29E"},
+    {"id": "furn-table", "category": "furniture", "name": "Tavolo", "unit": "pz", "price": 450.0, "color": "#8B6A43"},
+    {"id": "furn-chair", "category": "furniture", "name": "Sedia", "unit": "pz", "price": 120.0, "color": "#52525B"},
+    {"id": "furn-wardrobe", "category": "furniture", "name": "Armadio", "unit": "pz", "price": 800.0, "color": "#78716C"},
+    {"id": "furn-kitchen", "category": "furniture", "name": "Cucina lineare", "unit": "ml", "price": 650.0, "color": "#D6D3D1"},
+    # Fixtures
+    {"id": "fix-toilet", "category": "fixture", "name": "WC sospeso", "unit": "pz", "price": 380.0, "color": "#FFFFFF"},
+    {"id": "fix-sink", "category": "fixture", "name": "Lavabo", "unit": "pz", "price": 220.0, "color": "#FFFFFF"},
+    {"id": "fix-shower", "category": "fixture", "name": "Box doccia", "unit": "pz", "price": 650.0, "color": "#E0F2FE"},
+    {"id": "fix-bathtub", "category": "fixture", "name": "Vasca da bagno", "unit": "pz", "price": 780.0, "color": "#FFFFFF"},
+    # Appliances
+    {"id": "app-fridge", "category": "appliance", "name": "Frigorifero", "unit": "pz", "price": 850.0, "color": "#A1A1AA"},
+    {"id": "app-oven", "category": "appliance", "name": "Forno", "unit": "pz", "price": 420.0, "color": "#27272A"},
+    {"id": "app-hob", "category": "appliance", "name": "Piano cottura", "unit": "pz", "price": 380.0, "color": "#18181B"},
+    {"id": "app-dishwasher", "category": "appliance", "name": "Lavastoviglie", "unit": "pz", "price": 520.0, "color": "#D4D4D8"},
+    # Lights
+    {"id": "light-ceiling", "category": "light", "name": "Plafoniera LED", "unit": "pz", "price": 95.0, "color": "#FEF3C7"},
+    {"id": "light-pendant", "category": "light", "name": "Sospensione design", "unit": "pz", "price": 240.0, "color": "#FEF3C7"},
+    {"id": "light-spot", "category": "light", "name": "Faretto incasso", "unit": "pz", "price": 38.0, "color": "#FEF3C7"},
+    {"id": "light-wall", "category": "light", "name": "Applique da parete", "unit": "pz", "price": 85.0, "color": "#FEF3C7"},
+]
+
+
+# ---------------- Auth routes ----------------
+@api.post("/auth/register")
+async def register(body: RegisterReq, response: Response):
+    email = body.email.lower()
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email già registrata")
+    user_id = str(uuid.uuid4())
+    doc = {
+        "id": user_id,
+        "email": email,
+        "name": body.name,
+        "role": "user",
+        "password_hash": hash_password(body.password),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.users.insert_one(doc)
+    access = create_access_token(user_id, email)
+    refresh = create_refresh_token(user_id)
+    set_auth_cookies(response, access, refresh)
+    # seed default catalog for user
+    await seed_user_catalog(user_id)
+    return {"id": user_id, "email": email, "name": body.name, "role": "user"}
+
+
+@api.post("/auth/login")
+async def login(body: LoginReq, response: Response, request: Request):
+    email = body.email.lower()
+    ip = request.client.host if request.client else "unknown"
+    ident = f"{ip}:{email}"
+    # Brute force check
+    attempt = await db.login_attempts.find_one({"identifier": ident})
+    if attempt and attempt.get("count", 0) >= 5:
+        last = attempt.get("last_attempt")
+        if last:
+            last_dt = datetime.fromisoformat(last)
+            if datetime.now(timezone.utc) - last_dt < timedelta(minutes=15):
+                raise HTTPException(status_code=429, detail="Troppi tentativi. Riprova tra 15 minuti.")
+            else:
+                await db.login_attempts.delete_one({"identifier": ident})
+    user = await db.users.find_one({"email": email})
+    if not user or not verify_password(body.password, user["password_hash"]):
+        await db.login_attempts.update_one(
+            {"identifier": ident},
+            {"$inc": {"count": 1}, "$set": {"last_attempt": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+        raise HTTPException(status_code=401, detail="Credenziali non valide")
+    await db.login_attempts.delete_one({"identifier": ident})
+    access = create_access_token(user["id"], email)
+    refresh = create_refresh_token(user["id"])
+    set_auth_cookies(response, access, refresh)
+    return {"id": user["id"], "email": user["email"], "name": user["name"], "role": user.get("role", "user")}
+
+
+@api.post("/auth/logout")
+async def logout(response: Response):
+    clear_auth_cookies(response)
+    return {"ok": True}
+
+
+@api.get("/auth/me")
+async def me(user: Dict[str, Any] = Depends(get_current_user)):
+    return {"id": user["id"], "email": user["email"], "name": user["name"], "role": user.get("role", "user")}
+
+
+@api.post("/auth/refresh")
+async def refresh_endpoint(request: Request, response: Response):
+    token = request.cookies.get("refresh_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing refresh token")
+    try:
+        payload = jwt.decode(token, jwt_secret(), algorithms=[JWT_ALGO])
+        if payload.get("type") != "refresh":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+        user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        access = create_access_token(user["id"], user["email"])
+        response.set_cookie("access_token", access, httponly=True, secure=True, samesite="none", max_age=3600, path="/")
+        return {"ok": True}
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+# ---------------- Projects ----------------
+@api.get("/projects")
+async def list_projects(user: Dict[str, Any] = Depends(get_current_user)):
+    docs = await db.projects.find({"user_id": user["id"]}, {"_id": 0}).sort("updated_at", -1).to_list(200)
+    return docs
+
+
+@api.post("/projects")
+async def create_project(body: ProjectIn, user: Dict[str, Any] = Depends(get_current_user)):
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "name": body.name,
+        "data": body.data,
+        "thumbnail": body.thumbnail,
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.projects.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api.get("/projects/{project_id}")
+async def get_project(project_id: str, user: Dict[str, Any] = Depends(get_current_user)):
+    doc = await db.projects.find_one({"id": project_id, "user_id": user["id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Progetto non trovato")
+    return doc
+
+
+@api.put("/projects/{project_id}")
+async def update_project(project_id: str, body: ProjectIn, user: Dict[str, Any] = Depends(get_current_user)):
+    update_doc = {
+        "name": body.name,
+        "data": body.data,
+        "thumbnail": body.thumbnail,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    result = await db.projects.update_one({"id": project_id, "user_id": user["id"]}, {"$set": update_doc})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Progetto non trovato")
+    doc = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    return doc
+
+
+@api.delete("/projects/{project_id}")
+async def delete_project(project_id: str, user: Dict[str, Any] = Depends(get_current_user)):
+    await db.projects.delete_one({"id": project_id, "user_id": user["id"]})
+    return {"ok": True}
+
+
+# ---------------- Materials ----------------
+async def seed_user_catalog(user_id: str):
+    count = await db.materials.count_documents({"user_id": user_id})
+    if count == 0:
+        items = [{**m, "user_id": user_id} for m in DEFAULT_CATALOG]
+        await db.materials.insert_many(items)
+
+
+@api.get("/materials")
+async def get_materials(user: Dict[str, Any] = Depends(get_current_user)):
+    await seed_user_catalog(user["id"])
+    items = await db.materials.find({"user_id": user["id"]}, {"_id": 0, "user_id": 0}).to_list(500)
+    return items
+
+
+@api.put("/materials/{material_id}")
+async def update_material(material_id: str, body: Dict[str, Any], user: Dict[str, Any] = Depends(get_current_user)):
+    body.pop("_id", None)
+    body.pop("user_id", None)
+    await db.materials.update_one({"id": material_id, "user_id": user["id"]}, {"$set": body})
+    doc = await db.materials.find_one({"id": material_id, "user_id": user["id"]}, {"_id": 0, "user_id": 0})
+    return doc
+
+
+@api.post("/materials/reset")
+async def reset_materials(user: Dict[str, Any] = Depends(get_current_user)):
+    await db.materials.delete_many({"user_id": user["id"]})
+    items = [{**m, "user_id": user["id"]} for m in DEFAULT_CATALOG]
+    await db.materials.insert_many(items)
+    out = await db.materials.find({"user_id": user["id"]}, {"_id": 0, "user_id": 0}).to_list(500)
+    return out
+
+
+# ---------------- AI Render ----------------
+@api.post("/ai-render")
+async def ai_render(body: AIRenderReq, user: Dict[str, Any] = Depends(get_current_user)):
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(status_code=500, detail="EMERGENT_LLM_KEY non configurata")
+    # Strip data URL prefix if present
+    img_b64 = body.image_base64
+    if "," in img_b64:
+        img_b64 = img_b64.split(",", 1)[1]
+    session_id = f"render-{user['id']}-{uuid.uuid4().hex[:8]}"
+    chat = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=session_id,
+        system_message="You are an expert interior designer AI that transforms 3D massing previews into photorealistic renders.",
+    )
+    chat.with_model("gemini", "gemini-3.1-flash-image-preview").with_params(modalities=["image", "text"])
+    full_prompt = (
+        f"Transform this 3D preview of an interior room into a {body.style} photograph. "
+        f"Keep the exact layout, room proportions, wall positions, door and window placements. "
+        f"Apply realistic materials, lighting, shadows, and textures. {body.prompt}. "
+        f"Ultra-detailed, professional architectural photography, soft natural lighting."
+    )
+    try:
+        msg = UserMessage(text=full_prompt, file_contents=[ImageContent(img_b64)])
+        text, images = await chat.send_message_multimodal_response(msg)
+    except Exception as e:
+        logger.exception("AI render failed")
+        raise HTTPException(status_code=500, detail=f"Errore rendering AI: {str(e)[:200]}")
+    if not images:
+        raise HTTPException(status_code=500, detail="Nessuna immagine generata")
+    img = images[0]
+    return {
+        "mime_type": img.get("mime_type", "image/png"),
+        "data_url": f"data:{img.get('mime_type', 'image/png')};base64,{img['data']}",
+        "prompt": body.prompt,
+    }
+
+
+# ---------------- Health ----------------
+@api.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"message": "Ristruttura CAD API online", "version": "1.0"}
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
 
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
-
-# Include the router in the main app
-app.include_router(api_router)
+app.include_router(api)
 
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=["*"],
+    allow_origin_regex=r"https?://.*",
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+
+# ---------------- Startup ----------------
+@app.on_event("startup")
+async def on_startup():
+    await db.users.create_index("email", unique=True)
+    await db.users.create_index("id", unique=True)
+    await db.projects.create_index("user_id")
+    await db.projects.create_index("id", unique=True)
+    await db.materials.create_index([("user_id", 1), ("id", 1)])
+    await db.login_attempts.create_index("identifier")
+    # seed admin
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@example.com").lower()
+    admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
+    existing = await db.users.find_one({"email": admin_email})
+    if not existing:
+        uid = str(uuid.uuid4())
+        await db.users.insert_one({
+            "id": uid,
+            "email": admin_email,
+            "name": "Admin",
+            "role": "admin",
+            "password_hash": hash_password(admin_password),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        await seed_user_catalog(uid)
+    elif not verify_password(admin_password, existing["password_hash"]):
+        await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

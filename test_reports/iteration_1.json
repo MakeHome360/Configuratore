@@ -1,0 +1,46 @@
+{
+  "summary": "Comprehensive first-iteration backend + frontend testing for Ristruttura CAD. Backend: 15/15 pytest PASS (auth/register/login/logout/refresh/me, projects CRUD, materials GET returns 31 defaults across 9 categories, price PUT persists, reset works, AI-render auth+empty-image error handling). Frontend: landing + login + register routes load, admin login redirects to /dashboard, project creation navigates to /editor/:id, editor shows SVG 2D canvas + 3D viewer columns + right panel Proprieta/Catalogo/Costi tabs with 4 catalog subtabs and 31 catalog items, total cost panel renders, left toolbar has all 7 tools (select/wall/room/door/window/item/delete), AI render modal opens (when dev overlay not blocking), PDF/Save/Toggle3D buttons present, /materials page lists 31 items across 9 tabs and price edit persists + reset works. One critical client runtime error observed in the 3D viewer.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "CORS", "issue": "CORSMiddleware added AFTER app.include_router and uses allow_origins=['*'] with allow_credentials=True + allow_origin_regex. Browsers reject wildcard+credentials; currently it appears to work because origin regex echoes the request origin, but the combination is unconventional. Recommend explicit origins list from FRONTEND_URL env."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Editor / Viewer3D (React Three Fiber)", "issue": "Runtime errors thrown when the editor mounts/toggles the 3D scene: 'R3F: Cannot set \"x-line-number\". Ensure it is an object before setting \"line-number\".' followed by multiple 'TypeError: Cannot convert undefined or null to object' at removeChild/removeChildFromContainer. In dev build this opens the CRA red-screen error overlay which covers the whole viewport and blocks all subsequent UI interactions (e.g. opening the AI render modal). Likely cause: use of lowercase <line/> or an undefined geometry/material in Viewer3D.jsx causing R3F reconciler to fail when nodes are unmounted. Production users will see a broken 3D pane and missed interactions.", "selector": "canvas within Viewer3D area / body>iframe#webpack-dev-server-client-overlay", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Open AI render modal in editor", "issue": "After the 3D runtime error overlay appears, clicking 'Render AI' (data-testid=open-ai-render) does not open the modal because the overlay intercepts clicks. Root cause is the 3D viewer error, not the modal itself.", "affected_selectors": ["[data-testid='open-ai-render']", "[data-testid='ai-render-modal']"]}
+    ],
+    "design_issues": [
+      {"screen": "Dashboard (empty state while loading)", "issues": ["Three grey skeleton placeholder cards are shown for a few seconds before the real data arrives; they have no data-testid and no 'loading' label, which is easy to confuse with broken cards."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Fix Viewer3D.jsx runtime errors: audit for lowercase <line/> (R3F treats it as SVG line -> 'x-line-number'), null-safe guards around walls/rooms arrays, and verify geometry/material objects are always defined before extrude. Reproduce by logging in as admin and creating a new project -> errors appear immediately on editor mount.",
+    "Consider replacing CORSMiddleware wildcard with explicit origin list (FRONTEND_URL from env) since allow_credentials=True + allow_origins='*' is disallowed by spec (works only because allow_origin_regex is also set).",
+    "Add skeleton/loading testid to dashboard placeholders for easier automated testing."
+  ],
+  "critical_code_review_comments": [
+    "server.py: CORSMiddleware is registered AFTER app.include_router(api). It still works because middleware is applied at request time, but conventional order is before routes.",
+    "server.py on_event('startup')/('shutdown') use the deprecated FastAPI startup/shutdown events; migrate to lifespan context.",
+    "server.py seed_admin falls back to weak defaults ('admin123') if env is missing; acceptable but consider failing fast.",
+    "Editor.jsx references document.querySelector('[data-testid=\"canvas-2d\"]') inside exportPDF - direct DOM coupling, but acceptable.",
+    "Viewer3D.jsx: likely has a lowercase <line ...> JSX element or an undefined args/object being fed to R3F reconciler that triggers 'x-line-number' + removeChild null errors."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (new)"
+  ],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "85% (all routes/auth/materials/editor layout OK; 3D viewer throws runtime errors that block AI modal)"},
+  "test_credentials": "admin@ristruttura.app / Admin12345! (from /app/memory/test_credentials.md). Registration endpoint works; tests create throwaway test_*@example.com accounts.",
+  "seed_data_creation": "Each new user auto-seeded with 31 default catalog items. Tests created 2 'TEST_E2E*' projects under the admin user and an additional throwaway registered user; none explicitly cleaned up.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend is stable and fully passing. The only meaningful issue is the React-Three-Fiber runtime error in /app/frontend/src/editor/Viewer3D.jsx that occurs as soon as the editor mounts and again when toggling 3D, triggering 'x-line-number' + 'Cannot convert undefined or null to object' at removeChild. When running Playwright against the editor, CRA's dev error overlay (#webpack-dev-server-client-overlay) will cover the page and break all subsequent clicks (e.g. AI render modal, tools). Close the overlay via iframe content or fix Viewer3D first. Materials has 9 categories totalling exactly 31 items (5/4/2/1/1/6/4/4/4).",
+  "rca_of_the_issue": "R3F error 'Cannot set x-line-number' is the classic symptom of rendering a lowercase <line> or similar ambiguous element in a Three.js Canvas where R3F's custom reconciler cannot map the element to a Three.js class. The followup 'Cannot convert undefined or null to object' in removeChild indicates the reconciler then tries to unmount a null node. Fix: in Viewer3D.jsx, replace any <line> with an explicit R3F primitive like <lineSegments> / <line_> with proper args, and verify that walls/rooms/items arrays are filtered for null entries before map()."
+}

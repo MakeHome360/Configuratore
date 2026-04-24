@@ -50,11 +50,11 @@ LAVORAZIONI_CATALOG = [
 # package definitions: qty_ratio is how much is included per m² of abitazione
 DEFAULT_PACKAGES = [
     {
-        "id": "pkg-soft",
-        "name": "SOFT",
-        "subtitle": "Rinfresco essenziale",
+        "id": "pkg-basic",
+        "name": "BASIC",
+        "subtitle": "Ristrutturazione base con materiali standard",
         "price_per_m2": 380.0,
-        "color": "#94A3B8",
+        "color": "#475569",
         "description": "Tinteggio, piccoli interventi, rivestimenti bagno base. Ideale per un refresh.",
         "included": {
             # id: {qty_ratio, unit_price (override), included?}

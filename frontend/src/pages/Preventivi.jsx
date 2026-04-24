@@ -1,169 +1,102 @@
 import React, { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import Navbar from "../components/Navbar";
-import { api } from "../lib/api";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "../components/ui/dropdown-menu";
+import { useNavigate } from "react-router-dom";
+import { api } from "@/lib/api";
+import { Page, PageHeader, fmtEur, statoPreventivoBadge } from "@/components/ui-kit";
+import { Button } from "@/components/ui/button";
+import { FilePlus2, Eye, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { Plus, Receipt, Trash2, MoreVertical, Search, Send, CheckCircle2, XCircle, FileText } from "lucide-react";
-import { fmtEuro } from "../editor/utils";
 
-const STATO_STYLES = {
-  bozza: "bg-zinc-100 text-zinc-700 border-zinc-300",
-  inviato: "bg-blue-50 text-blue-700 border-blue-300",
-  accettato: "bg-green-50 text-green-700 border-green-300",
-  rifiutato: "bg-red-50 text-red-700 border-red-300",
-};
-
-function computeTotals(p, packageObj) {
-  if (!packageObj) return { base: 0, extras: 0, optional: 0, bagno: 0, subtotal: 0, iva: 0, total: 0 };
-  const base = (packageObj.price_per_m2 || 0) * (p.mq || 0);
-  const extras = (p.items || []).reduce((s, it) => {
-    const extra = Math.max(0, (it.qty_richiesta || 0) - (it.included_qty || 0));
-    return s + extra * (it.unit_price || 0);
-  }, 0);
-  const optional = (p.optional || []).reduce((s, o) => s + (o.total || 0), 0);
-  const bagno = (p.bathroom_surcharge || 0);
-  const subtotal = base + extras + optional + bagno;
-  const afterDiscount = subtotal * (1 - (p.sconto_pct || 0) / 100);
-  const iva = afterDiscount * (p.iva_pct || 10) / 100;
-  const total = afterDiscount + iva;
-  return { base, extras, optional, bagno, subtotal, iva, total };
-}
+const PKG_NAMES = { "pkg-basic": "BASIC", "pkg-smart": "SMART", "pkg-premium": "PREMIUM", "pkg-elite": "ELITE" };
+const TIPO_LABEL = { pacchetto: "Pacchetto", bagno: "Solo Bagno", composite: "Composite", infissi: "Solo Infissi" };
+const ROUTES = { pacchetto: "/preventivopacchetto", bagno: "/preventivobagno", composite: "/preventivocomposite", infissi: "/preventivoinfissi" };
 
 export default function Preventivi() {
-  const [items, setItems] = useState([]);
-  const [packages, setPackages] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState("");
+  const [rows, setRows] = useState([]);
+  const [filter, setFilter] = useState("");
   const nav = useNavigate();
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const [pr, pk] = await Promise.all([api.get("/preventivi"), api.get("/packages")]);
-      setItems(pr.data); setPackages(pk.data);
-    } catch { toast.error("Errore caricamento preventivi"); }
-    setLoading(false);
-  };
-
+  const load = () => api.get("/preventivi").then((r) => setRows(r.data || [])).catch(() => {});
   useEffect(() => { load(); }, []);
 
   const del = async (id) => {
     if (!window.confirm("Eliminare questo preventivo?")) return;
-    await api.delete(`/preventivi/${id}`); load(); toast.success("Eliminato");
-  };
-  const setStato = async (id, stato) => {
-    await api.patch(`/preventivi/${id}/stato`, { stato }); load();
+    await api.delete(`/preventivi/${id}`);
+    toast.success("Eliminato");
+    load();
   };
 
-  const filtered = items.filter((it) => {
-    const s = q.toLowerCase();
-    return !s || (it.numero || "").toLowerCase().includes(s)
-      || (it.cliente?.nome || "").toLowerCase().includes(s)
-      || (it.cliente?.cognome || "").toLowerCase().includes(s);
+  const filtered = rows.filter((p) => {
+    if (!filter) return true;
+    const s = filter.toLowerCase();
+    return (p.cliente?.nome || "").toLowerCase().includes(s) || (p.numero || "").toLowerCase().includes(s) || (p.cliente?.email || "").toLowerCase().includes(s);
   });
 
   return (
-    <div className="min-h-screen bg-white">
-      <Navbar />
-      <main className="max-w-7xl mx-auto px-6 py-10" data-testid="preventivi-page">
-        <div className="flex items-end justify-between mb-8 border-b border-zinc-200 pb-6">
-          <div>
-            <div className="label-kicker mb-2">Vendita</div>
-            <h1 className="text-4xl font-semibold tracking-tight" style={{ fontFamily: "Outfit" }}>Preventivi</h1>
-            <p className="text-sm text-zinc-500 mt-2 mono">{items.length} totali · {items.filter(i => i.stato === "accettato").length} accettati</p>
-          </div>
-          <Link to="/preventivi/nuovo" data-testid="new-preventivo-button">
-            <Button className="rounded-sm bg-zinc-900 hover:bg-zinc-800 h-11">
-              <Plus size={16} className="mr-2" /> Nuovo preventivo
-            </Button>
-          </Link>
+    <div>
+      <PageHeader
+        title="Preventivi"
+        subtitle="Gestisci tutti i preventivi"
+        actions={<Button onClick={() => nav("/nuovopreventivo")} data-testid="btn-new-prev" style={{ background: "var(--brand)", color: "white" }}><FilePlus2 className="h-4 w-4 mr-2" />Nuovo Preventivo</Button>}
+      />
+      <Page>
+        <div className="mb-4">
+          <input
+            type="text"
+            placeholder="Cerca cliente, numero, email..."
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="w-full max-w-md border border-zinc-300 rounded-md px-3 py-2 text-sm"
+            data-testid="prev-search"
+          />
         </div>
-
-        <div className="relative mb-6 max-w-md">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cerca per numero o cliente…" className="rounded-sm h-10 pl-9" data-testid="preventivi-search" />
-        </div>
-
-        {loading ? (
-          <div className="mono text-sm text-zinc-500">caricamento…</div>
-        ) : filtered.length === 0 ? (
-          <div className="border border-dashed border-zinc-300 p-16 text-center" data-testid="empty-preventivi">
-            <Receipt size={32} className="mx-auto text-zinc-400 mb-4" strokeWidth={1.5} />
-            <div className="text-lg font-medium mb-1" style={{ fontFamily: "Outfit" }}>Nessun preventivo</div>
-            <div className="text-sm text-zinc-500 mb-6 mono">Parti da uno dei 4 pacchetti e genera un preventivo in 2 minuti</div>
-            <Link to="/preventivi/nuovo"><Button className="rounded-sm bg-zinc-900 hover:bg-zinc-800"><Plus size={16} className="mr-2" /> Nuovo preventivo</Button></Link>
-          </div>
-        ) : (
-          <div className="border border-zinc-200">
-            <table className="w-full text-sm">
-              <thead className="bg-zinc-50">
-                <tr className="text-xs uppercase tracking-widest text-zinc-500">
-                  <th className="text-left py-3 px-4 font-medium">Numero</th>
-                  <th className="text-left py-3 px-4 font-medium">Cliente</th>
-                  <th className="text-left py-3 px-4 font-medium">Pacchetto</th>
-                  <th className="text-right py-3 px-4 font-medium">m²</th>
-                  <th className="text-right py-3 px-4 font-medium">Totale (IVA incl.)</th>
-                  <th className="text-left py-3 px-4 font-medium">Stato</th>
-                  <th className="text-left py-3 px-4 font-medium">Data</th>
-                  <th className="w-10"></th>
+        <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
+          <table className="w-full text-sm" data-testid="table-preventivi">
+            <thead className="bg-zinc-50 text-left text-xs uppercase tracking-wider text-zinc-500">
+              <tr>
+                <th className="px-4 py-3">N°</th>
+                <th className="px-4 py-3">Cliente</th>
+                <th className="px-4 py-3">Tipo</th>
+                <th className="px-4 py-3">Pacchetto</th>
+                <th className="px-4 py-3 text-right">MQ</th>
+                <th className="px-4 py-3 text-right">Totale</th>
+                <th className="px-4 py-3">Stato</th>
+                <th className="px-4 py-3">Data</th>
+                <th className="px-4 py-3 text-right">Azioni</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {filtered.map((p) => (
+                <tr key={p.id} className="hover:bg-zinc-50">
+                  <td className="px-4 py-3 font-mono text-xs">{p.numero}</td>
+                  <td className="px-4 py-3">
+                    <div className="font-medium">{p.cliente?.nome} {p.cliente?.cognome}</div>
+                    <div className="text-xs text-zinc-500">{p.cliente?.email || p.cliente?.telefono || "-"}</div>
+                  </td>
+                  <td className="px-4 py-3">{TIPO_LABEL[p.tipo] || "-"}</td>
+                  <td className="px-4 py-3">{PKG_NAMES[p.package_id] || "-"}</td>
+                  <td className="px-4 py-3 text-right">{p.mq || 0} mq</td>
+                  <td className="px-4 py-3 text-right font-semibold">{fmtEur(p.totale_iva_incl)}</td>
+                  <td className="px-4 py-3">{statoPreventivoBadge(p.stato)}</td>
+                  <td className="px-4 py-3 text-xs text-zinc-500">{new Date(p.created_at).toLocaleDateString("it-IT")}</td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="inline-flex gap-1">
+                      <button className="p-1.5 rounded hover:bg-zinc-100" onClick={() => nav(`${ROUTES[p.tipo] || "/preventivopacchetto"}/${p.id}`)} title="Apri" data-testid={`prev-open-${p.id}`}>
+                        <Eye className="h-4 w-4 text-zinc-600" />
+                      </button>
+                      <button className="p-1.5 rounded hover:bg-rose-50" onClick={() => del(p.id)} title="Elimina" data-testid={`prev-del-${p.id}`}>
+                        <Trash2 className="h-4 w-4 text-rose-600" />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {filtered.map((it) => {
-                  const pkg = packages.find((p) => p.id === it.package_id);
-                  const t = computeTotals(it, pkg);
-                  return (
-                    <tr key={it.id} className="border-t border-zinc-100 hover:bg-zinc-50 cursor-pointer"
-                      onClick={() => nav(`/preventivi/${it.id}`)}
-                      data-testid={`preventivo-row-${it.id}`}
-                    >
-                      <td className="py-3 px-4 mono font-medium">{it.numero}</td>
-                      <td className="py-3 px-4">{(it.cliente?.nome || "") + " " + (it.cliente?.cognome || "")}</td>
-                      <td className="py-3 px-4">
-                        <span className="inline-flex items-center gap-2">
-                          <span className="w-2 h-2" style={{ background: pkg?.color || "#A1A1AA" }} />
-                          {pkg?.name || "—"}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-right mono">{it.mq}</td>
-                      <td className="py-3 px-4 text-right mono font-medium">{fmtEuro(t.total)}</td>
-                      <td className="py-3 px-4">
-                        <span className={`inline-block px-2 py-0.5 text-xs uppercase tracking-widest border ${STATO_STYLES[it.stato] || STATO_STYLES.bozza}`}>
-                          {it.stato}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 mono text-xs text-zinc-500">
-                        {new Date(it.created_at).toLocaleDateString("it-IT")}
-                      </td>
-                      <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button className="w-7 h-7 hover:bg-zinc-100 flex items-center justify-center" data-testid={`preventivo-menu-${it.id}`}>
-                              <MoreVertical size={14} />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="rounded-sm">
-                            <DropdownMenuItem onClick={() => nav(`/preventivi/${it.id}`)}><FileText size={14} className="mr-2" /> Apri</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setStato(it.id, "inviato")}><Send size={14} className="mr-2" /> Segna come inviato</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setStato(it.id, "accettato")}><CheckCircle2 size={14} className="mr-2 text-green-600" /> Accettato</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setStato(it.id, "rifiutato")}><XCircle size={14} className="mr-2 text-red-600" /> Rifiutato</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => del(it.id)} className="text-red-600"><Trash2 size={14} className="mr-2" /> Elimina</DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </main>
+              ))}
+              {!filtered.length && (
+                <tr><td colSpan={9} className="px-4 py-12 text-center text-zinc-500">Nessun preventivo trovato</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Page>
     </div>
   );
 }

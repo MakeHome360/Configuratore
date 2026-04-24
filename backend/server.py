@@ -22,6 +22,7 @@ from bson import ObjectId
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 from packages_seed import LAVORAZIONI_CATALOG, DEFAULT_PACKAGES, DEFAULT_OPTIONAL, BATHROOM_TIERS
+from routes_biz import build_biz_router
 
 # ---------------- Setup ----------------
 mongo_url = os.environ["MONGO_URL"]
@@ -417,16 +418,17 @@ async def root():
 
 
 # ---------------- Packages / Preventivi ----------------
-def lavorazioni_map() -> Dict[str, Dict[str, Any]]:
+def _voci_map() -> Dict[str, Dict[str, Any]]:
+    from packages_seed import DEFAULT_VOCI_BACKOFFICE
     return {
-        lv[0]: {"id": lv[0], "name": lv[1], "category": lv[2], "unit": lv[3], "unit_consigliato": lv[4]}
-        for lv in LAVORAZIONI_CATALOG
+        v["id"]: {"id": v["id"], "name": v["name"], "category": v["category"], "unit": v["unit"]}
+        for v in DEFAULT_VOCI_BACKOFFICE
     }
 
 
 @api.get("/packages")
 async def list_packages(user: Dict[str, Any] = Depends(get_current_user)):
-    lavs = lavorazioni_map()
+    lavs = _voci_map()
     out = []
     for p in DEFAULT_PACKAGES:
         items = []
@@ -437,7 +439,7 @@ async def list_packages(user: Dict[str, Any] = Depends(get_current_user)):
             items.append({
                 **lav,
                 "qty_ratio": meta["qty_ratio"],
-                "unit_price_pkg": meta["unit_price"],
+                "unit_price_pkg": meta["unit_price_pkg"],
             })
         items.sort(key=lambda x: (x["category"], x["name"]))
         out.append({
@@ -467,20 +469,38 @@ async def bathroom_tiers(user: Dict[str, Any] = Depends(get_current_user)):
 
 @api.get("/lavorazioni")
 async def list_lavorazioni(user: Dict[str, Any] = Depends(get_current_user)):
-    return list(lavorazioni_map().values())
+    return list(_voci_map().values())
 
 
 class PreventivoIn(BaseModel):
     model_config = ConfigDict(extra="allow")
-    cliente: Dict[str, Any]  # {nome, cognome, indirizzo, email, telefono}
-    package_id: str
-    mq: float
-    items: List[Dict[str, Any]] = []       # [{id, qty_richiesta, unit_price, included_qty}]
-    optional: List[Dict[str, Any]] = []    # [{id, qty, total}]
+    tipo: str = "pacchetto"  # pacchetto | bagno | composite | infissi
+    cliente: Dict[str, Any]
+    package_id: Optional[str] = None
+    mq: float = 0
+    items: List[Dict[str, Any]] = []
+    optional: List[Dict[str, Any]] = []
     bathroom_tier: Optional[str] = None
+    # bagno specifics
+    manodopera_base: Optional[float] = None
+    piastrelle_mq: Optional[float] = None
+    piastrelle_prezzo_mq: Optional[float] = None
+    extra_voci: Optional[List[Dict[str, Any]]] = None
+    # composite specifics
+    composite_selections: Optional[List[Dict[str, Any]]] = None
+    sicurezza_pct: Optional[float] = None
+    direzione_lavori_pct: Optional[float] = None
+    # infissi specifics
+    infissi: Optional[List[Dict[str, Any]]] = None
+    # shared
     note: Optional[str] = None
     sconto_pct: float = 0.0
+    sconto_eur: float = 0.0
     iva_pct: float = 10.0
+    totale_iva_incl: Optional[float] = None
+    totale_iva_escl: Optional[float] = None
+    venditore_id: Optional[str] = None
+    negozio_id: Optional[str] = None
 
 
 @api.post("/preventivi")
@@ -491,15 +511,7 @@ async def create_preventivo(body: PreventivoIn, user: Dict[str, Any] = Depends(g
         "user_id": user["id"],
         "numero": await next_preventivo_number(),
         "stato": "bozza",
-        "cliente": body.cliente,
-        "package_id": body.package_id,
-        "mq": body.mq,
-        "items": body.items,
-        "optional": body.optional,
-        "bathroom_tier": body.bathroom_tier,
-        "note": body.note,
-        "sconto_pct": body.sconto_pct,
-        "iva_pct": body.iva_pct,
+        **body.model_dump(exclude_none=False),
         "created_at": now,
         "updated_at": now,
     }
@@ -530,12 +542,8 @@ async def get_preventivo(prev_id: str, user: Dict[str, Any] = Depends(get_curren
 
 @api.put("/preventivi/{prev_id}")
 async def update_preventivo(prev_id: str, body: PreventivoIn, user: Dict[str, Any] = Depends(get_current_user)):
-    update_doc = {
-        "cliente": body.cliente, "package_id": body.package_id, "mq": body.mq,
-        "items": body.items, "optional": body.optional, "bathroom_tier": body.bathroom_tier,
-        "note": body.note, "sconto_pct": body.sconto_pct, "iva_pct": body.iva_pct,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }
+    update_doc = {**body.model_dump(exclude_none=False), "updated_at": datetime.now(timezone.utc).isoformat()}
+    update_doc.pop("id", None)
     await db.preventivi.update_one({"id": prev_id, "user_id": user["id"]}, {"$set": update_doc})
     doc = await db.preventivi.find_one({"id": prev_id, "user_id": user["id"]}, {"_id": 0})
     if not doc:
@@ -562,6 +570,10 @@ async def update_stato(prev_id: str, body: Dict[str, Any], user: Dict[str, Any] 
 
 
 app.include_router(api)
+
+# Business/CRM/Commesse router
+_biz = build_biz_router(db, get_current_user)
+app.include_router(_biz, prefix="/api")
 
 app.add_middleware(
     CORSMiddleware,

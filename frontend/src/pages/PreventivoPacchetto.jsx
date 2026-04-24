@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import Navbar from "../components/Navbar";
 import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -15,9 +14,9 @@ import {
 import { fmtEuro, fmtNum } from "../editor/utils";
 import jsPDF from "jspdf";
 
-export default function PreventivoEditor() {
+export default function PreventivoPacchetto() {
   const { id } = useParams();
-  const isNew = id === "nuovo";
+  const isNew = !id;
   const nav = useNavigate();
 
   const [step, setStep] = useState(0); // 0 package, 1 mq, 2 items, 3 optional, 4 bagno, 5 cliente, 6 result
@@ -55,7 +54,7 @@ export default function PreventivoEditor() {
             package_id: data.package_id, mq: data.mq,
             items: data.items || [], optional: data.optional || [],
             bathroom_tier: data.bathroom_tier,
-            bathroom_surcharge: bt.data.find((t) => t.id === data.bathroom_tier)?.surcharge || 0,
+            bathroom_surcharge: ((bt.data.find((t) => t.id === data.bathroom_tier)?.price || 0) - (bt.data[0]?.price || 0)) || 0,
             cliente: data.cliente || {}, note: data.note || "",
             sconto_pct: data.sconto_pct || 0, iva_pct: data.iva_pct || 10,
           });
@@ -110,6 +109,7 @@ export default function PreventivoEditor() {
   const save = async () => {
     setSaving(true);
     const payload = {
+      tipo: "pacchetto",
       cliente: prev.cliente,
       package_id: prev.package_id,
       mq: prev.mq,
@@ -119,13 +119,15 @@ export default function PreventivoEditor() {
       note: prev.note,
       sconto_pct: prev.sconto_pct,
       iva_pct: prev.iva_pct,
+      totale_iva_incl: totals.total,
+      totale_iva_escl: totals.subtotal - totals.sconto,
     };
     try {
       if (isNew || !numero) {
         const { data } = await api.post("/preventivi", payload);
         setNumero(data.numero);
         toast.success("Preventivo salvato");
-        nav(`/preventivi/${data.id}`, { replace: true });
+        nav(`/preventivopacchetto/${data.id}`, { replace: true });
       } else {
         await api.put(`/preventivi/${id}`, payload);
         toast.success("Aggiornato");
@@ -144,14 +146,13 @@ export default function PreventivoEditor() {
   const steps = ["Pacchetto", "Metri quadri", "Lavorazioni", "Optional", "Bagno", "Cliente", "Riepilogo"];
 
   if (loading) {
-    return <div className="min-h-screen bg-white"><Navbar /><div className="p-16 text-center mono text-zinc-500">caricamento…</div></div>;
+    return <div className="p-16 text-center mono text-zinc-500">caricamento…</div>;
   }
 
   const optFiltered = optionals.filter((o) => !prev.package_id || o.package_ids.includes(prev.package_id));
 
   return (
     <div className="min-h-screen bg-white" data-testid="preventivo-editor">
-      <Navbar />
       <main className="max-w-6xl mx-auto px-6 py-8">
         {/* Top bar */}
         <div className="flex items-center justify-between mb-6">
@@ -344,20 +345,24 @@ export default function PreventivoEditor() {
                 <h2 className="text-2xl font-semibold mb-2" style={{ fontFamily: "Outfit" }}>Configurazione bagno</h2>
                 <p className="text-sm text-zinc-600 mb-6">Scegli il livello di finitura del bagno principale.</p>
                 <div className="grid sm:grid-cols-3 gap-4">
-                  {bathroomTiers.map((t) => (
+                  {bathroomTiers.map((t, idx) => {
+                    const silverPrice = bathroomTiers[0]?.price || 0;
+                    const surcharge = (t.price || 0) - silverPrice;
+                    return (
                     <button key={t.id}
-                      onClick={() => setPrev((s) => ({ ...s, bathroom_tier: s.bathroom_tier === t.id ? null : t.id, bathroom_surcharge: s.bathroom_tier === t.id ? 0 : t.surcharge }))}
+                      onClick={() => setPrev((s) => ({ ...s, bathroom_tier: s.bathroom_tier === t.id ? null : t.id, bathroom_surcharge: s.bathroom_tier === t.id ? 0 : surcharge }))}
                       className={`text-left border p-5 transition-all hover:-translate-y-0.5 ${prev.bathroom_tier === t.id ? "border-zinc-900 bg-zinc-50" : "border-zinc-200"}`}
                       data-testid={`bagno-${t.id}`}
                     >
                       <div className="flex items-center justify-between mb-3">
                         <span className="text-xl font-semibold" style={{ fontFamily: "Outfit", color: t.color }}>{t.name}</span>
-                        {t.surcharge > 0 && <div className="mono text-xs text-orange-600">+{fmtEuro(t.surcharge)}</div>}
+                        {surcharge > 0 && <div className="mono text-xs text-orange-600">+{fmtEuro(surcharge)}</div>}
                       </div>
                       <p className="text-xs text-zinc-600 leading-relaxed">{t.description}</p>
                       {prev.bathroom_tier === t.id && <div className="mt-3 text-xs text-zinc-900 mono flex items-center gap-1"><Check size={12} /> selezionato</div>}
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

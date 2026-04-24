@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
+const _Navbar = Navbar; // compat
 import Canvas2D from "../editor/Canvas2D";
 import Viewer3D from "../editor/Viewer3D";
 import { api } from "../lib/api";
@@ -266,7 +267,6 @@ export default function Editor() {
 
   return (
     <div className="editor-root flex flex-col h-screen bg-white" data-testid="editor-page">
-      <Navbar compact />
       {/* Top project toolbar */}
       <div className="h-12 border-b border-zinc-200 px-4 flex items-center gap-3 bg-white">
         <Input

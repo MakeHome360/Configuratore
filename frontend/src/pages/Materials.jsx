@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import Navbar from "../components/Navbar";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
@@ -64,7 +63,6 @@ export default function Materials() {
 
   return (
     <div className="min-h-screen bg-white">
-      <Navbar />
       <main className="max-w-6xl mx-auto px-6 py-10" data-testid="materials-page">
         <div className="flex items-end justify-between mb-8 border-b border-zinc-200 pb-6">
           <div>

@@ -1,0 +1,50 @@
+{
+  "summary": "Full backend + frontend smoke tested for the base44 Configuratore replica. Backend: 28/28 pytest PASS covering auth, packages (4 tiers 380/490/790/1180), voci-backoffice (47 items, 4 categories, admin-only mutations), fasi-commessa (18 sorted), template-email (3), negozi (NICHELINO), dati-azienda (colore_primario=teal), impostazioni (sicurezza 3%, DL 5%, IVA 10%), composite-sections (13), infissi-config (tipologie/materiali/vetri), bagno-config (manodopera 6500 + 3 tiers SILVER/GOLD/PLATINUM at 3500/5500/9000), preventivi CRUD+stato for all 4 types (pacchetto/bagno/composite/infissi), commesse auto-number COM-YYYYMM-XXXX with 18-item checklist and avanzamento_pct recompute (50% verified), leads default 'nuovo', subappaltatori admin-gated, dashboard stats schema. Frontend: admin login -> /dashboard, teal sidebar with all sections (PRINCIPALE/PROGETTAZIONE/ANALISI/AMMINISTRAZIONE) and all expected links, Dashboard KPIs populate from live API (Preventivi Totali, Approvati, Commesse Attive, Fatturato, per-pacchetto BASIC/SMART/PREMIUM/ELITE, stato commesse, ultimi preventivi/commesse lists), /nuovopreventivo renders all 4 cards (Pacchetto/Bagno/Composite/Infissi), /commesse renders KPI + cards with avanzamento bars (50% / 0%), /crm renders pipeline with 5 columns and lead cards, /adminpacchetti renders 4 pacchetti with margin analysis (ricavo/costi/margine%). No console errors observed during these flows.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/login", "issue": "Response shape is flat ({access_token, id, email, name, role, ...}) rather than nested {access_token, user:{...}}. Works, but less conventional and makes frontend parsing fragile when distinguishing user object."},
+      {"endpoint": "/api/preventivi", "issue": "next_preventivo_number() uses count_documents({}) to build the sequence, which is not monotonic if any preventivo is deleted and is not per-year scoped (counts all-time). Risk of duplicate PRV numbers after deletes or across years after enough records."},
+      {"endpoint": "/api/commesse", "issue": "POST does not enforce admin/venditore role — any authenticated user can create a commessa from any preventivo_id in the DB (the lookup is not scoped to user_id)."},
+      {"endpoint": "/api/preventivi GET", "issue": "List is scoped to user_id, but the dashboard stats endpoint aggregates over ALL preventivi/commesse (global), so a non-admin sees counts that may include other users' data."},
+      {"endpoint": "/api/commesse/{cid}/stato PATCH", "issue": "When transitioning to in_corso and the commessa doc has no data_inizio yet, the code does `(await db.commesse.find_one({...}, {'data_inizio':1})).get('data_inizio')` — if the commessa id doesn't exist find_one returns None and .get crashes (500) instead of 404."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Global (AppLayout)", "issues": ["Sidebar link active state is subtle (background tint only) — active route could use a bolder accent or left-border for better wayfinding."]},
+      {"screen": "Dashboard", "issues": ["KPI numbers like 'Preventivi per Pacchetto' use colored text (blue/purple) without a legend next to the pacchetto label; icons/avatars would help distinguish BASIC/SMART/PREMIUM/ELITE."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_biz.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/biz_results.xml"
+  ],
+  "action_items": [
+    "Fix /api/commesse/{cid}/stato PATCH: handle missing commessa id (return 404) before dereferencing find_one result.",
+    "Scope /api/commesse POST by ownership/role and look up preventivo with user_id guard (currently any logged-in user can create a commessa for any preventivo).",
+    "Make preventivo numbering robust (e.g. per-year counter stored in a counters collection, use $inc and findOneAndUpdate) to avoid collisions after delete.",
+    "(Optional) Normalise /api/auth/login response to {access_token, user:{...}} for clarity; frontend currently accepts either shape so non-blocking.",
+    "Consider restricting /api/stats/dashboard aggregation by role (admin = global, others = own)."
+  ],
+  "critical_code_review_comments": [
+    "routes_biz.py update_commessa_stato: unsafe chained .get on potential None from find_one when commessa not found -> 500.",
+    "routes_biz.py create_commessa: preventivo lookup not scoped by user; allows cross-user commessa creation.",
+    "server.py next_preventivo_number: uses global count_documents, not idempotent after deletes; risk of duplicate PRV-YYYY-NNNN.",
+    "server.py seed_admin still weak fallback password; acceptable but flagged in iteration_1 too.",
+    "routes_biz.py ensure_global_seeds is called inside GET handlers — works but induces small overhead per request; consider a startup hook or lru."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_biz.py (new, 28 tests)"
+  ],
+  "success_rate": {"backend": "100% (28/28 biz + prior 15/15 core)", "frontend": "~95% (all business flows render with real data; no console errors observed on tested routes)"},
+  "test_credentials": "admin@ristruttura.app / Admin12345! (verified). Test users registered ad-hoc via /api/auth/register.",
+  "seed_data_creation": "Created ~4 TEST preventivi (pacchetto/bagno/composite/infissi) and 1 TEST commessa with 18 fasi under admin. 1 TEST_Sub subappaltatore created+deleted. 1 TEST_Lead lead created. All visible in dashboard counts now.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend is stable and production-ready for the business flows. Known CAD R3F bug from iteration_1 in Viewer3D.jsx was intentionally skipped per user's request (CAD 2D/3D is not priority). Frontend navigation uses lowercase collapsed routes: /nuovopreventivo, /preventivobagno, /preventivocomposite, /preventivoinfissi, /configuratoreesigenze, /commesse, /dettagliocommessa/:id, /crm, /adminpacchetti, /adminoptional, /adminvocibackoffice, /admindatiazienda. Login response is flat; no 'user' nesting. next_preventivo_number has a potential collision issue after deletes — flagged, not fixed. Business tests live at /app/backend/tests/test_biz.py; run via: pytest /app/backend/tests/test_biz.py -v.",
+  "rca_of_the_issue": "N/A — no blocking bugs found in this iteration. Flagged items are code-quality / edge-case robustness concerns rather than defects affecting the happy path."
+}

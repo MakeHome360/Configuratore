@@ -1,0 +1,96 @@
+{
+  "theme": "LIGHT",
+  "archetype": "4 (Swiss & High-Contrast)",
+  "vibe": "Precise, professional, technical but approachable. Emphasizes authority, clarity, and truth in design and cost calculation. High contrast layout bridging creative agency aesthetics and CAD structural integrity.",
+  "colors": {
+    "background": "#FFFFFF",
+    "surface": "#F4F4F5",
+    "surface_hover": "#E4E4E7",
+    "border": "#D4D4D8",
+    "primary": "#0A0A0A",
+    "primary_hover": "#171717",
+    "primary_text": "#FFFFFF",
+    "accent": "#2563EB",
+    "accent_hover": "#1D4ED8",
+    "text_main": "#0A0A0A",
+    "text_muted": "#71717A",
+    "error": "#EF4444",
+    "warning": "#F59E0B",
+    "success": "#10B981"
+  },
+  "typography": {
+    "heading_font": "Outfit",
+    "body_font": "Inter",
+    "mono_font": "JetBrains Mono",
+    "font_weights": {
+      "light": "300",
+      "normal": "400",
+      "medium": "500",
+      "semibold": "600",
+      "bold": "700"
+    },
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tight leading-tight font-semibold",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight font-medium",
+      "h3": "text-xl sm:text-2xl tracking-tight font-medium",
+      "h4": "text-lg sm:text-xl font-medium",
+      "body": "text-base leading-relaxed",
+      "small": "text-sm",
+      "labels": "text-xs uppercase tracking-[0.2em] font-medium text-muted"
+    }
+  },
+  "layout_and_spacing": {
+    "spacing_scale": "Tailwind standard (p-1 to p-32), emphasis on generous spacing for non-canvas areas. Modals and large cards use p-8 to p-12.",
+    "bento_grid": "For dashboard: grid-cols-1 md:grid-cols-3 lg:grid-cols-4 with gap-6. Use exact span ratios for widgets.",
+    "app_layout": "Full viewport height (h-screen) with a top navbar (h-14). Left sidebar for tools (w-16 or w-64), Right sidebar for properties/costs (w-80). Central area is the infinite canvas. Sidebars have sharp 1px borders (border-r, border-l).",
+    "radii": "Rounded-none to rounded-md (max 6px). Emphasize sharp, technical edges."
+  },
+  "components": {
+    "buttons": "Flat, sharp corners (rounded-sm), strong contrast. Primary buttons use background #0A0A0A, hover #171717. Secondary buttons use transparent background, 1px border, text main.",
+    "cards": "Cardless style preferred or 1px border (#D4D4D8) with pure white background, no shadow unless hovering.",
+    "inputs": "Shadcn defaults but sharp corners, 1px solid border, focus ring 2px #2563EB. No rounded heavy borders.",
+    "tables": "Dense, monospace font for numbers (JetBrains Mono). Right align monetary values. 1px bottom borders for rows, no vertical dividers.",
+    "modals": "Glassmorphism disabled for data integrity. Solid white background, sharp border, heavy drop-shadow-2xl."
+  },
+  "interactions_and_motion": {
+    "hover": "Subtle translations (-translate-y-0.5) on cards, crisp background color changes on buttons.",
+    "transitions": "transition-transform duration-200 ease-in-out, transition-opacity duration-200 ease-in-out.",
+    "loading": "Skeleton screens for dashboards. ASCII or minimalist geometric spinner for CAD loading/AI rendering."
+  },
+  "media_and_icons": {
+    "icon_library": "lucide-react",
+    "images": [
+      {
+        "category": "hero_background",
+        "url": "https://images.unsplash.com/photo-1721244654392-9c912a6eb236?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzNDR8MHwxfHNlYXJjaHwyfHxhcmNoaXRlY3QlMjBibHVlcHJpbnQlMjBza2V0Y2h8ZW58MHx8fHwxNzc3MDYyMTc4fDA&ixlib=rb-4.1.0&q=85",
+        "description": "A blueprint of a building with windows, to be used with a white/60 or black/60 overlay for text readability."
+      },
+      {
+        "category": "marketing_feature_construction",
+        "url": "https://images.unsplash.com/photo-1770838772868-4bd5ec67863c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDN8MHwxfHNlYXJjaHw0fHxyZW5vdmF0aW9uJTIwY29uc3RydWN0aW9uJTIwbWF0ZXJpYWxzfGVufDB8fHx8MTc3NzA2MjE4NHww&ixlib=rb-4.1.0&q=85",
+        "description": "Wooden staircase under construction for features section showcasing structural integrity."
+      },
+      {
+        "category": "marketing_feature_planning",
+        "url": "https://images.unsplash.com/photo-1721132537184-5494c01ed87f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzNDR8MHwxfHNlYXJjaHwxfHxhcmNoaXRlY3QlMjBibHVlcHJpbnQlMjBza2V0Y2h8ZW58MHx8fHwxNzc3MDYyMTc4fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Architects desk with blueprint to indicate professional toolset."
+      }
+    ]
+  },
+  "3d_strategy": {
+    "library": "React Three Fiber (R3F)",
+    "usage": "Used strictly in the central canvas for rendering the 2D floorplan into 3D. Real-time rendering, crisp lighting (directional light to simulate sun, ambient light for base visibility).",
+    "2d_canvas": "HTML Canvas / Fabric.js / SVG for lightweight 2D drafting mode"
+  },
+  "testing": {
+    "attributes": "All interactive elements MUST use data-testid attributes (kebab-case, role-based, e.g., data-testid='draw-wall-button')."
+  },
+  "instructions_to_main_agent": [
+    "Ensure all components use standard HTML/JS (.js files, NOT .tsx).",
+    "For the Editor layout, prevent body scrolling (overflow-hidden on main wrapper).",
+    "Use JetBrains Mono for all pricing, dimensions, and cost calculation displays.",
+    "Do not use transparent header backgrounds on the marketing site; use backdrop-blur-xl with a light tint.",
+    "Integrate Shadcn components carefully, stripping aggressive border-radii to match the Swiss Grid/Brutalist sharp design.",
+    "Leverage React Three Fiber exclusively for the 3D Viewer."
+  ]
+}

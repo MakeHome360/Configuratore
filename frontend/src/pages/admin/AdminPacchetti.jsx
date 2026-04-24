@@ -108,7 +108,9 @@ export default function AdminPacchetti() {
 }
 
 function PackageDialog({ pkg, voci, onClose, onSaved, isNew }) {
-  const [form, setForm] = useState(pkg || { name: "", subtitle: "", price_per_m2: 0, color: "#475569", description: "", items: [] });
+  const initial = pkg ? { ...pkg, items: (pkg.items || []).map((it) => ({ voce_id: it.voce_id || it.id, qty_mode: it.qty_mode || "mq", qty_ratio: it.qty_ratio || 0, qty_value: it.qty_value || 0, unit_price_pkg: it.unit_price_pkg })) } : { name: "", subtitle: "", price_per_m2: 0, color: "#475569", description: "", items: [] };
+  const [form, setForm] = useState(initial);
+  const [search, setSearch] = useState("");
   const save = async () => {
     if (!form.name) return toast.error("Nome obbligatorio");
     try {
@@ -117,59 +119,131 @@ function PackageDialog({ pkg, voci, onClose, onSaved, isNew }) {
       toast.success("Salvato"); onSaved(); onClose();
     } catch (e) { toast.error(e.response?.data?.detail || "Errore"); }
   };
+
+  // Group voci by category respecting demolition-first order
+  const sortVoce = (a, b) => {
+    const isDemo = (n) => /demoliz|smaltim|rimoz/i.test(n);
+    const order = { MURATURA: 2, IMPIANTI: 3, INFISSI: 4, SERVIZI: 5 };
+    const ka = isDemo(a.name) ? 1 : (order[a.category] || 9);
+    const kb = isDemo(b.name) ? 1 : (order[b.category] || 9);
+    return ka - kb || a.name.localeCompare(b.name);
+  };
+  const groupedAvail = useMemo(() => {
+    const matches = (v) => !search || v.name.toLowerCase().includes(search.toLowerCase()) || v.category.toLowerCase().includes(search.toLowerCase());
+    const inSel = new Set((form.items || []).map((i) => i.voce_id));
+    const filt = voci.filter((v) => matches(v) && !inSel.has(v.id)).sort(sortVoce);
+    const groups = {};
+    filt.forEach((v) => {
+      const isDemo = /demoliz|smaltim|rimoz/i.test(v.name);
+      const key = isDemo ? "DEMOLIZIONI" : v.category;
+      groups[key] = groups[key] || []; groups[key].push(v);
+    });
+    return groups;
+  }, [voci, form.items, search]);
+
+  const selectedItems = (form.items || []).map((it) => ({ ...it, voce: voci.find((v) => v.id === it.voce_id) })).filter((i) => i.voce).sort((a, b) => sortVoce(a.voce, b.voce));
+  const addVoce = (v) => setForm({ ...form, items: [...(form.items || []), { voce_id: v.id, qty_mode: v.unit === "pz" || v.unit === "punto" || v.unit === "forfait" ? "fissa" : "mq", qty_value: 1, qty_ratio: 1, unit_price_pkg: v.prezzo_rivendita }] });
+  const removeVoce = (i) => setForm({ ...form, items: form.items.filter((_, j) => j !== i) });
+  const updateItem = (i, k, val) => { const c = [...form.items]; c[i][k] = val; setForm({ ...form, items: c }); };
+
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-lg w-full max-w-6xl h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="px-6 py-4 border-b flex items-center justify-between">
           <h2 className="text-lg font-semibold">{isNew ? "Nuovo Pacchetto" : `Modifica ${form.name}`}</h2>
           <button onClick={onClose} className="p-1 hover:bg-zinc-100 rounded"><X className="h-5 w-5" /></button>
         </div>
-        <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div><Label>Nome *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="pkg-form-name" /></div>
-            <div><Label>Prezzo €/mq *</Label><Input type="number" value={form.price_per_m2} onChange={(e) => setForm({ ...form, price_per_m2: Number(e.target.value) })} data-testid="pkg-form-price" /></div>
-            <div className="col-span-2"><Label>Sottotitolo</Label><Input value={form.subtitle} onChange={(e) => setForm({ ...form, subtitle: e.target.value })} /></div>
-            <div className="col-span-2"><Label>Descrizione</Label><Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
-            <div><Label>Colore</Label><Input type="color" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} /></div>
+        <div className="grid grid-cols-12 gap-0 flex-1 overflow-hidden">
+          {/* LEFT: Package data */}
+          <div className="col-span-3 border-r p-5 space-y-3 overflow-y-auto">
+            <div><Label className="text-xs">Nome *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="pkg-form-name" /></div>
+            <div><Label className="text-xs">Prezzo €/mq *</Label><Input type="number" value={form.price_per_m2} onChange={(e) => setForm({ ...form, price_per_m2: Number(e.target.value) })} data-testid="pkg-form-price" /></div>
+            <div><Label className="text-xs">Sottotitolo</Label><Input value={form.subtitle} onChange={(e) => setForm({ ...form, subtitle: e.target.value })} /></div>
+            <div><Label className="text-xs">Descrizione</Label><Textarea rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
+            <div><Label className="text-xs">Colore</Label><div className="flex items-center gap-2 mt-1"><input type="color" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className="w-12 h-10 rounded cursor-pointer" /><Input value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className="flex-1" /></div></div>
           </div>
-          <div>
-            <div className="flex items-center justify-between mb-2"><Label>Voci incluse ({(form.items || []).length})</Label>
-              <Button size="sm" variant="outline" onClick={() => setForm({ ...form, items: [...(form.items || []), { voce_id: voci[0]?.id, qty_mode: "mq", qty_value: 1, qty_ratio: 1, unit_price_pkg: voci[0]?.prezzo_rivendita || 0 }] })}><Plus className="h-3 w-3 mr-1" />Voce</Button>
+
+          {/* MIDDLE: Available voci picker */}
+          <div className="col-span-4 border-r flex flex-col overflow-hidden">
+            <div className="px-4 py-3 border-b bg-zinc-50">
+              <div className="font-semibold text-sm mb-2">Voci disponibili</div>
+              <Input placeholder="Cerca voce..." value={search} onChange={(e) => setSearch(e.target.value)} data-testid="pkg-voce-search" />
             </div>
-            <div className="text-xs text-zinc-500 mb-2 bg-blue-50 p-2 rounded">
-              <strong>Modalità qtà:</strong>
-              <ul className="ml-4 list-disc mt-1 space-y-0.5">
-                <li><strong>Fissa</strong>: quantità sempre uguale (es. 1 caldaia, 6 punti luce)</li>
-                <li><strong>MQ</strong>: qtà = MQ abitazione × coefficiente</li>
-                <li><strong>ML</strong>: qtà = metri lineari × coefficiente</li>
-              </ul>
-            </div>
-            <div className="space-y-1 max-h-80 overflow-y-auto">
-              {(form.items || []).map((it, i) => {
-                const voce = voci.find(v => v.id === it.voce_id);
-                return (
-                <div key={i} className="grid grid-cols-12 gap-2 items-center p-2 bg-zinc-50 rounded">
-                  <select className="col-span-4 border border-zinc-300 rounded h-9 px-2 text-sm" value={it.voce_id} onChange={(e) => { const c = [...form.items]; c[i].voce_id = e.target.value; const v = voci.find(x => x.id === e.target.value); if (v) c[i].unit_price_pkg = v.prezzo_rivendita; setForm({ ...form, items: c }); }}>
-                    {voci.map((v) => <option key={v.id} value={v.id}>[{v.category.slice(0,3)}] {v.name} ({v.unit})</option>)}
-                  </select>
-                  <select className="col-span-2 border border-zinc-300 rounded h-9 px-2 text-sm" value={it.qty_mode || "mq"} onChange={(e) => { const c = [...form.items]; c[i].qty_mode = e.target.value; setForm({ ...form, items: c }); }} data-testid={`pkg-qtymode-${i}`}>
-                    <option value="fissa">Fissa</option>
-                    <option value="mq">MQ</option>
-                    <option value="ml">ML</option>
-                  </select>
-                  <Input className="col-span-2" type="number" step="0.001" placeholder={it.qty_mode === "fissa" ? "qty fissa" : "coefficiente"} value={it.qty_mode === "fissa" ? (it.qty_value ?? 1) : (it.qty_ratio ?? 1)} onChange={(e) => { const c = [...form.items]; if (c[i].qty_mode === "fissa") c[i].qty_value = Number(e.target.value); else c[i].qty_ratio = Number(e.target.value); setForm({ ...form, items: c }); }} />
-                  <Input className="col-span-3" type="number" step="0.01" placeholder="€/u" value={it.unit_price_pkg} onChange={(e) => { const c = [...form.items]; c[i].unit_price_pkg = Number(e.target.value); setForm({ ...form, items: c }); }} />
-                  <button className="col-span-1" onClick={() => setForm({ ...form, items: form.items.filter((_, j) => j !== i) })}><Trash2 className="h-4 w-4 text-rose-600 mx-auto" /></button>
-                  {voce && <div className="col-span-12 text-[10px] text-zinc-500 -mt-1 px-1">{voce.unit} · acq {voce.prezzo_acquisto?.toFixed(2)}€ × {voce.ricarico}x = {voce.prezzo_rivendita?.toFixed(2)}€/u</div>}
+            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+              {["DEMOLIZIONI", "MURATURA", "IMPIANTI", "INFISSI", "SERVIZI"].map((k) => groupedAvail[k] && (
+                <div key={k}>
+                  <div className="text-[10px] uppercase tracking-wider font-bold mb-1 px-1" style={{ color: k === "DEMOLIZIONI" ? "#DC2626" : k === "MURATURA" ? "#0F766E" : k === "IMPIANTI" ? "#2563EB" : k === "INFISSI" ? "#9333EA" : "#B45309" }}>{k}</div>
+                  <div className="space-y-1">
+                    {groupedAvail[k].map((v) => (
+                      <button key={v.id} onClick={() => addVoce(v)} data-testid={`pkg-add-${v.id}`}
+                        className="w-full text-left px-3 py-2 border border-zinc-200 rounded hover:border-zinc-900 hover:bg-zinc-50 group">
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm font-medium truncate">{v.name}</div>
+                          <Plus className="h-4 w-4 text-zinc-400 group-hover:text-zinc-900 shrink-0" />
+                        </div>
+                        <div className="text-[10px] text-zinc-500 mt-0.5">{v.unit} · acq {v.prezzo_acquisto?.toFixed(2)}€ × {v.ricarico}x = <strong>{v.prezzo_rivendita?.toFixed(2)}€</strong></div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
+              ))}
+              {Object.keys(groupedAvail).length === 0 && <div className="text-sm text-zinc-500 text-center py-8">Nessuna voce disponibile</div>}
+            </div>
+          </div>
+
+          {/* RIGHT: Selected voci */}
+          <div className="col-span-5 flex flex-col overflow-hidden">
+            <div className="px-4 py-3 border-b bg-zinc-50 flex items-center justify-between">
+              <div className="font-semibold text-sm">Voci incluse ({selectedItems.length})</div>
+              <div className="text-[10px] uppercase tracking-wider text-zinc-500">Demolizioni → Muratura → Impianti → Infissi → Servizi</div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {selectedItems.length === 0 && <div className="text-sm text-zinc-500 text-center py-12">Aggiungi voci dal centro</div>}
+              {selectedItems.map((it, idx) => {
+                const i = (form.items || []).findIndex((x) => x.voce_id === it.voce_id);
+                const v = it.voce;
+                const isDemo = /demoliz|smaltim|rimoz/i.test(v.name);
+                const colorMap = { MURATURA: "#0F766E", IMPIANTI: "#2563EB", INFISSI: "#9333EA", SERVIZI: "#B45309" };
+                const color = isDemo ? "#DC2626" : (colorMap[v.category] || "#64748B");
+                return (
+                  <div key={i} className="border-l-4 bg-zinc-50 rounded p-2.5" style={{ borderColor: color }}>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold truncate">{v.name}</div>
+                        <div className="text-[10px] text-zinc-500">{isDemo ? "DEMOLIZIONI" : v.category} · {v.unit}</div>
+                      </div>
+                      <button onClick={() => removeVoce(i)} className="p-1 hover:bg-rose-100 rounded shrink-0"><Trash2 className="h-3.5 w-3.5 text-rose-600" /></button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <Label className="text-[10px]">Modo</Label>
+                        <select className="w-full border border-zinc-300 rounded h-8 px-2 text-xs" value={it.qty_mode || "mq"} onChange={(e) => updateItem(i, "qty_mode", e.target.value)} data-testid={`pkg-mode-${i}`}>
+                          <option value="fissa">Fissa</option>
+                          <option value="mq">A MQ</option>
+                          <option value="ml">A ML</option>
+                        </select>
+                      </div>
+                      <div>
+                        <Label className="text-[10px]">{it.qty_mode === "fissa" ? `Qtà (${v.unit})` : "Coefficiente"}</Label>
+                        <Input type="number" step="0.001" className="h-8 text-xs" value={it.qty_mode === "fissa" ? (it.qty_value ?? 1) : (it.qty_ratio ?? 1)} onChange={(e) => updateItem(i, it.qty_mode === "fissa" ? "qty_value" : "qty_ratio", Number(e.target.value))} />
+                      </div>
+                      <div>
+                        <Label className="text-[10px]">€/u</Label>
+                        <Input type="number" step="0.01" className="h-8 text-xs" value={it.unit_price_pkg} onChange={(e) => updateItem(i, "unit_price_pkg", Number(e.target.value))} />
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-zinc-500 mt-1.5 italic">
+                      {it.qty_mode === "fissa" ? `${it.qty_value || 0} ${v.unit} fisse` : it.qty_mode === "ml" ? `${it.qty_ratio || 0} × ml abitazione` : `${it.qty_ratio || 0} × MQ abitazione`} = costo @70mq: <strong>{((it.qty_mode === "fissa" ? (it.qty_value || 0) : it.qty_mode === "ml" ? (it.qty_ratio || 0) * 28 : (it.qty_ratio || 0) * 70) * (it.unit_price_pkg || 0)).toFixed(0)}€</strong>
+                    </div>
+                  </div>
                 );
               })}
             </div>
           </div>
         </div>
-        <div className="px-6 py-4 border-t flex justify-end gap-2">
+        <div className="px-6 py-3 border-t flex justify-end gap-2 bg-zinc-50">
           <Button variant="outline" onClick={onClose}>Annulla</Button>
-          <Button onClick={save} data-testid="pkg-form-save" style={{ background: "var(--brand)", color: "white" }}><Save className="h-4 w-4 mr-2" />Salva</Button>
+          <Button onClick={save} data-testid="pkg-form-save" style={{ background: "var(--brand)", color: "white" }}><Save className="h-4 w-4 mr-2" />Salva Pacchetto</Button>
         </div>
       </div>
     </div>

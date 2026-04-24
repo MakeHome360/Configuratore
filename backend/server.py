@@ -449,6 +449,13 @@ async def root():
 
 
 # ---------------- Packages / Preventivi ----------------
+def _voci_sort_key(item):
+    n = (item.get("name") or "").lower()
+    is_demo = ("demoliz" in n) or ("smaltim" in n) or ("rimoz" in n)
+    cat_order = {"MURATURA": 2, "IMPIANTI": 3, "INFISSI": 4, "SERVIZI": 5}
+    return (1 if is_demo else cat_order.get(item.get("category"), 9), item.get("category", ""), item.get("name", ""))
+
+
 def _voci_map() -> Dict[str, Dict[str, Any]]:
     from packages_seed import DEFAULT_VOCI_BACKOFFICE
     return {
@@ -473,7 +480,7 @@ async def list_packages(user: Dict[str, Any] = Depends(get_current_user)):
                 if not lav:
                     continue
                 items.append({**lav, "qty_ratio": meta["qty_ratio"], "unit_price_pkg": meta["unit_price_pkg"]})
-            items.sort(key=lambda x: (x["category"], x["name"]))
+            items.sort(key=_voci_sort_key)
             out.append({"id": p["id"], "name": p["name"], "subtitle": p["subtitle"], "price_per_m2": p["price_per_m2"], "color": p["color"], "description": p["description"], "items": items})
         return out
     out = []
@@ -490,7 +497,7 @@ async def list_packages(user: Dict[str, Any] = Depends(get_current_user)):
                 "qty_value": it.get("qty_value", 0),
                 "unit_price_pkg": it.get("unit_price_pkg") or round(v["prezzo_acquisto"] * v["ricarico"], 2)
             })
-        items.sort(key=lambda x: (x["category"], x["name"]))
+        items.sort(key=_voci_sort_key)
         out.append({"id": p["id"], "name": p["name"], "subtitle": p.get("subtitle", ""), "price_per_m2": p["price_per_m2"], "color": p.get("color", "#475569"), "description": p.get("description", ""), "items": items})
     return out
 

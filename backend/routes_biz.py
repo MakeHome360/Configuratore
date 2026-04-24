@@ -173,6 +173,14 @@ def build_biz_router(db, get_current_user):
             d["prezzo_rivendita"] = round(d["prezzo_acquisto"] * d["ricarico"], 2)
             d["margine_eur"] = round(d["prezzo_rivendita"] - d["prezzo_acquisto"], 2)
             d["margine_pct"] = round((d["margine_eur"] / d["prezzo_rivendita"] * 100) if d["prezzo_rivendita"] else 0, 1)
+        # Sort: DEMOLIZIONE first, then MURATURA, IMPIANTI, INFISSI, SERVIZI
+        cat_order = {"MURATURA": 2, "IMPIANTI": 3, "INFISSI": 4, "SERVIZI": 5}
+        def keyf(v):
+            n = (v.get("name") or "").lower()
+            is_demo = ("demoliz" in n) or ("smaltim" in n) or ("rimoz" in n)
+            primary = 1 if is_demo else cat_order.get(v.get("category"), 9)
+            return (primary, v.get("category", ""), v.get("name", ""))
+        docs.sort(key=keyf)
         return docs
 
     class VoceIn(BaseModel):
@@ -253,6 +261,38 @@ def build_biz_router(db, get_current_user):
             raise HTTPException(403, "Solo admin")
         body.pop("_id", None); body.pop("id", None)
         await db.fasi_commessa.update_one({"id": fase_id}, {"$set": body})
+        return {"ok": True}
+
+    @r.post("/fasi-commessa/reorder")
+    async def reorder_fasi(body: Dict[str, Any], user=Depends(get_current_user)):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        ids = body.get("ordered_ids") or []
+        for idx, fid in enumerate(ids):
+            await db.fasi_commessa.update_one({"id": fid}, {"$set": {"order": idx + 1}})
+        return {"ok": True, "updated": len(ids)}
+
+    @r.post("/fasi-commessa")
+    async def create_fase(body: Dict[str, Any], user=Depends(get_current_user)):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        body.pop("_id", None)
+        if not body.get("id"):
+            body["id"] = f"fase-{uuid.uuid4().hex[:8]}"
+        if not body.get("order"):
+            body["order"] = await db.fasi_commessa.count_documents({}) + 1
+        body.setdefault("has_doc", False)
+        body.setdefault("obbligatoria", True)
+        body.setdefault("description", "")
+        await db.fasi_commessa.insert_one(body)
+        body.pop("_id", None)
+        return body
+
+    @r.delete("/fasi-commessa/{fase_id}")
+    async def delete_fase(fase_id: str, user=Depends(get_current_user)):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        await db.fasi_commessa.delete_one({"id": fase_id})
         return {"ok": True}
 
     # ---------- Template Email ----------
@@ -564,5 +604,40 @@ def build_biz_router(db, get_current_user):
     async def delete_lead(lid: str, user=Depends(get_current_user)):
         await db.leads.delete_one({"id": lid})
         return {"ok": True}
+
+    @r.post("/leads/ai-suggest")
+    async def ai_suggest(body: Dict[str, Any], user=Depends(get_current_user)):
+        """Genera con AI un consiglio personalizzato per il lead.
+        Body: {nome, mq, esigenze: [{key,val}], pacchetto_consigliato}
+        """
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        import os
+        key = os.environ.get("EMERGENT_LLM_KEY", "")
+        if not key:
+            return {"ok": False, "text": "AI non configurata"}
+        try:
+            esig = "\n".join([f"- {e.get('key')}: {e.get('val')}" for e in (body.get("esigenze") or [])])
+            prompt = f"""Sei un consulente di ristrutturazioni esperto e amichevole.
+Cliente: {body.get('nome', 'N/D')}
+Superficie: {body.get('mq', 0)} mq
+Pacchetto consigliato: {body.get('pacchetto_consigliato', 'N/D')}
+
+Esigenze rilevate:
+{esig}
+
+In 4-5 righe scrivi un messaggio personalizzato, caldo e professionale che:
+1. Saluti il cliente per nome
+2. Spieghi PERCHÉ il pacchetto consigliato è perfetto per la sua situazione
+3. Menzioni 2-3 vantaggi concreti per le sue esigenze specifiche
+4. Inviti a prendere appuntamento per un sopralluogo gratuito
+
+Tono: amichevole, italiano, mai corporate. Niente saluti formali tipo 'Gentile'.
+"""
+            chat = LlmChat(api_key=key, session_id=f"lead-{uuid.uuid4().hex[:8]}",
+                          system_message="Sei un consulente di ristrutturazioni amichevole.").with_model("gemini", "gemini-2.5-flash")
+            resp = await chat.send_message(UserMessage(text=prompt))
+            return {"ok": True, "text": str(resp)}
+        except Exception as e:
+            return {"ok": False, "text": f"Errore AI: {e}"}
 
     return r

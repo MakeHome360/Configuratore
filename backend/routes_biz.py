@@ -303,7 +303,13 @@ def build_biz_router(db, get_current_user):
 
     @r.post("/commesse")
     async def create_commessa(body: CommessaIn, user=Depends(get_current_user)):
-        prev = await db.preventivi.find_one({"id": body.preventivo_id}, {"_id": 0})
+        # Only admin/venditore can convert preventivi into commesse, and preventivo must be theirs (unless admin)
+        if user.get("role") not in ("admin", "venditore"):
+            raise HTTPException(403, "Solo admin o venditore possono creare commesse")
+        q = {"id": body.preventivo_id}
+        if user.get("role") != "admin":
+            q["user_id"] = user["id"]
+        prev = await db.preventivi.find_one(q, {"_id": 0})
         if not prev:
             raise HTTPException(404, "Preventivo non trovato")
         fasi = await db.fasi_commessa.find({}, {"_id": 0}).sort("order", 1).to_list(200)
@@ -374,8 +380,11 @@ def build_biz_router(db, get_current_user):
         stato = body.get("stato")
         if stato not in ("da_iniziare", "in_corso", "completata", "sospesa"):
             raise HTTPException(400, "Stato non valido")
+        existing = await db.commesse.find_one({"id": cid}, {"_id": 0, "data_inizio": 1})
+        if not existing:
+            raise HTTPException(404, "Commessa non trovata")
         upd = {"stato": stato, "updated_at": now_iso()}
-        if stato == "in_corso" and not (await db.commesse.find_one({"id": cid}, {"data_inizio": 1})).get("data_inizio"):
+        if stato == "in_corso" and not existing.get("data_inizio"):
             upd["data_inizio"] = now_iso()
         if stato == "completata":
             upd["data_fine"] = now_iso()

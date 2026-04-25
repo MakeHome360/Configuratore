@@ -240,6 +240,21 @@ def build_biz_router(db, get_current_user):
         await db.voci_backoffice.insert_many(rows)
         return {"ok": True, "imported": len(rows)}
 
+    @r.post("/voci-backoffice/seed-missing")
+    async def seed_missing_voci(user=Depends(get_current_user)):
+        """Aggiunge le voci default mancanti senza toccare quelle esistenti."""
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        existing_ids = {v["id"] async for v in db.voci_backoffice.find({}, {"id": 1})}
+        existing_names = {v["name"].strip().lower() async for v in db.voci_backoffice.find({}, {"name": 1})}
+        added = []
+        for v in DEFAULT_VOCI_BACKOFFICE:
+            if v["id"] in existing_ids: continue
+            if v["name"].strip().lower() in existing_names: continue
+            await db.voci_backoffice.insert_one(dict(v))
+            added.append(v["name"])
+        return {"ok": True, "added": added, "count": len(added)}
+
     # ---------- Fasi Commessa ----------
     @r.get("/fasi-commessa")
     async def list_fasi(user=Depends(get_current_user)):

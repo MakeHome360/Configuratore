@@ -164,9 +164,18 @@ DEFAULT_CATALOG: List[Dict[str, Any]] = [
     # Floors (€/m²)
     {"id": "floor-parquet", "category": "floor", "name": "Parquet in rovere", "unit": "m2", "price": 85.0, "color": "#B48A60"},
     {"id": "floor-ceramic", "category": "floor", "name": "Gres porcellanato", "unit": "m2", "price": 45.0, "color": "#E4E4E7"},
+    {"id": "floor-tile-3060", "category": "floor", "name": "Piastrelle 30x60 cm", "unit": "m2", "price": 32.0, "color": "#D4D4D8"},
+    {"id": "floor-tile-6060", "category": "floor", "name": "Piastrelle 60x60 cm", "unit": "m2", "price": 38.0, "color": "#E4E4E7"},
+    {"id": "floor-tile-60120", "category": "floor", "name": "Piastrelle 60x120 cm (effetto marmo)", "unit": "m2", "price": 58.0, "color": "#F4F4F5"},
+    {"id": "floor-tile-8080", "category": "floor", "name": "Piastrelle 80x80 cm", "unit": "m2", "price": 52.0, "color": "#E7E5E4"},
+    {"id": "floor-tile-225x90", "category": "floor", "name": "Piastrelle 22.5x90 cm (effetto legno)", "unit": "m2", "price": 42.0, "color": "#C9A37B"},
+    {"id": "floor-tile-25x150", "category": "floor", "name": "Piastrelle 25x150 cm (effetto legno XL)", "unit": "m2", "price": 56.0, "color": "#B48A60"},
     {"id": "floor-marble", "category": "floor", "name": "Marmo Carrara", "unit": "m2", "price": 180.0, "color": "#F4F4F5"},
     {"id": "floor-laminate", "category": "floor", "name": "Laminato", "unit": "m2", "price": 28.0, "color": "#C9A37B"},
     {"id": "floor-concrete", "category": "floor", "name": "Resina / Microcemento", "unit": "m2", "price": 95.0, "color": "#A1A1AA"},
+    # Wall tiles
+    {"id": "wall-tile-bagno", "category": "wall", "name": "Piastrelle bagno 25x40 cm", "unit": "m2", "price": 32.0, "color": "#DCE4EC"},
+    {"id": "wall-tile-cucina", "category": "wall", "name": "Piastrelle cucina 10x10 cm", "unit": "m2", "price": 42.0, "color": "#E7E5E4"},
     # Walls (€/m²)
     {"id": "wall-paint", "category": "wall", "name": "Pittura lavabile", "unit": "m2", "price": 12.0, "color": "#FFFFFF"},
     {"id": "wall-wallpaper", "category": "wall", "name": "Carta da parati", "unit": "m2", "price": 35.0, "color": "#E7D9C4"},
@@ -423,6 +432,21 @@ async def reset_materials(user: Dict[str, Any] = Depends(get_current_user)):
     await db.materials.insert_many(items)
     out = await db.materials.find({"user_id": user["id"]}, {"_id": 0, "user_id": 0}).to_list(500)
     return out
+
+
+@api.post("/materials/seed-missing")
+async def seed_missing_materials(user: Dict[str, Any] = Depends(get_current_user)):
+    """Aggiunge i materiali default mancanti per l'utente senza toccare quelli personalizzati."""
+    existing = await db.materials.find({"user_id": user["id"]}, {"id": 1, "_id": 0}).to_list(2000)
+    existing_ids = {m["id"] for m in existing}
+    added = []
+    for m in DEFAULT_CATALOG:
+        if m["id"] in existing_ids:
+            continue
+        doc = {**m, "user_id": user["id"]}
+        await db.materials.insert_one(doc)
+        added.append(m["id"])
+    return {"ok": True, "added": added, "count": len(added)}
 
 
 @api.post("/materials/bulk-import")

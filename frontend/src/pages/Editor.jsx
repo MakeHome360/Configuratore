@@ -37,9 +37,10 @@ const TOOL_GROUPS = [
   ]},
   { id: "demo", label: "Demolizioni / Costruzioni", tools: [
     { id: "demolish-wall", icon: Hammer, label: "Demolisci muro" },
+    { id: "demolish-wall-partial", icon: Hammer, label: "Demoliz. muro parziale" },
     { id: "demolish-floor", icon: Hammer, label: "Demolisci pavimento (totale)" },
-    { id: "demolish-floor-partial", icon: Hammer, label: "Demolisci pavimento %" },
-    { id: "demolish-rivestimento", icon: Hammer, label: "Demolisci rivestim." },
+    { id: "demolish-floor-partial", icon: Hammer, label: "Demoliz. pavim. area" },
+    { id: "demolish-rivestimento", icon: Hammer, label: "Demoliz. rivestim. parete" },
     { id: "controsoffitto", icon: Layers, label: "Controsoffitto" },
   ]},
   { id: "impianti", label: "Impianti", tools: [
@@ -456,23 +457,24 @@ export default function Editor() {
 
   return (
     <div className="editor-root flex flex-col h-screen bg-white" data-testid="editor-page">
-      <div className="h-12 border-b border-zinc-200 px-4 flex items-center gap-3 bg-white">
-        <Input value={project.name} onChange={(e) => setProject((p) => ({ ...p, name: e.target.value }))} className="rounded-sm h-8 border-transparent hover:border-zinc-200 focus:border-zinc-300 max-w-xs" data-testid="project-name-input" />
-        <div className="mono text-xs text-zinc-400">#{project.id.slice(0, 8)}</div>
-        <div className="flex border border-zinc-300 ml-3" data-testid="edit-mode-toggle">
-          <button onClick={() => setEditMode("fatto")} className={`px-3 py-1 text-xs uppercase tracking-widest ${editMode === "fatto" ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-50"}`} data-testid="mode-fatto" title="Disegna lo stato esistente del cliente">Stato di Fatto</button>
-          <button onClick={() => setEditMode("progetto")} className={`px-3 py-1 text-xs uppercase tracking-widest border-l border-zinc-300 ${editMode === "progetto" ? "bg-amber-500 text-white" : "text-zinc-700 hover:bg-zinc-50"}`} data-testid="mode-progetto" title="Lavora sul progetto: il preventivo si aggiorna live">Progetto</button>
+      <div className="h-12 border-b border-zinc-200 px-4 flex items-center gap-2 bg-white overflow-x-auto whitespace-nowrap">
+        <Input value={project.name} onChange={(e) => setProject((p) => ({ ...p, name: e.target.value }))} className="rounded-sm h-8 border-transparent hover:border-zinc-200 focus:border-zinc-300 max-w-[160px] shrink-0" data-testid="project-name-input" />
+        <div className="mono text-[10px] text-zinc-400 shrink-0">#{project.id.slice(0, 6)}</div>
+        <div className="flex border border-zinc-300 shrink-0" data-testid="edit-mode-toggle">
+          <button onClick={() => setEditMode("fatto")} className={`px-2 py-1 text-[10px] uppercase tracking-widest ${editMode === "fatto" ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-50"}`} data-testid="mode-fatto" title="Disegna lo stato esistente del cliente">Fatto</button>
+          <button onClick={() => setEditMode("progetto")} className={`px-2 py-1 text-[10px] uppercase tracking-widest border-l border-zinc-300 ${editMode === "progetto" ? "bg-amber-500 text-white" : "text-zinc-700 hover:bg-zinc-50"}`} data-testid="mode-progetto" title="Lavora sul progetto: il preventivo si aggiorna live">Progetto</button>
         </div>
         <PackagePicker project={project} setProjectData={setProjectData} packages={packages} voci={voci} />
-        <div className="ml-auto flex items-center gap-2">
-          <Button size="sm" variant="outline" className="rounded-sm h-8" onClick={undo} title="Annulla (Ctrl+Z)" data-testid="undo-btn"><RotateCcw size={14} className="mr-1.5" /> Annulla</Button>
-          <Button size="sm" variant="outline" className="rounded-sm h-8" onClick={redo} title="Ripristina (Ctrl+Shift+Z)" data-testid="redo-btn"><RotateCw size={14} className="mr-1.5" /> Ripristina</Button>
-          <Button size="sm" variant="outline" className="rounded-sm h-8" onClick={() => setFloorplanOpen(true)} data-testid="open-floorplan-import"><Upload size={14} className="mr-1.5" /> Importa Pianta</Button>
-          <Button size="sm" variant="outline" className="rounded-sm h-8" onClick={() => setShow3D(v => !v)} data-testid="toggle-3d">{show3D ? <EyeOff size={14} className="mr-1.5" /> : <Eye size={14} className="mr-1.5" />}{show3D ? "Nascondi 3D" : "Mostra 3D"}</Button>
-          <Button size="sm" variant="outline" className="rounded-sm h-8" onClick={() => setAiOpen(true)} data-testid="open-ai-render"><Sparkles size={14} className="mr-1.5" /> Render AI</Button>
-          <Button size="sm" variant="outline" className="rounded-sm h-8" onClick={() => setTavoleOpen(true)} data-testid="open-tavole"><FileImage size={14} className="mr-1.5" /> Tavole</Button>
-          <Button size="sm" variant="outline" className="rounded-sm h-8" onClick={exportPDF} data-testid="export-pdf-button"><Download size={14} className="mr-1.5" /> PDF</Button>
-          <Button size="sm" className="rounded-sm h-8 bg-zinc-900 hover:bg-zinc-800" disabled={saving} onClick={() => save(true)} data-testid="save-project-button"><Save size={14} className="mr-1.5" /> {saving ? "…" : "Salva"}</Button>
+        <div className="ml-auto flex items-center gap-1.5 shrink-0">
+          <Button size="sm" variant="ghost" className="rounded-sm h-8 px-2" onClick={undo} title="Annulla (Ctrl+Z)" data-testid="undo-btn"><RotateCcw size={14} /></Button>
+          <Button size="sm" variant="ghost" className="rounded-sm h-8 px-2" onClick={redo} title="Ripristina (Ctrl+Shift+Z)" data-testid="redo-btn"><RotateCw size={14} /></Button>
+          <div className="w-px h-5 bg-zinc-200 mx-1"></div>
+          <Button size="sm" variant="outline" className="rounded-sm h-8 px-2" onClick={() => setFloorplanOpen(true)} title="Importa Pianta da immagine (AI)" data-testid="open-floorplan-import"><Upload size={14} /></Button>
+          <Button size="sm" variant="outline" className="rounded-sm h-8 px-2" onClick={() => setShow3D(v => !v)} title={show3D ? "Nascondi 3D" : "Mostra 3D"} data-testid="toggle-3d">{show3D ? <EyeOff size={14} /> : <Eye size={14} />}</Button>
+          <Button size="sm" variant="outline" className="rounded-sm h-8 px-2" onClick={() => setAiOpen(true)} title="Render AI fotorealistico" data-testid="open-ai-render"><Sparkles size={14} /></Button>
+          <Button size="sm" variant="outline" className="rounded-sm h-8 px-2" onClick={() => setTavoleOpen(true)} title="Tavole di Progetto" data-testid="open-tavole"><FileImage size={14} /></Button>
+          <Button size="sm" variant="outline" className="rounded-sm h-8 px-2" onClick={exportPDF} title="Esporta preventivo PDF" data-testid="export-pdf-button"><Download size={14} /></Button>
+          <Button size="sm" className="rounded-sm h-8 px-3 bg-zinc-900 hover:bg-zinc-800 sticky right-0 shrink-0" disabled={saving} onClick={() => save(true)} data-testid="save-project-button"><Save size={14} className="mr-1.5" /> {saving ? "…" : "Salva"}</Button>
         </div>
       </div>
 

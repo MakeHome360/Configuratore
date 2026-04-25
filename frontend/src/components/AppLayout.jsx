@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import {
   LayoutDashboard, FilePlus2, Files, Briefcase, Users2, Building2,
   Settings, Package, Sparkles, UserCircle2, LogOut, Store,
-  ClipboardList, BarChart3, Mail, Layers, Hammer, Target, Pencil, Receipt
+  ClipboardList, BarChart3, Mail, Layers, Hammer, Target, Pencil, Receipt,
+  ChevronLeft, ChevronRight, Menu
 } from "lucide-react";
 
 const NAV = [
@@ -53,6 +54,11 @@ export default function AppLayout({ children }) {
   const { user, logout } = useAuth();
   const [azienda, setAzienda] = useState({ nome: "Inside Home", colore_primario: "teal", logo: null });
   const nav = useNavigate();
+  const location = useLocation();
+  const isEditorRoute = location.pathname.startsWith("/editor/");
+  // Sidebar a scomparsa: auto-chiusa nelle pagine editor (più spazio per CAD), apribile manualmente.
+  const [sidebarOpen, setSidebarOpen] = useState(!isEditorRoute);
+  useEffect(() => { setSidebarOpen(!isEditorRoute); }, [isEditorRoute]);
 
   useEffect(() => {
     api.get("/dati-azienda").then(r => r.data && setAzienda(r.data)).catch(() => {});
@@ -71,10 +77,23 @@ export default function AppLayout({ children }) {
   }, [colors]);
 
   return (
-    <div className="flex min-h-screen bg-zinc-50">
-      {/* SIDEBAR */}
+    <div className="flex min-h-screen bg-zinc-50 relative">
+      {/* Pulsante apertura sidebar quando chiusa */}
+      {!sidebarOpen && (
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="fixed top-3 left-3 z-50 h-9 w-9 rounded-md text-white flex items-center justify-center shadow-lg hover:opacity-90"
+          style={{ background: colors.bg }}
+          title="Apri menù"
+          data-testid="sidebar-toggle-open"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+      )}
+
+      {/* SIDEBAR (collassabile) */}
       <aside
-        className="w-64 shrink-0 text-white flex flex-col sticky top-0 h-screen"
+        className={`shrink-0 text-white flex flex-col sticky top-0 h-screen transition-all duration-200 overflow-hidden ${sidebarOpen ? "w-64" : "w-0"}`}
         style={{ background: colors.bg }}
         data-testid="app-sidebar"
       >
@@ -87,10 +106,18 @@ export default function AppLayout({ children }) {
                 {(azienda.nome || "I")[0]}
               </div>
             )}
-            <div className="truncate">
+            <div className="truncate flex-1">
               <div className="text-[11px] uppercase tracking-wider text-white/60">Configuratore</div>
               <div className="text-sm font-semibold truncate">{azienda.nome}</div>
             </div>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="p-1 rounded hover:bg-white/10 shrink-0"
+              title="Chiudi menù"
+              data-testid="sidebar-toggle-close"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
           </div>
         </div>
 

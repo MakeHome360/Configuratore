@@ -83,9 +83,10 @@ export function estimateProject(project, catalog) {
 // Map of CAD action key → matching voce_backoffice name (substring match)
 // This is the SOURCE OF TRUTH that links CAD geometry to live quote.
 export const VOCE_MAP = {
-  demolizione_muro: "Demolizione e smaltimento",
-  demolizione_pavimento: "Demolizione e smaltimento",
-  demolizione_rivestimento: "Demolizione e smaltimento",
+  demolizione_muro: "Demolizione muri",
+  demolizione_pavimento: "Demolizione pavimento",
+  demolizione_rivestimento: "Demolizione rivestimento pareti",
+  demolizione_controsoffitto: "Demolizione controsoffitto",
   costruzione_muro_mattone: "Muro mattone",
   costruzione_muro_cartongesso: "Muro cartongesso",
   controsoffitto: "Controparete / controsoffitto",
@@ -515,56 +516,73 @@ export function segmentIntersect(A, B, C, D, eps = 1e-6) {
 }
 
 /**
- * splitRoomByWall: given a room polygon (array of points) and a wall segment (W1..W2),
- * if the wall fully crosses the polygon entering and exiting through two edges,
- * return TWO polygons resulting from the split. Otherwise return null.
+ * splitRoomByWall: data una stanza (poligono) e un muro (segmento), se la LINEA
+ * del muro attraversa la stanza entrando ed uscendo da 2 lati distinti, restituisce
+ * 2 nuovi poligoni risultanti dallo split. Robusto rispetto a snap-grid (t=0/1 esatti
+ * sono accettati) e rispetto a muri completamente interni (linea estesa).
  */
 export function splitRoomByWall(points, W1, W2) {
   if (!points || points.length < 3) return null;
-  // Find intersections of the wall segment with each edge of the polygon
-  const hits = []; // {edgeIdx, x, y, u (on edge)}
+  if (Math.hypot(W2.x - W1.x, W2.y - W1.y) < 1) return null;
+  // Trova intersezioni della LINEA infinita del muro con ciascun lato del poligono
+  const hits = [];
+  const dxAB = W2.x - W1.x, dyAB = W2.y - W1.y;
   for (let i = 0; i < points.length; i++) {
     const A = points[i], B = points[(i + 1) % points.length];
-    const inter = segmentIntersect(W1, W2, A, B);
-    if (inter && inter.u > 1e-3 && inter.u < 1 - 1e-3) {
-      hits.push({ edgeIdx: i, x: inter.x, y: inter.y, u: inter.u, t: inter.t });
-    }
+    const dxCD = B.x - A.x, dyCD = B.y - A.y;
+    const denom = dxAB * dyCD - dyAB * dxCD;
+    if (Math.abs(denom) < 1e-6) continue; // paralleli
+    const t = ((A.x - W1.x) * dyCD - (A.y - W1.y) * dxCD) / denom;
+    const u = ((A.x - W1.x) * dyAB - (A.y - W1.y) * dxAB) / denom;
+    if (u < -1e-3 || u > 1 + 1e-3) continue; // intersezione fuori dal lato
+    const x = W1.x + t * dxAB, y = W1.y + t * dyAB;
+    hits.push({ edgeIdx: i, x, y, u: Math.max(0, Math.min(1, u)), t });
   }
-  // Need exactly 2 hits with t inside [0,1] (full crossing)
-  const valid = hits.filter((h) => h.t > 1e-3 && h.t < 1 - 1e-3);
-  if (valid.length !== 2) return null;
-  // Sort by edge index then u
-  valid.sort((a, b) => a.t - b.t);
-  const [H1, H2] = valid;
-  // Build poly1: vertices from H1 to H2 going forward along polygon
-  // Insert H1 after edge H1.edgeIdx, H2 after edge H2.edgeIdx
-  const poly1 = [];
-  const poly2 = [];
-  // Walk vertices: include vertex i+1 between hits depending on edge index ordering
+  // Dedup intersezioni vicine (vertici condivisi tra 2 lati)
+  const dedup = [];
+  hits.forEach((h) => {
+    const dup = dedup.find((d) => Math.hypot(d.x - h.x, d.y - h.y) < 1.5);
+    if (!dup) dedup.push(h);
+  });
+  if (dedup.length < 2) return null;
+  // Prendi le 2 intersezioni più vicine al SEGMENTO del muro (per t ~ in [0,1])
+  // Se il muro è interamente dentro: t fuori da [0,1] ma comunque dividiamo lungo la linea
+  dedup.sort((a, b) => a.t - b.t);
+  // Se ho >2 hits (caso di poligoni concavi), prendi i 2 che attraversano effettivamente
+  // l'interno: il midpoint del segmento tra le 2 deve essere dentro il poligono
+  let H1 = null, H2 = null;
+  for (let i = 0; i < dedup.length - 1; i++) {
+    const a = dedup[i], b = dedup[i + 1];
+    if (a.edgeIdx === b.edgeIdx) continue; // stesso lato (non separa)
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    if (pointInPolygon(mid, points)) { H1 = a; H2 = b; break; }
+  }
+  if (!H1 || !H2) return null;
+  // Verifica che il muro reale (segmento W1-W2) sovrapponga almeno parzialmente l'intervallo [H1,H2]
+  // (cioè il muro deve davvero toccare/attraversare la zona divisoria, non essere a metri di distanza)
+  const tMin = Math.min(H1.t, H2.t), tMax = Math.max(H1.t, H2.t);
+  if (tMax < -0.05 || tMin > 1.05) return null;
+  // Costruisci i 2 poligoni
   const i1 = H1.edgeIdx, i2 = H2.edgeIdx;
-  if (i1 === i2) return null; // hit same edge → no split
-  // poly1: H1 → vertices in (i1, i2] → H2 → close back to H1
-  poly1.push({ x: H1.x, y: H1.y });
+  const poly1 = [{ x: H1.x, y: H1.y }];
   let i = (i1 + 1) % points.length;
-  while (true) {
+  let safety = points.length + 2;
+  while (safety-- > 0) {
     poly1.push({ x: points[i].x, y: points[i].y });
     if (i === i2) break;
     i = (i + 1) % points.length;
-    if (i === i1) return null; // safety
   }
   poly1.push({ x: H2.x, y: H2.y });
-  // poly2: H2 → vertices in (i2, i1] → H1
-  poly2.push({ x: H2.x, y: H2.y });
+  const poly2 = [{ x: H2.x, y: H2.y }];
   i = (i2 + 1) % points.length;
-  while (true) {
+  safety = points.length + 2;
+  while (safety-- > 0) {
     poly2.push({ x: points[i].x, y: points[i].y });
     if (i === i1) break;
     i = (i + 1) % points.length;
-    if (i === i2) return null;
   }
   poly2.push({ x: H1.x, y: H1.y });
   if (poly1.length < 3 || poly2.length < 3) return null;
-  // Validate areas non-zero
   if (polygonArea(poly1) < 100 || polygonArea(poly2) < 100) return null;
   return [poly1, poly2];
 }

@@ -78,24 +78,13 @@ def build_biz_router(db, get_current_user):
         await db.packages.delete_one({"id": pid})
         return {"ok": True}
 
-    # ---------- Sync voci → packages (when prezzo_acquisto×ricarico changes) ----------
+    # ---------- Sync voci → packages (NO-OP: i prezzi sono ora SEMPRE live dal backoffice) ----------
     @r.post("/voci-backoffice/sync")
     async def sync_voci(user=Depends(get_current_user)):
         if user.get("role") != "admin":
             raise HTTPException(403, "Solo admin")
-        voci = {v["id"]: v for v in await db.voci_backoffice.find({}, {"_id": 0}).to_list(2000)}
-        updated = 0
-        async for p in db.packages.find({}):
-            new_items = []
-            for it in p.get("items", []):
-                v = voci.get(it.get("voce_id"))
-                if v:
-                    new_items.append({**it, "unit_price_pkg": round(v["prezzo_acquisto"] * v["ricarico"], 2)})
-                else:
-                    new_items.append(it)
-            await db.packages.update_one({"id": p["id"]}, {"$set": {"items": new_items}})
-            updated += 1
-        return {"ok": True, "packages_updated": updated}
+        # I prezzi vengono ora calcolati live dal backoffice — questo endpoint è solo per compatibilità.
+        return {"ok": True, "packages_updated": 0, "message": "I prezzi sono già aggiornati automaticamente"}
 
     # ---------- Optional CRUD ----------
     @r.get("/optional")

@@ -71,13 +71,20 @@ export default function PreventivoPacchetto() {
     if (!prev.package_id) return;
     const pkg = packages.find((p) => p.id === prev.package_id); if (!pkg) return;
     setPrev((p) => {
+      const ml = (p.mq || 0) * 0.4;
+      const calcQty = (it, m) => {
+        if (it.qty_mode === "fissa") return it.qty_value || 0;
+        if (it.qty_mode === "ml") return (it.qty_ratio || 0) * ml;
+        return (it.qty_ratio || 0) * m;
+      };
       const newItems = (pkg.items || []).map((it) => {
+        const included = calcQty(it, p.mq || 0);
         const existing = (p.items || []).find((x) => x.id === it.id);
-        const included = it.qty_ratio * (p.mq || 0);
         return {
-          id: it.id, name: it.name, category: it.category, unit: it.unit,
-          unit_price: existing?.unit_price ?? it.unit_price_pkg,
-          unit_consigliato: it.unit_consigliato,
+          id: it.id, voce_id: it.voce_id || it.id, name: it.name, category: it.category, unit: it.unit,
+          qty_mode: it.qty_mode, qty_ratio: it.qty_ratio, qty_value: it.qty_value,
+          // unit_price = prezzo backoffice (sempre live) — usato per calcolare il costo dell'EXTRA oltre l'incluso
+          unit_price: it.prezzo_rivendita || 0,
           included_qty: parseFloat(included.toFixed(2)),
           qty_richiesta: existing ? existing.qty_richiesta : parseFloat(included.toFixed(2)),
         };
@@ -237,23 +244,27 @@ export default function PreventivoPacchetto() {
 
             {step === 2 && (
               <div>
-                <h2 className="text-2xl font-semibold mb-2" style={{ fontFamily: "Outfit" }}>Lavorazioni incluse</h2>
-                <p className="text-sm text-zinc-600 mb-6">Le quantità incluse sono calcolate sui m². Se il cliente ne richiede di più, viene addebitata la differenza a prezzo unitario.</p>
-                {["MURATURA", "IMPIANTI", "ACCESSORI", "BUROCRAZIA"].map((cat) => {
-                  const list = prev.items.filter((it) => it.category === cat);
+                <h2 className="text-2xl font-semibold mb-2" style={{ fontFamily: "Outfit" }}>Lavorazioni incluse nel pacchetto</h2>
+                <p className="text-sm text-zinc-600 mb-6">Tutto questo è già <strong>incluso nel prezzo a m² del pacchetto {pkg?.name}</strong>. Se il cliente vuole una quantità superiore a quella inclusa, paga solo la differenza al prezzo del backoffice.</p>
+                {["DEMOLIZIONI", "MURATURA", "IMPIANTI", "INFISSI", "SERVIZI"].map((cat) => {
+                  const list = prev.items.filter((it) => {
+                    const isDemo = /demoliz|smaltim|rimoz/i.test(it.name);
+                    if (cat === "DEMOLIZIONI") return isDemo;
+                    return !isDemo && it.category === cat;
+                  });
                   if (list.length === 0) return null;
+                  const colorMap = { DEMOLIZIONI: "#DC2626", MURATURA: "#0F766E", IMPIANTI: "#2563EB", INFISSI: "#9333EA", SERVIZI: "#B45309" };
                   return (
                     <div key={cat} className="mb-6">
-                      <div className="label-kicker mb-2">{cat}</div>
+                      <div className="text-xs uppercase tracking-widest font-bold mb-2" style={{ color: colorMap[cat] }}>{cat}</div>
                       <table className="w-full text-sm border border-zinc-200">
                         <thead className="bg-zinc-50 text-xs uppercase tracking-widest text-zinc-500">
                           <tr>
                             <th className="text-left py-2 px-3 font-medium">Lavorazione</th>
-                            <th className="text-right py-2 px-3 font-medium w-24">U.M.</th>
+                            <th className="text-right py-2 px-3 font-medium w-20">U.M.</th>
                             <th className="text-right py-2 px-3 font-medium w-28">Incluse</th>
                             <th className="text-right py-2 px-3 font-medium w-28">Richieste</th>
-                            <th className="text-right py-2 px-3 font-medium w-24">€ unit.</th>
-                            <th className="text-right py-2 px-3 font-medium w-28">Extra</th>
+                            <th className="text-right py-2 px-3 font-medium w-32">Extra a pagamento</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -275,8 +286,9 @@ export default function PreventivoPacchetto() {
                                     data-testid={`lav-qty-${it.id}`}
                                   />
                                 </td>
-                                <td className="py-2 px-3 text-right mono text-zinc-700">{fmtEuro(it.unit_price)}</td>
-                                <td className={`py-2 px-3 text-right mono ${extraCost > 0 ? "text-orange-600" : "text-zinc-400"}`}>{extraCost > 0 ? fmtEuro(extraCost) : "—"}</td>
+                                <td className={`py-2 px-3 text-right mono text-xs ${extraCost > 0 ? "text-orange-600 font-semibold" : "text-zinc-400"}`}>
+                                  {extraCost > 0 ? <>+{fmtNum(extra, 2)} × {fmtEuro(it.unit_price)} = <strong>{fmtEuro(extraCost)}</strong></> : "—"}
+                                </td>
                               </tr>
                             );
                           })}

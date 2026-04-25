@@ -42,7 +42,6 @@ export default function AdminVociBackoffice() {
       <PageHeader title="Voci Backoffice" subtitle="Gestisci costi di acquisto e ricarichi per calcolare i margini"
         actions={<div className="flex gap-2">
           <Button variant="outline" onClick={() => setImporting(true)} data-testid="vb-import"><Upload className="h-4 w-4 mr-1" />Importa CSV</Button>
-          <Button variant="outline" onClick={sync} data-testid="vb-sync"><RefreshCcw className="h-4 w-4 mr-1" />Sincronizza Tutti</Button>
           <Button onClick={() => setCreating(true)} data-testid="vb-new" style={{ background: "var(--brand)", color: "white" }}><Plus className="h-4 w-4 mr-1" />Nuova Voce</Button>
         </div>} />
       <Page>
@@ -92,6 +91,9 @@ export default function AdminVociBackoffice() {
               })}
             </tbody>
           </table>
+        </div>
+        <div className="mt-4 text-xs text-zinc-700 bg-emerald-50 border border-emerald-200 p-3 rounded">
+          <strong>💡 Source of Truth:</strong> i prezzi qui sono usati ovunque. Modifica un prezzo qui e si aggiornerà <strong>automaticamente</strong> in tutti i pacchetti, preventivi composite e calcoli di marginalità.
         </div>
       </Page>
       {(creating || editing) && <VoceDialog voce={editing} onClose={() => { setEditing(null); setCreating(false); }} onSaved={load} isNew={creating} />}

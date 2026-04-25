@@ -466,20 +466,29 @@ def _voci_map() -> Dict[str, Dict[str, Any]]:
 
 @api.get("/packages")
 async def list_packages(user: Dict[str, Any] = Depends(get_current_user)):
-    # try DB first; fallback to seed (handled by ensure_global_seeds in biz routes)
+    # Voci backoffice = SOURCE OF TRUTH dei prezzi.
+    # Il pacchetto contiene SOLO {voce_id, qty_mode, qty_ratio/qty_value}.
+    # Il prezzo unitario viene SEMPRE da voci_backoffice (acquisto × ricarico).
     voci = {v["id"]: v for v in await db.voci_backoffice.find({}, {"_id": 0}).to_list(2000)}
     docs = await db.packages.find({}, {"_id": 0}).to_list(50)
     if not docs:
-        # fallback to in-memory seed (no DB packages yet)
-        lavs = _voci_map()
+        # fallback to in-memory seed
         out = []
         for p in DEFAULT_PACKAGES:
             items = []
-            for lid, meta in p["included"].items():
-                lav = lavs.get(lid)
-                if not lav:
+            for vid, meta in p["included"].items():
+                v = voci.get(vid)
+                if not v:
                     continue
-                items.append({**lav, "qty_ratio": meta["qty_ratio"], "unit_price_pkg": meta["unit_price_pkg"]})
+                items.append({
+                    "id": v["id"], "voce_id": v["id"], "name": v["name"], "category": v["category"], "unit": v["unit"],
+                    "qty_mode": meta.get("qty_mode", "mq"),
+                    "qty_ratio": meta.get("qty_ratio", 0),
+                    "qty_value": meta.get("qty_value", 0),
+                    "prezzo_acquisto": v["prezzo_acquisto"],
+                    "ricarico": v["ricarico"],
+                    "prezzo_rivendita": round(v["prezzo_acquisto"] * v["ricarico"], 2),
+                })
             items.sort(key=_voci_sort_key)
             out.append({"id": p["id"], "name": p["name"], "subtitle": p["subtitle"], "price_per_m2": p["price_per_m2"], "color": p["color"], "description": p["description"], "items": items})
         return out
@@ -491,11 +500,13 @@ async def list_packages(user: Dict[str, Any] = Depends(get_current_user)):
             if not v:
                 continue
             items.append({
-                "id": v["id"], "name": v["name"], "category": v["category"], "unit": v["unit"],
+                "id": v["id"], "voce_id": v["id"], "name": v["name"], "category": v["category"], "unit": v["unit"],
                 "qty_mode": it.get("qty_mode", "mq"),
                 "qty_ratio": it.get("qty_ratio", 0),
                 "qty_value": it.get("qty_value", 0),
-                "unit_price_pkg": it.get("unit_price_pkg") or round(v["prezzo_acquisto"] * v["ricarico"], 2)
+                "prezzo_acquisto": v["prezzo_acquisto"],
+                "ricarico": v["ricarico"],
+                "prezzo_rivendita": round(v["prezzo_acquisto"] * v["ricarico"], 2),
             })
         items.sort(key=_voci_sort_key)
         out.append({"id": p["id"], "name": p["name"], "subtitle": p.get("subtitle", ""), "price_per_m2": p["price_per_m2"], "color": p.get("color", "#475569"), "description": p.get("description", ""), "items": items})

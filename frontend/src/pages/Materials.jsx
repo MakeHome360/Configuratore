@@ -4,7 +4,7 @@ import { Button } from "../components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { api } from "../lib/api";
 import { toast } from "sonner";
-import { RotateCcw, Save, Upload } from "lucide-react";
+import { RotateCcw, Save, Upload, Sparkles, X, Loader2 } from "lucide-react";
 import CsvImportDialog from "../components/CsvImportDialog";
 import { fmtEuro } from "../editor/utils";
 
@@ -25,6 +25,8 @@ export default function Materials() {
   const [loading, setLoading] = useState(true);
   const [dirty, setDirty] = useState({});
   const [importing, setImporting] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [activeCat, setActiveCat] = useState(CATEGORIES[0].id);
 
   const load = async () => {
     setLoading(true);
@@ -73,6 +75,9 @@ export default function Materials() {
             <p className="text-sm text-zinc-500 mt-2">Personalizza i costi che useremo nei preventivi.</p>
           </div>
           <div className="flex items-center gap-2">
+            <Button onClick={() => setAiOpen(true)} className="rounded-sm bg-violet-600 hover:bg-violet-700 text-white" data-testid="materials-ai-button">
+              <Sparkles size={14} className="mr-2" /> Genera con AI
+            </Button>
             <Button variant="outline" onClick={() => setImporting(true)} className="rounded-sm" data-testid="materials-import-csv">
               <Upload size={14} className="mr-2" /> Importa CSV
             </Button>
@@ -88,7 +93,7 @@ export default function Materials() {
         {loading ? (
           <div className="text-zinc-500 mono text-sm">caricamento…</div>
         ) : (
-          <Tabs defaultValue={CATEGORIES[0].id}>
+          <Tabs value={activeCat} onValueChange={setActiveCat}>
             <TabsList className="bg-transparent p-0 h-auto flex flex-wrap gap-1 border-b border-zinc-200 rounded-none w-full justify-start">
               {CATEGORIES.map((c) => (
                 <TabsTrigger
@@ -119,8 +124,15 @@ export default function Materials() {
                       {list.map((it) => (
                         <tr key={it.id} className="border-b border-zinc-100 hover:bg-zinc-50" data-testid={`material-row-${it.id}`}>
                           <td className="py-3 flex items-center gap-3">
-                            <span className="w-5 h-5 border border-zinc-200" style={{ background: it.color }} />
-                            {it.name}
+                            {it.thumb ? (
+                              <img src={it.thumb} alt="" className="w-10 h-10 object-cover border border-zinc-200 rounded-sm" />
+                            ) : (
+                              <span className="w-5 h-5 border border-zinc-200" style={{ background: it.color }} />
+                            )}
+                            <div>
+                              <div>{it.name}</div>
+                              {it.description && <div className="text-[10px] text-zinc-500">{it.description}</div>}
+                            </div>
                           </td>
                           <td className="py-3 mono text-zinc-500">{it.unit}</td>
                           <td className="py-3 text-right">
@@ -144,6 +156,116 @@ export default function Materials() {
         )}
       </main>
       {importing && <CsvImportDialog endpoint="/materials/bulk-import" header="category,name,unit,cost,color" example='floor,Gres porcellanato 60x60,€/m²,42.50,#D4D4D8' title="Importa Materiali da CSV" onClose={() => setImporting(false)} onSuccess={load} />}
+      {aiOpen && <AiMaterialDialog defaultCategory={activeCat} onClose={() => setAiOpen(false)} onCreated={load} />}
+    </div>
+  );
+}
+
+function AiMaterialDialog({ defaultCategory, onClose, onCreated }) {
+  const [prompt, setPrompt] = useState("");
+  const [category, setCategory] = useState(defaultCategory || "fixture");
+  const [loading, setLoading] = useState(false);
+  const [preview, setPreview] = useState(null); // {material, image_data_url}
+
+  const generate = async () => {
+    if (!prompt.trim()) return toast.error("Descrivi cosa vuoi generare");
+    setLoading(true); setPreview(null);
+    try {
+      const { data } = await api.post("/materials/ai-generate", { prompt, category });
+      setPreview(data);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Errore generazione AI");
+    }
+    setLoading(false);
+  };
+
+  const save = async () => {
+    if (!preview) return;
+    try {
+      await api.post("/materials", {
+        ...preview.material,
+        thumb: preview.image_data_url,
+      });
+      toast.success("Materiale aggiunto al catalogo");
+      onCreated();
+      onClose();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Errore salvataggio");
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose} data-testid="ai-material-dialog">
+      <div className="bg-white rounded-lg w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b flex justify-between items-center">
+          <h2 className="font-semibold text-lg flex items-center gap-2" style={{ fontFamily: "Outfit" }}>
+            <Sparkles className="h-5 w-5 text-violet-600" /> Genera materiale con AI
+          </h2>
+          <button onClick={onClose}><X className="h-5 w-5" /></button>
+        </div>
+        <div className="p-6 space-y-3">
+          <div>
+            <label className="text-xs uppercase tracking-widest text-zinc-500">Categoria</label>
+            <select className="w-full h-10 px-2 border border-zinc-300 rounded mt-1" value={category} onChange={(e) => setCategory(e.target.value)} data-testid="ai-mat-cat">
+              {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs uppercase tracking-widest text-zinc-500">Descrizione</label>
+            <Input
+              placeholder='es. "Sanitario sospeso bianco minimal", "Piastrella effetto marmo nero 60x60", "Lampadario LED moderno camera"'
+              value={prompt} onChange={(e) => setPrompt(e.target.value)}
+              className="mt-1"
+              data-testid="ai-mat-prompt"
+              disabled={loading}
+              onKeyDown={(e) => { if (e.key === "Enter" && !loading) generate(); }}
+            />
+            <div className="text-[11px] text-zinc-500 mt-1 italic">L'AI genererà nome, descrizione, prezzo medio realistico, colore e <strong>foto del prodotto</strong>.</div>
+          </div>
+          {preview && (
+            <div className="border border-violet-200 bg-violet-50/40 rounded p-4 mt-2" data-testid="ai-mat-preview">
+              <div className="flex gap-4 items-start">
+                {preview.image_data_url ? (
+                  <img src={preview.image_data_url} alt="" className="w-32 h-32 object-cover rounded border border-zinc-200" />
+                ) : (
+                  <div className="w-32 h-32 rounded border border-zinc-200 flex items-center justify-center text-xs text-zinc-400" style={{ background: preview.material.color }}>
+                    no img
+                  </div>
+                )}
+                <div className="flex-1 space-y-2">
+                  <div>
+                    <Input value={preview.material.name} onChange={(e) => setPreview({ ...preview, material: { ...preview.material, name: e.target.value } })} className="font-semibold" data-testid="ai-mat-name" />
+                  </div>
+                  <div className="text-sm text-zinc-600">{preview.material.description}</div>
+                  <div className="flex gap-2 items-center">
+                    <span className="text-xs text-zinc-500">Prezzo:</span>
+                    <Input type="number" step="0.01" value={preview.material.price} onChange={(e) => setPreview({ ...preview, material: { ...preview.material, price: Number(e.target.value) } })} className="w-28 text-right mono" />
+                    <span className="text-xs text-zinc-500">{preview.material.unit}</span>
+                    <span className="ml-auto inline-flex items-center gap-1 text-xs text-zinc-500">
+                      colore <span className="w-5 h-5 border border-zinc-300 rounded-sm" style={{ background: preview.material.color }} />
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="px-6 py-4 border-t flex justify-end gap-2 bg-zinc-50">
+          <Button variant="outline" onClick={onClose}>Annulla</Button>
+          {!preview ? (
+            <Button onClick={generate} disabled={loading || !prompt.trim()} className="bg-violet-600 hover:bg-violet-700 text-white" data-testid="ai-mat-generate-btn">
+              {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generazione…</> : <><Sparkles className="h-4 w-4 mr-2" /> Genera</>}
+            </Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => { setPreview(null); }}>Rigenera</Button>
+              <Button onClick={save} className="bg-zinc-900 hover:bg-zinc-800 text-white" data-testid="ai-mat-save-btn">
+                <Save className="h-4 w-4 mr-2" />Aggiungi al catalogo
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

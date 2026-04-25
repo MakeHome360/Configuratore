@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Save } from "lucide-react";
+import { Save, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { InfissoQuickConfigurator } from "@/components/InfissoQuickConfigurator";
 
 export default function PreventivoComposite() {
   const { id } = useParams();
@@ -23,6 +24,23 @@ export default function PreventivoComposite() {
   const [ivaPct, setIvaPct] = useState(10);
   const [note, setNote] = useState("");
   const [activeSection, setActiveSection] = useState(null);
+  const [infissiExtras, setInfissiExtras] = useState([]); // [{id,name,qty,unit,price,unit_price,infisso_meta}]
+  const [infissiModalOpen, setInfissiModalOpen] = useState(false);
+
+  const onInfissiConfirm = ({ items }) => {
+    const rows = items.map((it, i) => ({
+      id: `infisso-${Date.now()}-${i}`,
+      name: `${it.tipologia_name || "Infisso"} ${it.larghezza}×${it.altezza}cm · ${it.materiale_name} ${it.vetro_name} (${it.ante} ante)${it.tapparella ? " + tapparella" : ""}${it.zanzariera ? " + zanzariera" : ""}`,
+      unit: "pz", qty: it.qty || 1,
+      unit_price: Math.round((it.price || 0) / (it.qty || 1)),
+      price: it.price,
+      infisso_meta: it,
+    }));
+    setInfissiExtras((arr) => [...arr, ...rows]);
+    toast.success(`${items.length} infissi aggiunti`);
+  };
+  const removeInfisso = (id) => setInfissiExtras((arr) => arr.filter((r) => r.id !== id));
+  const infissiTot = useMemo(() => infissiExtras.reduce((s, r) => s + (r.price || 0), 0), [infissiExtras]);
 
   useEffect(() => {
     api.get("/composite-sections").then((r) => { setSections(r.data); if (r.data[0]) setActiveSection(r.data[0].id); });
@@ -35,6 +53,7 @@ export default function PreventivoComposite() {
         const sel = {};
         (d.composite_selections || []).forEach((s) => { sel[s.voce_id] = { qty: s.qty, price: s.price }; });
         setSelections(sel);
+        setInfissiExtras(d.infissi_extras || []);
       });
     }
   }, [id, isNew]);
@@ -52,7 +71,7 @@ export default function PreventivoComposite() {
 
   const sicurezzaAmt = totaleVoci * (sicurezzaPct / 100);
   const direzioneAmt = totaleVoci * (direzionePct / 100);
-  const imponibile = totaleVoci + sicurezzaAmt + direzioneAmt - (sconto || 0);
+  const imponibile = totaleVoci + infissiTot + sicurezzaAmt + direzioneAmt - (sconto || 0);
   const iva = imponibile * (ivaPct / 100);
   const totale = imponibile + iva;
 
@@ -65,6 +84,7 @@ export default function PreventivoComposite() {
     }));
     const payload = {
       tipo: "composite", cliente, mq, composite_selections: comp,
+      infissi_extras: infissiExtras,
       sicurezza_pct: sicurezzaPct, direzione_lavori_pct: direzionePct,
       sconto_eur: sconto, iva_pct: ivaPct, note,
       totale_iva_incl: totale, totale_iva_escl: imponibile,
@@ -115,11 +135,49 @@ export default function PreventivoComposite() {
                   </button>
                 );
               })}
+              <button onClick={() => setActiveSection("__infissi__")} data-testid="comp-sec-infissi"
+                className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${activeSection === "__infissi__" ? "bg-amber-600 text-white" : "hover:bg-amber-50 text-amber-700"}`}>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5"><Plus className="h-3 w-3" />Infissi (configuratore)</span>
+                  {infissiExtras.length > 0 && <span className="text-xs opacity-70">{infissiExtras.length}</span>}
+                </div>
+                {infissiTot > 0 && <div className="text-[10px] font-mono opacity-60">{fmtEur(infissiTot)}</div>}
+              </button>
             </div>
           </div>
 
           <div className="lg:col-span-3 bg-white border border-zinc-200 rounded-lg p-5">
-            {sec ? (
+            {activeSection === "__infissi__" ? (
+              <>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold">Infissi · Configuratore extra</h3>
+                  <Button size="sm" onClick={() => setInfissiModalOpen(true)} data-testid="comp-add-infissi-btn" style={{ background: "var(--brand)", color: "white" }}>
+                    <Plus className="h-4 w-4 mr-1" />Aggiungi infissi
+                  </Button>
+                </div>
+                {infissiExtras.length === 0 ? (
+                  <div className="text-zinc-500 text-center py-12">Nessun infisso configurato. Clicca "Aggiungi infissi" per aprire il configuratore.</div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead className="bg-zinc-50 text-xs uppercase text-zinc-500">
+                      <tr><th className="px-3 py-2 text-left">Descrizione</th><th className="px-3 py-2 text-right w-20">Qty</th><th className="px-3 py-2 text-right w-24">Prezzo €</th><th className="px-3 py-2 text-right w-28">Totale</th><th className="w-10"></th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {infissiExtras.map((r) => (
+                        <tr key={r.id}>
+                          <td className="px-3 py-2">{r.name}</td>
+                          <td className="px-3 py-2 text-right font-mono">{r.qty}</td>
+                          <td className="px-3 py-2 text-right font-mono">{fmtEur2(r.unit_price)} /{r.unit}</td>
+                          <td className="px-3 py-2 text-right font-mono font-bold">{fmtEur2(r.price)}</td>
+                          <td className="px-3 py-2 text-right"><button onClick={() => removeInfisso(r.id)} className="text-rose-600 text-xs">×</button></td>
+                        </tr>
+                      ))}
+                      <tr className="bg-amber-50 font-bold"><td colSpan={3} className="px-3 py-2 text-right">Subtotale infissi</td><td className="px-3 py-2 text-right font-mono">{fmtEur2(infissiTot)}</td><td></td></tr>
+                    </tbody>
+                  </table>
+                )}
+              </>
+            ) : sec ? (
               <>
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold">{sec.name}</h3>
@@ -166,6 +224,7 @@ export default function PreventivoComposite() {
         </div>
         <div className="mt-3"><Label className="text-xs">Note</Label><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></div>
       </Page>
+      <InfissoQuickConfigurator open={infissiModalOpen} onClose={() => setInfissiModalOpen(false)} onConfirm={onInfissiConfirm} />
     </div>
   );
 }

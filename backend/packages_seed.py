@@ -45,11 +45,11 @@ DEFAULT_VOCI_BACKOFFICE = [
     # INFISSI
     {"id": "voce-pannello-blinda", "category": "INFISSI", "name": "Pannello porta blindata", "prezzo_acquisto": 750.0, "ricarico": 1.8, "unit": "pz"},
     {"id": "voce-cornici-porte", "category": "INFISSI", "name": "Posa cornici porte", "prezzo_acquisto": 300.0, "ricarico": 1.8, "unit": "forfait"},
-    {"id": "voce-infissi-pvc", "category": "INFISSI", "name": "Infissi PVC bianchi", "prezzo_acquisto": 4000.0, "ricarico": 1.8, "unit": "forfait"},
-    {"id": "voce-infissi-alluminio", "category": "INFISSI", "name": "Infissi alluminio taglio termico", "prezzo_acquisto": 6500.0, "ricarico": 1.8, "unit": "forfait"},
-    {"id": "voce-infissi-legno", "category": "INFISSI", "name": "Infissi legno/alluminio", "prezzo_acquisto": 8500.0, "ricarico": 1.8, "unit": "forfait"},
-    {"id": "voce-zanzariere", "category": "INFISSI", "name": "Zanzariere POSA INCLUSA", "prezzo_acquisto": 70.0, "ricarico": 1.8, "unit": "pz"},
-    {"id": "voce-tapparelle", "category": "INFISSI", "name": "Tapparelle POSA INCLUSA", "prezzo_acquisto": 65.0, "ricarico": 1.8, "unit": "pz"},
+    {"id": "voce-infissi-pvc", "category": "INFISSI", "name": "Infissi PVC bianchi (esterni)", "prezzo_acquisto": 280.0, "ricarico": 1.8, "unit": "m²"},
+    {"id": "voce-infissi-alluminio", "category": "INFISSI", "name": "Infissi alluminio taglio termico (esterni)", "prezzo_acquisto": 460.0, "ricarico": 1.8, "unit": "m²"},
+    {"id": "voce-infissi-legno", "category": "INFISSI", "name": "Infissi legno/alluminio (esterni)", "prezzo_acquisto": 620.0, "ricarico": 1.8, "unit": "m²"},
+    {"id": "voce-zanzariere", "category": "INFISSI", "name": "Zanzariere POSA INCLUSA", "prezzo_acquisto": 80.0, "ricarico": 1.8, "unit": "m²"},
+    {"id": "voce-tapparelle", "category": "INFISSI", "name": "Tapparelle POSA INCLUSA", "prezzo_acquisto": 120.0, "ricarico": 1.8, "unit": "m²"},
     {"id": "voce-griglia-al", "category": "INFISSI", "name": "Griglia alluminio sicurezza", "prezzo_acquisto": 2000.0, "ricarico": 1.8, "unit": "pz"},
     # SERVIZI
     {"id": "voce-cila", "category": "SERVIZI", "name": "Pratica CILA", "prezzo_acquisto": 500.0, "ricarico": 1.8, "unit": "forfait"},

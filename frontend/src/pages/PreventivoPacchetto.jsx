@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { fmtEuro, fmtNum } from "../editor/utils";
 import jsPDF from "jspdf";
+import { InfissoQuickConfigurator } from "../components/InfissoQuickConfigurator";
 
 export default function PreventivoPacchetto() {
   const { id } = useParams();
@@ -43,6 +44,25 @@ export default function PreventivoPacchetto() {
 
   // Prefill ref: sopravvive a re-mount (StrictMode dev). Applichiamo extras una sola volta.
   const prefillRef = useRef({ data: null, applied: false, loaded: false });
+  const [infissiModalOpen, setInfissiModalOpen] = useState(false);
+
+  const onInfissiConfirm = ({ items, totale }) => {
+    const newRows = items.map((it, i) => ({
+      id: `infisso-${Date.now()}-${i}`,
+      voce_id: `infisso-${Date.now()}-${i}`,
+      name: `${it.tipologia_name || "Infisso"} ${it.larghezza}×${it.altezza}cm · ${it.materiale_name} ${it.vetro_name} (${it.ante} ante)${it.tapparella ? " + tapparella" : ""}${it.zanzariera ? " + zanzariera" : ""}`,
+      category: "EXTRA",
+      unit: "pz",
+      qty_mode: "fissa", qty_ratio: 0, qty_value: it.qty || 1,
+      unit_price: Math.round((it.price || 0) / (it.qty || 1)),
+      included_qty: 0,
+      qty_richiesta: it.qty || 1,
+      from_infissi: true,
+      infisso_meta: it,
+    }));
+    setPrev((p) => ({ ...p, items: [...(p.items || []), ...newRows] }));
+    toast.success(`${items.length} infissi aggiunti come extra (${fmtEuro(totale)})`);
+  };
 
   useEffect(() => {
     (async () => {
@@ -312,7 +332,10 @@ export default function PreventivoPacchetto() {
             {step === 2 && (
               <div>
                 <h2 className="text-2xl font-semibold mb-2" style={{ fontFamily: "Outfit" }}>Lavorazioni incluse nel pacchetto</h2>
-                <p className="text-sm text-zinc-600 mb-6">Tutto questo è già <strong>incluso nel prezzo a m² del pacchetto {pkg?.name}</strong>. Se il cliente vuole una quantità superiore a quella inclusa, paga solo la differenza al prezzo del backoffice.</p>
+                <p className="text-sm text-zinc-600 mb-4">Tutto questo è già <strong>incluso nel prezzo a m² del pacchetto {pkg?.name}</strong>. Se il cliente vuole una quantità superiore a quella inclusa, paga solo la differenza al prezzo del backoffice.</p>
+                <div className="flex justify-end mb-3">
+                  <Button variant="outline" size="sm" className="rounded-sm" onClick={() => setInfissiModalOpen(true)} data-testid="add-infissi-btn">+ Aggiungi infissi (extra)</Button>
+                </div>
                 {["DEMOLIZIONI", "MURATURA", "IMPIANTI", "INFISSI", "SERVIZI", "EXTRA"].map((cat) => {
                   const list = prev.items.filter((it) => {
                     const isDemo = /demoliz|smaltim|rimoz/i.test(it.name);
@@ -556,6 +579,7 @@ export default function PreventivoPacchetto() {
           </aside>
         </div>
       </main>
+      <InfissoQuickConfigurator open={infissiModalOpen} onClose={() => setInfissiModalOpen(false)} onConfirm={onInfissiConfirm} />
     </div>
   );
 }

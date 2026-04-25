@@ -179,6 +179,8 @@ def build_biz_router(db, get_current_user):
         prezzo_acquisto: float
         ricarico: float
         unit: str
+        modificabile_dal_venditore: Optional[bool] = False
+        soglia_inclusa: Optional[float] = None  # prezzo unitario sotto al quale è incluso nel pacchetto, sopra diventa extra
 
     @r.post("/voci-backoffice")
     async def create_voce(body: VoceIn, user=Depends(get_current_user)):

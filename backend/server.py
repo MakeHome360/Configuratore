@@ -364,6 +364,27 @@ async def update_material(material_id: str, body: Dict[str, Any], user: Dict[str
     return doc
 
 
+@api.post("/materials")
+async def create_material(body: Dict[str, Any], user: Dict[str, Any] = Depends(get_current_user)):
+    """Crea un nuovo materiale nel catalogo dell'utente (es. da AI generator)."""
+    body.pop("_id", None)
+    body.pop("user_id", None)
+    new_id = body.get("id") or f"mat-{uuid.uuid4().hex[:8]}"
+    doc = {
+        "id": new_id,
+        "category": body.get("category", "fixture"),
+        "name": body.get("name", "Materiale"),
+        "unit": body.get("unit", "€/pz"),
+        "price": float(body.get("price", 0) or 0),
+        "color": body.get("color", "#A1A1AA"),
+        "thumb": body.get("thumb"),  # base64 data URL or null
+        "description": body.get("description"),
+        "user_id": user["id"],
+    }
+    await db.materials.insert_one(doc)
+    return {k: v for k, v in doc.items() if k not in ("user_id", "_id")}
+
+
 @api.post("/materials/reset")
 async def reset_materials(user: Dict[str, Any] = Depends(get_current_user)):
     await db.materials.delete_many({"user_id": user["id"]})
@@ -540,6 +561,87 @@ async def ai_floorplan_import(body: dict, user: Dict[str, Any] = Depends(get_cur
 @api.get("/")
 async def root():
     return {"message": "Ristruttura CAD API online", "version": "2.0"}
+
+
+# ---------------- AI Material Generator ----------------
+@api.post("/materials/ai-generate")
+async def materials_ai_generate(body: dict, user: Dict[str, Any] = Depends(get_current_user)):
+    """
+    Genera un nuovo materiale (sanitario/piastrella/arredo/ecc.) da un prompt utente.
+    Returns: { material: {name,description,category,unit,price,color}, image_data_url: 'data:image/png;base64,...' }
+    """
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(status_code=500, detail="EMERGENT_LLM_KEY non configurata")
+    prompt = (body.get("prompt") or "").strip()
+    category = body.get("category") or "fixture"
+    if not prompt:
+        raise HTTPException(400, "Prompt mancante")
+
+    import json as _json
+    # 1) Generazione testuale strutturata (Gemini text)
+    text_session = f"matgen-text-{user['id']}-{uuid.uuid4().hex[:8]}"
+    chat_text = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=text_session,
+        system_message=(
+            "Sei un esperto cataloghista di materiali edili e arredo italiani. "
+            "Output ONLY valid JSON, no prose, no markdown fences.\n"
+            "Schema: {\"name\": str (max 60 char, in italiano), \"description\": str (max 200 char, in italiano), "
+            "\"category\": one of [floor, wall, ceiling, electrical, plumbing, furniture, fixture, appliance, light], "
+            "\"unit\": one of [\"€/m²\", \"€/pz\", \"€/ml\"], \"price\": float (prezzo medio realistico per il mercato italiano), "
+            "\"color\": hex color (#RRGGBB) rappresentativo del materiale}\n"
+            "Prezzi realistici 2026: piastrelle gres 25-90 €/m², sanitari sospesi 180-650 €/pz, parquet 35-110 €/m², lampadari led 80-450 €/pz, mobili bagno 280-1200 €/pz."
+        ),
+    ).with_model("gemini", "gemini-2.5-flash")
+    full_prompt = f"Genera un nuovo materiale per la categoria {category} a partire da: '{prompt}'."
+    try:
+        text_resp = await chat_text.send_message(UserMessage(text=full_prompt))
+    except Exception as e:
+        logger.exception("AI material text generation failed")
+        raise HTTPException(500, f"Errore generazione testo: {str(e)[:200]}")
+
+    raw = text_resp if isinstance(text_resp, str) else getattr(text_resp, "text", str(text_resp))
+    try:
+        s = raw.find("{"); e2 = raw.rfind("}")
+        material = _json.loads(raw[s:e2+1] if s >= 0 and e2 > s else raw)
+    except Exception:
+        raise HTTPException(500, f"Risposta AI non parsabile: {raw[:200]}")
+
+    # Sanitize
+    material.setdefault("category", category)
+    material.setdefault("unit", "€/pz" if category in ("furniture", "fixture", "appliance", "light") else "€/m²")
+    material["price"] = float(material.get("price", 0) or 0)
+    if not material.get("color", "").startswith("#"):
+        material["color"] = "#A1A1AA"
+
+    # 2) Generazione immagine (Nano Banana)
+    img_session = f"matgen-img-{user['id']}-{uuid.uuid4().hex[:8]}"
+    chat_img = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=img_session,
+        system_message="You generate photorealistic product photography on plain neutral background.",
+    )
+    chat_img.with_model("gemini", "gemini-3.1-flash-image-preview").with_params(modalities=["image", "text"])
+    img_prompt = (
+        f"Photorealistic product photo of: {material['name']}. {material.get('description','')}. "
+        "Plain neutral light gray background, soft studio lighting, centered, square frame, no text, no logos, no watermarks, e-commerce catalog style."
+    )
+    image_data_url = None
+    try:
+        _, images = await chat_img.send_message_multimodal_response(UserMessage(text=img_prompt))
+        if images:
+            img = images[0]
+            mime = img.get("mime_type", "image/png")
+            image_data_url = f"data:{mime};base64,{img['data']}"
+    except Exception as e:
+        logger.warning(f"AI material image generation failed (continuing without image): {str(e)[:200]}")
+        # Don't fail the whole request just because image generation hiccups
+
+    return {
+        "material": material,
+        "image_data_url": image_data_url,
+    }
+
 
 
 # ---------------- Packages / Preventivi ----------------

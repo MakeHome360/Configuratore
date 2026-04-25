@@ -37,8 +37,15 @@ export default function PreventivoInfissi() {
     const v = conf.vetri.find((x) => x.id === it.vetro_id);
     if (!m || !v) return 0;
     const area = (Number(it.larghezza) || 0) * (Number(it.altezza) || 0) / 10000; // cm to m²
-    const price = area * m.base_per_mq * m.multiplier * v.multiplier;
-    return Math.round(price * (it.qty || 1));
+    const basePrice = area * m.base_per_mq * m.multiplier * v.multiplier;
+    // Tapparella: ~120 €/mq, Zanzariera: ~80 €/mq (calcolate sull'area dell'infisso)
+    const tappPrice = it.tapparella ? area * 120 * (it.tapparella_motorizzata ? 1.6 : 1) : 0;
+    const zanzPrice = it.zanzariera ? area * 80 : 0;
+    const ante = Number(it.ante) || 1;
+    // Più ante = qualche maggiorazione sulla manodopera (5% per anta extra)
+    const anteFactor = 1 + Math.max(0, ante - 1) * 0.05;
+    const total = (basePrice * anteFactor + tappPrice + zanzPrice) * (it.qty || 1);
+    return Math.round(total);
   };
 
   const items2 = items.map((it) => ({ ...it, price: calcPrice(it) }));
@@ -50,6 +57,8 @@ export default function PreventivoInfissi() {
   const addItem = () => setItems([...items, {
     tipologia_id: conf.tipologie[0]?.id, materiale_id: conf.materiali[0]?.id, vetro_id: conf.vetri[0]?.id,
     larghezza: 100, altezza: 140, qty: 1, note: "", colore: "bianco",
+    ante: 1, tapparella: false, tapparella_colore: "antracite", tapparella_motorizzata: false,
+    zanzariera: false, zanzariera_tipo: "avvolgibile",
   }]);
 
   const upd = (i, k, v) => { const c = [...items]; c[i][k] = v; setItems(c); };
@@ -92,7 +101,7 @@ export default function PreventivoInfissi() {
                   return (
                   <div key={i} className="border border-zinc-200 rounded p-3 grid grid-cols-12 gap-2 items-end">
                     <div className="col-span-12 mb-2">
-                      <AbacoInfisso tipologia={tip} colore={it.colore || "bianco"} larghezza={it.larghezza} altezza={it.altezza} materiale={mat?.name} vetro={vet?.name} />
+                      <AbacoInfisso tipologia={tip} colore={it.colore || "bianco"} larghezza={it.larghezza} altezza={it.altezza} materiale={mat?.name} vetro={vet?.name} ante={Number(it.ante) || 1} tapparella={!!it.tapparella} tapparella_colore={it.tapparella_colore} zanzariera={!!it.zanzariera} />
                     </div>
                     <div className="col-span-3"><Label className="text-xs">Tipologia</Label>
                       <select className="w-full border border-zinc-300 rounded h-9 px-2 text-sm" value={it.tipologia_id} onChange={(e) => upd(i, "tipologia_id", e.target.value)}>
@@ -119,11 +128,53 @@ export default function PreventivoInfissi() {
                         <option value="rovere">Rovere</option>
                       </select>
                     </div>
+                    <div className="col-span-1"><Label className="text-xs">Ante</Label>
+                      <select className="w-full border border-zinc-300 rounded h-9 px-2 text-sm" value={it.ante || 1} onChange={(e) => upd(i, "ante", Number(e.target.value))} data-testid={`inf-ante-${i}`}>
+                        <option value={1}>1</option>
+                        <option value={2}>2</option>
+                        <option value={3}>3</option>
+                        <option value={4}>4</option>
+                      </select>
+                    </div>
                     <div className="col-span-1"><Label className="text-xs">L (cm)</Label><Input type="number" value={it.larghezza} onChange={(e) => upd(i, "larghezza", Number(e.target.value))} /></div>
                     <div className="col-span-1"><Label className="text-xs">H (cm)</Label><Input type="number" value={it.altezza} onChange={(e) => upd(i, "altezza", Number(e.target.value))} /></div>
                     <div className="col-span-1"><Label className="text-xs">Qty</Label><Input type="number" value={it.qty} onChange={(e) => upd(i, "qty", Number(e.target.value))} /></div>
-                    <div className="col-span-1 text-right font-mono text-sm pt-5">{fmtEur(it.price)}</div>
+                    <div className="col-span-1 text-right font-mono text-sm pt-5">{fmtEur2(it.price)}</div>
                     <button className="col-span-12 lg:col-span-1 p-1 rounded hover:bg-rose-50 self-end flex items-center justify-center" onClick={() => setItems(items.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4 text-rose-600" /></button>
+                    {/* Mini-configuratore Tapparelle + Zanzariere */}
+                    <div className="col-span-12 mt-1 flex flex-wrap items-center gap-3 bg-zinc-50 border border-dashed border-zinc-300 rounded p-2 text-xs">
+                      <span className="font-semibold text-zinc-700">Accessori:</span>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="checkbox" checked={!!it.tapparella} onChange={(e) => upd(i, "tapparella", e.target.checked)} data-testid={`inf-tapparella-${i}`} />
+                        Tapparella
+                      </label>
+                      {it.tapparella && (
+                        <>
+                          <select className="border border-zinc-300 rounded h-7 px-1.5 text-xs" value={it.tapparella_colore || "antracite"} onChange={(e) => upd(i, "tapparella_colore", e.target.value)}>
+                            <option value="bianco">Bianca</option>
+                            <option value="antracite">Antracite</option>
+                            <option value="marrone">Marrone</option>
+                            <option value="noce">Noce</option>
+                          </select>
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" checked={!!it.tapparella_motorizzata} onChange={(e) => upd(i, "tapparella_motorizzata", e.target.checked)} />
+                            Motorizzata (+60%)
+                          </label>
+                        </>
+                      )}
+                      <span className="mx-2 text-zinc-300">|</span>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="checkbox" checked={!!it.zanzariera} onChange={(e) => upd(i, "zanzariera", e.target.checked)} data-testid={`inf-zanzariera-${i}`} />
+                        Zanzariera
+                      </label>
+                      {it.zanzariera && (
+                        <select className="border border-zinc-300 rounded h-7 px-1.5 text-xs" value={it.zanzariera_tipo || "avvolgibile"} onChange={(e) => upd(i, "zanzariera_tipo", e.target.value)}>
+                          <option value="avvolgibile">Avvolgibile</option>
+                          <option value="plissettata">Plissettata</option>
+                          <option value="fissa">Fissa</option>
+                        </select>
+                      )}
+                    </div>
                   </div>
                   );
                 })}
@@ -159,12 +210,12 @@ const COLOR_MAP = {
   marrone: "#78350F", noce: "#5B3A1A", rovere: "#A87C4F",
 };
 
-function AbacoInfisso({ tipologia, colore, larghezza, altezza, materiale, vetro }) {
-  // SVG schematic preview of an "abaco infissi". Scales window dims to 200x140 viewport keeping aspect ratio.
-  const W = 280, H = 200, pad = 30;
-  const aw = Math.max(40, Math.min(larghezza || 100, 400));
-  const ah = Math.max(40, Math.min(altezza || 140, 300));
-  const maxW = W - pad * 2 - 40, maxH = H - pad * 2;
+function AbacoInfisso({ tipologia, colore, larghezza, altezza, materiale, vetro, ante = 1, tapparella, tapparella_colore, zanzariera }) {
+  // SVG schematic preview of an "abaco infissi". Scales window dims to 320x230 viewport keeping aspect ratio.
+  const W = 340, H = 240, pad = 38;
+  const aw = Math.max(40, Math.min(larghezza || 100, 600));
+  const ah = Math.max(40, Math.min(altezza || 140, 400));
+  const maxW = W - pad * 2 - 50, maxH = H - pad * 2 - 30;
   const scale = Math.min(maxW / aw, maxH / ah);
   const ww = aw * scale, hh = ah * scale;
   const cx = pad + maxW / 2, cy = pad + maxH / 2;
@@ -175,21 +226,33 @@ function AbacoInfisso({ tipologia, colore, larghezza, altezza, materiale, vetro 
   const isPF = tipoName.includes("porta") && tipoName.includes("finestra");
   const isPorta = tipoName.includes("porta") && !tipoName.includes("finestra");
   const isScorrevole = tipoName.includes("scorrevole");
-  // anta count: 2 if width > 120cm or porta-finestra, else 1
-  const antaCount = (aw > 120 || isPF) ? 2 : 1;
+  // ante: ora rispetta esplicitamente la scelta dell'utente (1..4) - nessun blocco di dimensioni
+  const antaCount = Math.max(1, Math.min(4, Number(ante) || 1));
   const frameW = 6;
+  const tappColor = COLOR_MAP[tapparella_colore] || "#3F3F46";
   return (
     <div className="bg-zinc-50 border border-zinc-200 rounded p-2 flex items-center gap-3">
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} data-testid="abaco-svg" style={{ maxWidth: "100%" }}>
-        {/* outer dimension lines */}
-        <line x1={x} y1={y - 14} x2={x + ww} y2={y - 14} stroke="#16A34A" strokeWidth="1" />
-        <line x1={x} y1={y - 18} x2={x} y2={y - 10} stroke="#16A34A" strokeWidth="1" />
-        <line x1={x + ww} y1={y - 18} x2={x + ww} y2={y - 10} stroke="#16A34A" strokeWidth="1" />
-        <text x={cx} y={y - 18} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="11" fontWeight="700" fill="#16A34A">{larghezza} cm</text>
-        <line x1={x + ww + 14} y1={y} x2={x + ww + 14} y2={y + hh} stroke="#16A34A" strokeWidth="1" />
-        <line x1={x + ww + 10} y1={y} x2={x + ww + 18} y2={y} stroke="#16A34A" strokeWidth="1" />
-        <line x1={x + ww + 10} y1={y + hh} x2={x + ww + 18} y2={y + hh} stroke="#16A34A" strokeWidth="1" />
-        <text x={x + ww + 18} y={cy + 4} textAnchor="start" fontFamily="JetBrains Mono" fontSize="11" fontWeight="700" fill="#16A34A">{altezza} cm</text>
+        {/* Cassonetto tapparella (sopra il telaio) */}
+        {tapparella && (
+          <g>
+            <rect x={x - 4} y={y - 22} width={ww + 8} height={20} fill={tappColor} stroke={stroke} strokeWidth="1.2" rx="2" />
+            <line x1={x + 4} y1={y - 12} x2={x + ww - 4} y2={y - 12} stroke="#FFF" strokeWidth="0.5" opacity="0.6" />
+            <text x={cx} y={y - 7} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="9" fontWeight="700" fill={tapparella_colore === "bianco" ? "#3F3F46" : "#FFF"}>TAPPARELLA</text>
+          </g>
+        )}
+        {/* Outer dimension WIDTH (con riquadro bianco di contrasto) */}
+        <line x1={x} y1={y - (tapparella ? 38 : 22)} x2={x + ww} y2={y - (tapparella ? 38 : 22)} stroke="#16A34A" strokeWidth="1.5" />
+        <line x1={x} y1={y - (tapparella ? 42 : 26)} x2={x} y2={y - (tapparella ? 34 : 18)} stroke="#16A34A" strokeWidth="1.5" />
+        <line x1={x + ww} y1={y - (tapparella ? 42 : 26)} x2={x + ww} y2={y - (tapparella ? 34 : 18)} stroke="#16A34A" strokeWidth="1.5" />
+        <rect x={cx - 38} y={y - (tapparella ? 50 : 34)} width={76} height={18} fill="#FFF" stroke="#16A34A" strokeWidth="1.4" rx="2" />
+        <text x={cx} y={y - (tapparella ? 38 : 22)} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="14" fontWeight="800" fill="#0A0A0A">{larghezza} cm</text>
+        {/* Outer dimension HEIGHT (riquadro bianco) */}
+        <line x1={x + ww + 22} y1={y} x2={x + ww + 22} y2={y + hh} stroke="#16A34A" strokeWidth="1.5" />
+        <line x1={x + ww + 18} y1={y} x2={x + ww + 26} y2={y} stroke="#16A34A" strokeWidth="1.5" />
+        <line x1={x + ww + 18} y1={y + hh} x2={x + ww + 26} y2={y + hh} stroke="#16A34A" strokeWidth="1.5" />
+        <rect x={x + ww + 30} y={cy - 9} width={70} height={18} fill="#FFF" stroke="#16A34A" strokeWidth="1.4" rx="2" />
+        <text x={x + ww + 65} y={cy + 4} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="14" fontWeight="800" fill="#0A0A0A">{altezza} cm</text>
         {/* sill (only window) */}
         {!isPorta && !isPF && (
           <line x1={x - 8} y1={y + hh + 4} x2={x + ww + 8} y2={y + hh + 4} stroke="#71717A" strokeWidth="2" />
@@ -197,19 +260,22 @@ function AbacoInfisso({ tipologia, colore, larghezza, altezza, materiale, vetro 
         {/* frame */}
         <rect x={x} y={y} width={ww} height={hh} fill={frameColor} stroke={stroke} strokeWidth="2" />
         <rect x={x + frameW} y={y + frameW} width={ww - 2 * frameW} height={hh - 2 * frameW} fill="#DBEAFE" fillOpacity="0.45" stroke={stroke} strokeWidth="1" />
-        {/* anta divider */}
-        {antaCount === 2 && !isScorrevole && (
-          <line x1={cx} y1={y + frameW} x2={cx} y2={y + hh - frameW} stroke={stroke} strokeWidth="2" />
-        )}
-        {antaCount === 2 && !isScorrevole && (
-          <>
-            <path d={`M ${x + frameW} ${y + hh - frameW} L ${cx - frameW / 2} ${y + frameW} L ${cx - frameW / 2} ${y + hh - frameW} Z`} fill="none" stroke={stroke} strokeWidth="0.6" strokeDasharray="2,2" opacity="0.5" />
-            <path d={`M ${x + ww - frameW} ${y + hh - frameW} L ${cx + frameW / 2} ${y + frameW} L ${cx + frameW / 2} ${y + hh - frameW} Z`} fill="none" stroke={stroke} strokeWidth="0.6" strokeDasharray="2,2" opacity="0.5" />
-          </>
-        )}
-        {antaCount === 1 && !isScorrevole && (
-          <path d={`M ${x + frameW} ${y + hh - frameW} L ${x + ww - frameW} ${y + frameW} L ${x + ww - frameW} ${y + hh - frameW} Z`} fill="none" stroke={stroke} strokeWidth="0.6" strokeDasharray="2,2" opacity="0.5" />
-        )}
+        {/* anta dividers - support 1, 2, 3, 4 ante */}
+        {!isScorrevole && antaCount > 1 && Array.from({ length: antaCount - 1 }).map((_, k) => {
+          const dx = x + (ww / antaCount) * (k + 1);
+          return <line key={k} x1={dx} y1={y + frameW} x2={dx} y2={y + hh - frameW} stroke={stroke} strokeWidth="2" />;
+        })}
+        {/* anta opening triangles (per anta) */}
+        {!isScorrevole && Array.from({ length: antaCount }).map((_, k) => {
+          const ax = x + (ww / antaCount) * k;
+          const aw_ = ww / antaCount;
+          const goesRight = k % 2 === 0;
+          const startX = goesRight ? ax + frameW : ax + aw_ - frameW;
+          const endX = goesRight ? ax + aw_ - frameW : ax + frameW;
+          return (
+            <path key={k} d={`M ${startX} ${y + hh - frameW} L ${endX} ${y + frameW} L ${endX} ${y + hh - frameW} Z`} fill="none" stroke={stroke} strokeWidth="0.6" strokeDasharray="2,2" opacity="0.5" />
+          );
+        })}
         {isScorrevole && (
           <>
             <line x1={cx} y1={y + frameW} x2={cx} y2={y + hh - frameW} stroke={stroke} strokeWidth="1" strokeDasharray="3,3" />
@@ -217,15 +283,31 @@ function AbacoInfisso({ tipologia, colore, larghezza, altezza, materiale, vetro 
             <text x={cx + ww / 4} y={cy + 4} textAnchor="middle" fontSize="14" fill={stroke}>←</text>
           </>
         )}
-        {/* maniglia */}
-        {!isScorrevole && <circle cx={antaCount === 2 ? cx + ww / 4 : x + ww - frameW - 8} cy={cy} r="2.5" fill={stroke} />}
+        {/* maniglia (su anta destra) */}
+        {!isScorrevole && <circle cx={x + ww - frameW - 8} cy={cy} r="3" fill={stroke} />}
+        {/* Zanzariera schematic (linee sottili oblique sul lato sinistro del telaio) */}
+        {zanzariera && (
+          <g pointerEvents="none">
+            <rect x={x + frameW + 1} y={y + frameW + 1} width={(ww - 2 * frameW - 2) / 2} height={hh - 2 * frameW - 2} fill="url(#mesh-zanz)" opacity="0.7" />
+            <text x={x + ww / 4} y={y + hh - 8} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="9" fontWeight="700" fill="#525252">ZANZARIERA</text>
+          </g>
+        )}
+        <defs>
+          <pattern id="mesh-zanz" width="4" height="4" patternUnits="userSpaceOnUse">
+            <line x1="0" y1="0" x2="4" y2="4" stroke="#71717A" strokeWidth="0.4" />
+            <line x1="4" y1="0" x2="0" y2="4" stroke="#71717A" strokeWidth="0.4" />
+          </pattern>
+        </defs>
       </svg>
       <div className="text-xs text-zinc-600 mono space-y-0.5">
         <div className="font-semibold text-zinc-800">{tipologia?.name || "—"}</div>
         <div>materiale: <span className="text-zinc-900">{materiale || "—"}</span></div>
         <div>vetro: <span className="text-zinc-900">{vetro || "—"}</span></div>
         <div>colore: <span className="text-zinc-900 capitalize">{colore}</span></div>
-        <div>misura: <span className="text-zinc-900">{larghezza}×{altezza} cm</span></div>
+        <div>misura: <span className="text-zinc-900 font-bold">{larghezza}×{altezza} cm</span></div>
+        <div>ante: <span className="text-zinc-900 font-bold">{antaCount}</span></div>
+        {tapparella && <div className="text-amber-700">+ Tapparella <span className="capitalize">({tapparella_colore})</span></div>}
+        {zanzariera && <div className="text-emerald-700">+ Zanzariera</div>}
       </div>
     </div>
   );

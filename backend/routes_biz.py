@@ -475,6 +475,45 @@ def build_biz_router(db, get_current_user):
              "has_doc": f.get("has_doc", False), "completata": False, "data_completamento": None}
             for f in fasi
         ]
+        # Se il preventivo contiene infissi (PreventivoInfissi o extras infissi nel pacchetto),
+        # aggiungi la voce specifica "Conferma misure dopo rilievo" PRIMA della produzione
+        has_infissi = (
+            prev.get("tipo") == "infissi"
+            or any(it.get("from_infissi") or "Infisso" in (it.get("name") or "") or "infisso" in (it.get("name") or "").lower() for it in (prev.get("items") or []))
+            or len(prev.get("infissi_extras") or []) > 0
+        )
+        if has_infissi:
+            misure_originali = []
+            for it in (prev.get("items") or []):
+                if it.get("from_infissi") and it.get("infisso_meta"):
+                    m = it["infisso_meta"]
+                    misure_originali.append({
+                        "id": str(uuid.uuid4()),
+                        "descrizione": it.get("name"),
+                        "L_originale": m.get("larghezza"), "H_originale": m.get("altezza"),
+                        "L_definitiva": None, "H_definitiva": None,
+                        "tolleranza_pct": None, "stato": "da_rilevare",
+                    })
+            for ext in (prev.get("infissi_extras") or []):
+                m = ext.get("infisso_meta") or {}
+                misure_originali.append({
+                    "id": str(uuid.uuid4()),
+                    "descrizione": ext.get("name"),
+                    "L_originale": m.get("larghezza"), "H_originale": m.get("altezza"),
+                    "L_definitiva": None, "H_definitiva": None,
+                    "tolleranza_pct": None, "stato": "da_rilevare",
+                })
+            insert_pos = next((i for i, c in enumerate(checklist) if "produzione" in (c.get("name") or "").lower() or "ordine" in (c.get("name") or "").lower()), len(checklist))
+            checklist.insert(insert_pos, {
+                "fase_id": "rilievo-misure",
+                "order": insert_pos,
+                "name": "Conferma rilievo misure infissi",
+                "description": "Verifica le misure rilevate sul posto. Tolleranza ±5% accettata, 5-8% richiede conferma, >8% blocca produzione.",
+                "has_doc": True,
+                "completata": False,
+                "data_completamento": None,
+                "rilievo_misure": misure_originali,
+            })
         doc = {
             "id": str(uuid.uuid4()),
             "numero": await next_commessa_number(),

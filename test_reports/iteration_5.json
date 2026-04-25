@@ -1,0 +1,63 @@
+{
+  "summary": "Iteration 5 testing: validated phase-aware estimate logic, new editor tools (text, demolish-floor totale + parziale), enriched HVAC sub-kind picker, door types Classe 3/4 + hinge/swing, window vasistas in selected-panel, InfissoQuickConfigurator UI styling, and backend commessa-from-preventivo with infissi → 'Conferma rilievo misure infissi'. Backend 4/4 PASS. Frontend mostly PASS with 1 minor inconsistency (Vasistas missing from drawing toolbar window-type-select).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Editor.jsx > drawing toolbar > window-type-select",
+        "issue": "Vasistas option is missing from the WINDOW DRAWING toolbar (Editor.jsx:614-618). It is correctly present in the SELECTED-WINDOW properties panel (Editor.jsx:727). Inconsistency: user can change a placed window to Vasistas but cannot draw one directly. Likely a copy/paste miss when adding Vasistas.",
+        "selector": "[data-testid='window-type-select']",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "tests_executed": {
+    "backend": {
+      "test_health_auth_me": "PASS - login + /api/auth/me returns admin@admin.it",
+      "test_commessa_with_infissi_checklist_added": "PASS - preventivo tipo='infissi' + items[].from_infissi=True + infisso_meta {larghezza:120,altezza:140} → POST /api/commesse generates checklist containing 'Conferma rilievo misure infissi' with rilievo_misure[0]={L_originale:120,H_originale:140,stato:'da_rilevare'}",
+      "test_commessa_without_infissi_no_rilievo_voce": "PASS - preventivo without infissi → checklist correctly excludes 'Conferma rilievo misure infissi'",
+      "test_commessa_infissi_extras_checklist_added": "PASS - preventivo with infissi_extras (composite/pacchetto add-ons) also triggers the rilievo voce"
+    },
+    "frontend": {
+      "Editor_toolbar_tools": "PASS - all required tools present in respective groups: tool-text (base), tool-demolish-floor + tool-demolish-floor-partial (demo), tool-hvac (impianti), tool-door + tool-window + tool-wall (base). Active state (bg-zinc-900) confirmed when selected.",
+      "HVAC_sub_kind_picker": "PASS - all 8 options visible after opening picker: Split a parete, Unità esterna, Predisposizione, Caldaia condensazione, Caldaia ibrida (pompa di calore), Canalizzato · Unità interna, Canalizzato · Canale aria (auto plenum), VMC (ventil. meccanica)",
+      "Door_drawing_params": "PASS - door-type-select offers Porta interna, Porta blindata Classe 3, Porta blindata Classe 4, Porta scorrevole. door-default-hinge and door-default-swing are PRESENT (visible for all door types including 'interna').",
+      "Window_drawing_params": "PARTIAL FAIL - window-type-select offers only Finestra/Porta finestra/Scorrevole; 'Vasistas' MISSING from drawing toolbar (it IS present in the selected-window properties panel — see PropertiesPanel line 727).",
+      "InfissoQuickConfigurator": "PASS at /preventivocomposite → comp-sec-infissi → comp-add-infissi-btn opens infissi-quick-modal. Inputs L/H/Qty have classes 'h-10 text-base font-mono font-bold text-center' (verified via DOM). Colore select shows full values [Bianco, Antracite, Grigio, Marrone, Noce, Rovere] not truncated. Abaco SVG with measure boxes renders.",
+      "Phase_filter_estimateProjectV2": "CODE-REVIEWED ONLY (not interactively drawn) - utils.js:208 uses isProgetto = (el) => !el?.phase || el.phase==='progetto'. This means LEGACY elements without phase default to 'progetto' (i.e., billed). The agent_to_agent_context_note claimed legacy elements default to 'fatto' — this is WRONG: code says elements without phase ARE billed. Verify this matches the actual fix intent (cartongesso/demolitions filter on line 250-251 looks correct)."
+    }
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter5_infissi_phase.py",
+    "/app/test_reports/pytest/iter5_results.xml"
+  ],
+  "action_items": [
+    "Add SelectItem value='vasistas' Vasistas in Editor.jsx drawing toolbar window-type-select (line 614-618) for consistency with the selected-window panel (line 727). Also add a preset for vasistas in line 610 (e.g., {width:60,height:60,sillHeight:160}).",
+    "Verify the phase-default semantics: agent_to_agent_context_note says legacy elements without phase should default to 'fatto' (NOT billed), but utils.js:208 implementation `!el?.phase || el.phase==='progetto'` defaults to BILLED. This contradiction needs clarification — either fix the comment in the note OR change isProgetto to `el?.phase === 'progetto'` so legacy/undefined phase is treated as 'fatto' and NOT billed (aligning with the user's stated intent: 'I project esistenti senza phase ... non verranno fatturati nel preventivo'). Real-world impact: existing pre-fix saved projects could now be over-billed.",
+    "(Test code) Pricing voce check for porta_blindata_cl3 / porta_blindata_cl4 was not actively verified end-to-end (would require drawing a wall + door + opening preventivo live panel). Source code in utils.js confirms blindata-cl3/cl4 are mapped, but recommend a unit test on estimateProjectV2 with a synthetic project."
+  ],
+  "critical_code_review_comments": [
+    "utils.js:208 isProgetto default behavior is the opposite of what the agent_to_agent context note claims. This is a HIGH-IMPACT semantic bug: `!el?.phase || el.phase === 'progetto'` causes any item missing the phase field (i.e., all legacy/migrated projects) to be billed. If user intent is 'undefined phase = fatto = NOT billed', change to `el?.phase === 'progetto'`.",
+    "Editor.jsx window drawing-time SelectContent (line 614-618) and SelectContent on PropertiesPanel (line 727) drift. Keep them in sync by extracting a shared options array.",
+    "InfissoQuickConfigurator color picker now correctly shows full value text (h-10 + adequate width). Good fix.",
+    "Backend POST /api/commesse correctly inserts the rilievo voce ahead of 'produzione/ordine' phases (line 506) and includes original measures, tolerance comment, and 'da_rilevare' status. Implementation looks solid."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter5_infissi_phase.py (NEW: 4 pytest tests)"
+  ],
+  "success_rate": {
+    "backend": "100% (4/4)",
+    "frontend": "92% (12/13 sub-checks). 1 minor: Vasistas missing from drawing toolbar."
+  },
+  "test_credentials": "admin@admin.it / admin (working)",
+  "seed_data_creation": "Tests create + delete TEST_ preventivi & commesse via DELETE endpoints. No leftover data.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All major iteration-5 features verified. Open project ID for editor tests: d9eead92-7adf-4a9f-b57b-b1ad791d387d (named 'prova'). Phase-filter estimate logic was code-reviewed not interactively drawn (Canvas2D.jsx click sequence is complex). The only live UI inconsistency: drawing-toolbar window-type-select lacks 'Vasistas' — fix in Editor.jsx:614-618. The PHASE-default semantics in utils.js:208 may also warrant clarification with user (see action_items).",
+  "rca_of_the_issue": "Vasistas missing in drawing toolbar: SelectContent for the toolbar (Editor.jsx:614-618) was not updated when Vasistas was added; only the PropertiesPanel SelectContent (line 727) was extended. 1-line fix: add `<SelectItem value=\"vasistas\">Vasistas</SelectItem>` after line 617 plus a preset in line 610."
+}

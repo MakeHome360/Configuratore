@@ -191,8 +191,8 @@ export default function Canvas2D({
           const tNew = Math.max(0.05, Math.min(0.95, proj));
           return { ...prj, [arrKey]: arr.map((x) => x.id === drag.id ? { ...x, t: tNew } : x) };
         });
-      } else if (drag.kind === "item-pos" || drag.kind === "elec-pos" || drag.kind === "plumb-pos" || drag.kind === "gas-pos" || drag.kind === "hvac-pos") {
-        const arrKey = drag.kind === "item-pos" ? "items" : drag.kind === "elec-pos" ? "electrical" : drag.kind === "plumb-pos" ? "plumbing" : drag.kind === "gas-pos" ? "gas" : "hvac";
+      } else if (drag.kind === "item-pos" || drag.kind === "elec-pos" || drag.kind === "plumb-pos" || drag.kind === "gas-pos" || drag.kind === "hvac-pos" || drag.kind === "text-pos") {
+        const arrKey = drag.kind === "item-pos" ? "items" : drag.kind === "elec-pos" ? "electrical" : drag.kind === "plumb-pos" ? "plumbing" : drag.kind === "gas-pos" ? "gas" : drag.kind === "hvac-pos" ? "hvac" : "texts";
         setProject((prj) => ({
           ...prj,
           [arrKey]: (prj[arrKey] || []).map((x) => x.id === drag.id ? { ...x, x: drag.orig.x + dx, y: drag.orig.y + dy } : x),
@@ -220,11 +220,11 @@ export default function Canvas2D({
     if (best && bestD < 80) {
       if (tool === "door") {
         const dp = doorParams || { width: 80, height: 210, type: "interna" };
-        const op = { id: uid(), wallId: best.w.id, t: best.t, width: dp.width || 80, height: dp.height || 210, type: dp.type || "interna" };
+        const op = { id: uid(), wallId: best.w.id, t: best.t, width: dp.width || 80, height: dp.height || 210, type: dp.type || "interna", hinge: "left", swing: "in", phase: VM };
         setProject((prj) => ({ ...prj, doors: [...(prj.doors || []), op] }));
       } else {
         const wp = windowParams || { width: 120, height: 140, sillHeight: 90, type: "finestra", material: "pvc" };
-        const op = { id: uid(), wallId: best.w.id, t: best.t, width: wp.width || 120, height: wp.height || 140, sillHeight: wp.sillHeight ?? 90, type: wp.type || "finestra", material: wp.material || "pvc" };
+        const op = { id: uid(), wallId: best.w.id, t: best.t, width: wp.width || 120, height: wp.height || 140, sillHeight: wp.sillHeight ?? 90, type: wp.type || "finestra", material: wp.material || "pvc", hinge: "left", swing: "in", phase: VM };
         setProject((prj) => ({ ...prj, windows: [...(prj.windows || []), op] }));
       }
     }
@@ -244,7 +244,7 @@ export default function Canvas2D({
         pendingWallClickRef.current = null;
         if (!wallDraft) { setWallDraft(p); return; }
         if (Math.hypot(p.x - wallDraft.x, p.y - wallDraft.y) < 8) { setWallDraft(null); return; }
-        const newWall = { id: uid(), x1: wallDraft.x, y1: wallDraft.y, x2: p.x, y2: p.y, thickness: 10, kind: VM === "fatto" ? "esistente" : "nuovo" };
+        const newWall = { id: uid(), x1: wallDraft.x, y1: wallDraft.y, x2: p.x, y2: p.y, thickness: 10, kind: VM === "fatto" ? "esistente" : "nuovo", phase: VM };
         setProject((prj) => ({ ...prj, walls: [...(prj.walls || []), newWall] }));
         setWallDraft(p);
       }, 230);
@@ -257,7 +257,7 @@ export default function Canvas2D({
         pendingWallClickRef.current = null;
         if (!wallDraft) { setWallDraft(p); return; }
         if (Math.hypot(p.x - wallDraft.x, p.y - wallDraft.y) < 8) { setWallDraft(null); return; }
-        const newWall = { id: uid(), x1: wallDraft.x, y1: wallDraft.y, x2: p.x, y2: p.y, thickness: 8, kind: "cartongesso" };
+        const newWall = { id: uid(), x1: wallDraft.x, y1: wallDraft.y, x2: p.x, y2: p.y, thickness: 8, kind: "cartongesso", phase: VM };
         setProject((prj) => ({ ...prj, walls: [...(prj.walls || []), newWall] }));
         setWallDraft(p);
       }, 230);
@@ -281,7 +281,7 @@ export default function Canvas2D({
       return;
     }
     if (tool === "demolish-wall") {
-      // toggle demolito flag on the closest wall
+      // toggle demolito flag on the closest wall (sempre progetto)
       const walls = project.walls || [];
       let best = null, bestD = 1e9;
       walls.forEach((w) => {
@@ -300,9 +300,30 @@ export default function Canvas2D({
       const r = findRoomAt(p);
       if (r) {
         const areaM2 = polygonArea(r.points) / 10000;
+        // toggle: se esiste già una demolizione pavimento per questa stanza, la rimuovo
+        const existing = (project.demolitions || []).find((d) => d.kind === "pavimento" && d.roomId === r.id);
+        if (existing) {
+          setProject((prj) => ({ ...prj, demolitions: (prj.demolitions || []).filter((d) => d.id !== existing.id) }));
+        } else {
+          setProject((prj) => ({
+            ...prj,
+            demolitions: [...(prj.demolitions || []), { id: uid(), kind: "pavimento", x: p.x, y: p.y, roomId: r.id, areaM2, partial: false, phase: "progetto" }],
+          }));
+        }
+      }
+      return;
+    }
+    if (tool === "demolish-floor-partial") {
+      // demolizione pavimento parziale: chiede %
+      const r = findRoomAt(p);
+      if (r) {
+        const pctStr = window.prompt("Demolizione pavimento parziale - inserisci percentuale dell'area (1-100):", "50");
+        const pct = Math.max(1, Math.min(100, parseFloat(pctStr) || 50));
+        const totalArea = polygonArea(r.points) / 10000;
+        const areaM2 = totalArea * (pct / 100);
         setProject((prj) => ({
           ...prj,
-          demolitions: [...(prj.demolitions || []), { id: uid(), kind: "pavimento", x: p.x, y: p.y, roomId: r.id, areaM2 }],
+          demolitions: [...(prj.demolitions || []), { id: uid(), kind: "pavimento", x: p.x, y: p.y, roomId: r.id, areaM2, partial: true, partialPct: pct, phase: "progetto" }],
         }));
       }
       return;
@@ -314,7 +335,7 @@ export default function Canvas2D({
         const areaM2 = perimM * 1.5; // up to 150cm height typical
         setProject((prj) => ({
           ...prj,
-          demolitions: [...(prj.demolitions || []), { id: uid(), kind: "rivestimento", x: p.x, y: p.y, roomId: r.id, areaM2 }],
+          demolitions: [...(prj.demolitions || []), { id: uid(), kind: "rivestimento", x: p.x, y: p.y, roomId: r.id, areaM2, phase: "progetto" }],
         }));
       }
       return;
@@ -331,21 +352,28 @@ export default function Canvas2D({
     }
     if (tool === "electrical") {
       const kind = electricalKind || "presa";
-      setProject((prj) => ({ ...prj, electrical: [...(prj.electrical || []), { id: uid(), type: kind, x: p.x, y: p.y }] }));
+      setProject((prj) => ({ ...prj, electrical: [...(prj.electrical || []), { id: uid(), type: kind, x: p.x, y: p.y, phase: VM }] }));
       return;
     }
     if (tool === "plumbing") {
       const kind = plumbingKind || "acqua-fredda";
-      setProject((prj) => ({ ...prj, plumbing: [...(prj.plumbing || []), { id: uid(), type: kind, x: p.x, y: p.y }] }));
+      setProject((prj) => ({ ...prj, plumbing: [...(prj.plumbing || []), { id: uid(), type: kind, x: p.x, y: p.y, phase: VM }] }));
       return;
     }
     if (tool === "gas") {
-      setProject((prj) => ({ ...prj, gas: [...(prj.gas || []), { id: uid(), x: p.x, y: p.y }] }));
+      setProject((prj) => ({ ...prj, gas: [...(prj.gas || []), { id: uid(), x: p.x, y: p.y, phase: VM }] }));
       return;
     }
     if (tool === "hvac") {
       const kind = hvacKind || "split";
-      setProject((prj) => ({ ...prj, hvac: [...(prj.hvac || []), { id: uid(), type: kind, x: p.x, y: p.y }] }));
+      setProject((prj) => ({ ...prj, hvac: [...(prj.hvac || []), { id: uid(), type: kind, x: p.x, y: p.y, phase: VM }] }));
+      return;
+    }
+    if (tool === "text") {
+      const txt = window.prompt("Testo da inserire sulla pianta:", "");
+      if (txt && txt.trim()) {
+        setProject((prj) => ({ ...prj, texts: [...(prj.texts || []), { id: uid(), text: txt.trim(), x: p.x, y: p.y, fontSize: 14, color: "#0A0A0A" }] }));
+      }
       return;
     }
     if (tool === "tiling") {
@@ -367,7 +395,7 @@ export default function Canvas2D({
       const defaults = defaultItemSize(m);
       setProject((prj) => ({
         ...prj,
-        items: [...(prj.items || []), { id: uid(), type: t, materialId: m.id, x: p.x, y: p.y, rotation: 0, qty: 1, ...defaults }],
+        items: [...(prj.items || []), { id: uid(), type: t, materialId: m.id, x: p.x, y: p.y, rotation: 0, qty: 1, phase: VM, ...defaults }],
       }));
       return;
     }
@@ -384,7 +412,7 @@ export default function Canvas2D({
       if (roomDraft.length >= 3) {
         const newWalls = roomDraft.map((pt, i) => {
           const next = roomDraft[(i + 1) % roomDraft.length];
-          return { id: uid(), x1: pt.x, y1: pt.y, x2: next.x, y2: next.y, thickness: 10, kind: VM === "fatto" ? "esistente" : "nuovo" };
+          return { id: uid(), x1: pt.x, y1: pt.y, x2: next.x, y2: next.y, thickness: 10, kind: VM === "fatto" ? "esistente" : "nuovo", phase: VM };
         });
         const newRoom = {
           id: uid(),
@@ -395,6 +423,7 @@ export default function Canvas2D({
           ceilingMaterial: "ceil-paint",
           electrical: true,
           plumbing: false,
+          phase: VM,
         };
         setProject((prj) => ({
           ...prj,
@@ -425,30 +454,38 @@ export default function Canvas2D({
     setSelected({ kind, id });
   };
 
-  const isPlacementTool = ["door", "window", "wall", "wall-cartongesso", "room", "item",
-    "demolish-wall", "demolish-floor", "demolish-rivestimento", "controsoffitto",
+  const isPlacementTool = ["door", "window", "wall", "wall-cartongesso", "room", "item", "text",
+    "demolish-wall", "demolish-floor", "demolish-floor-partial", "demolish-rivestimento", "controsoffitto",
     "electrical", "plumbing", "gas", "hvac", "tiling"].includes(tool);
 
   const allWalls = project.walls || [];
-  // Filter walls by view mode
+  // Filter walls by view mode (basato su phase, fallback su kind per retro-compat)
   const walls = allWalls.filter((w) => {
-    if (VM === "fatto") return !w.kind || w.kind === "esistente" || w.kind === "mattone";
+    const phase = w.phase || (w.kind === "nuovo" || w.kind === "cartongesso" ? "progetto" : "fatto");
+    if (VM === "fatto") return phase === "fatto"; // mostra tutti i muri esistenti, anche cartongesso
     if (VM === "demolizioni") return w.demolito;
-    if (VM === "costruzioni") return w.kind === "nuovo" || w.kind === "cartongesso";
+    if (VM === "costruzioni") return phase === "progetto"; // tutti i muri di progetto
     // progetto: tutti tranne demoliti
     return !w.demolito;
   });
   const allDoors = project.doors || [];
   const allWindows = project.windows || [];
   const validWallIds = new Set(walls.map((w) => w.id));
-  const doors = allDoors.filter((d) => validWallIds.has(d.wallId));
-  const windows = allWindows.filter((d) => validWallIds.has(d.wallId));
-  const rooms = project.rooms || [];
-  const items = project.items || [];
-  const electrical = project.electrical || [];
-  const plumbing = project.plumbing || [];
-  const gas = project.gas || [];
-  const hvac = project.hvac || [];
+  // Filtro per phase: in stato fatto vedi solo esistenti, in costruzioni solo progetto, in progetto tutto
+  const phaseOK = (el) => {
+    const ph = el.phase || "fatto";
+    if (VM === "fatto") return ph === "fatto";
+    if (VM === "costruzioni") return ph === "progetto";
+    return true;
+  };
+  const doors = allDoors.filter((d) => validWallIds.has(d.wallId) && phaseOK(d));
+  const windows = allWindows.filter((d) => validWallIds.has(d.wallId) && phaseOK(d));
+  const rooms = (project.rooms || []).filter(phaseOK);
+  const items = (project.items || []).filter(phaseOK);
+  const electrical = (project.electrical || []).filter(phaseOK);
+  const plumbing = (project.plumbing || []).filter(phaseOK);
+  const gas = (project.gas || []).filter(phaseOK);
+  const hvac = (project.hvac || []).filter(phaseOK);
   const tiling = project.tiling || [];
   const demolitions = project.demolitions || [];
 
@@ -642,7 +679,7 @@ export default function Canvas2D({
           const cy = w.y1 + d.t * (w.y2 - w.y1);
           const angle = Math.atan2(w.y2 - w.y1, w.x2 - w.x1) * 180 / Math.PI;
           const isSel = selected?.kind === "doors" && selected.id === d.id;
-          const isBlindata = d.type === "blindata";
+          const isBlindata = d.type === "blindata" || d.type === "blindata-cl3" || d.type === "blindata-cl4";
           const isScorrevole = d.type === "scorrevole";
           const stroke = isSel ? "#2563EB" : (isBlindata ? "#7C2D12" : "#2563EB");
           const hinge = d.hinge || "left"; // 'left' | 'right'
@@ -824,6 +861,28 @@ export default function Canvas2D({
               style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
               data-testid={`hvac-${h.id}`}
             ><HvacSymbol h={h} isSel={isSel} /></g>
+          );
+        })}
+
+        {/* testi liberi sulla pianta */}
+        {(project.texts || []).map((tx) => {
+          const isSel = selected?.kind === "texts" && selected.id === tx.id;
+          return (
+            <g key={tx.id} transform={`translate(${tx.x},${tx.y}) rotate(${tx.rotation || 0})`}
+              onMouseDown={(ev) => {
+                if (isPlacementTool) return;
+                ev.stopPropagation();
+                handleElementClick("texts", tx.id);
+                if (selected?.kind === "texts" && selected.id === tx.id) {
+                  setDrag({ kind: "text-pos", id: tx.id, start: snapPt(toWorld(ev)), orig: { x: tx.x, y: tx.y } });
+                }
+              }}
+              style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
+              data-testid={`text-${tx.id}`}
+            >
+              {isSel && <rect x={-4} y={-(tx.fontSize || 14) - 2} width={(tx.text?.length || 1) * (tx.fontSize || 14) * 0.55 + 8} height={(tx.fontSize || 14) + 6} fill="#FEF3C7" stroke="#D97706" strokeWidth="0.6" />}
+              <text x="0" y="0" fontFamily="Outfit" fontSize={tx.fontSize || 14} fontWeight="600" fill={tx.color || "#0A0A0A"}>{tx.text}</text>
+            </g>
           );
         })}
 

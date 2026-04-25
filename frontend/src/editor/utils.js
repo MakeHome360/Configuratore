@@ -203,7 +203,10 @@ function priceOf(voce) {
 export function estimateProjectV2(project, voci, packageRef) {
   const data = project || {};
   const height = data.roomHeight || 270;
-  const rooms = data.rooms || [];
+  // FIX CRITICO: fatturare SOLO elementi del Progetto (phase==="progetto") oppure NUOVI/cartongesso/demolizioni.
+  // Le geometrie/items con phase==="fatto" rappresentano lo stato esistente del cliente e NON devono finire nel preventivo.
+  const isProgetto = (el) => !el?.phase || el.phase === "progetto";
+  const rooms = (data.rooms || []).filter(isProgetto);
 
   // Aggregate quantities
   const qtyByKey = {};
@@ -244,36 +247,44 @@ export function estimateProjectV2(project, voci, packageRef) {
       add("demolizione_muro", portionM * hM);
     }
     if (!w.demolito) {
-      if (w.kind === "cartongesso") add("costruzione_muro_cartongesso", aM2);
-      else if (w.kind === "nuovo") add("costruzione_muro_mattone", aM2);
+      // Fattura SOLO muri di progetto (cartongesso, kind="nuovo", o phase="progetto"). Skip "esistente" e phase="fatto".
+      const isProgWall = w.kind === "cartongesso" || w.kind === "nuovo" || (w.phase === "progetto" && w.kind !== "esistente");
+      if (isProgWall) {
+        if (w.kind === "cartongesso") add("costruzione_muro_cartongesso", aM2);
+        else add("costruzione_muro_mattone", aM2);
+      }
     }
   });
 
-  // Demolizioni esplicite (pavimento/altro/rivestimento)
+  // Demolizioni esplicite (sempre progetto)
   (data.demolitions || []).forEach((d) => {
     if (d.kind === "pavimento") add("demolizione_pavimento", d.areaM2 || 0);
     if (d.kind === "rivestimento") add("demolizione_rivestimento", d.areaM2 || 0);
   });
 
-  // Doors / Windows
-  (data.doors || []).forEach((d) => {
-    if (d.type === "blindata") add("porta_blindata", 1);
+  // Doors / Windows — solo nuovi (phase==="progetto")
+  (data.doors || []).filter(isProgetto).forEach((d) => {
+    if (d.type === "blindata-cl4") add("porta_blindata_cl4", 1);
+    else if (d.type === "blindata-cl3" || d.type === "blindata") add("porta_blindata_cl3", 1);
     else add("porta_interna", 1);
   });
-  (data.windows || []).forEach((w) => {
+  (data.windows || []).filter(isProgetto).forEach((w) => {
     const mat = w.material || "pvc";
     if (mat === "alluminio") add("finestre_alluminio", 1);
     else if (mat === "legno") add("finestre_legno", 1);
     else add("finestre_pvc", 1);
   });
 
-  // Impianti dettagliati
-  (data.electrical || []).forEach((e) => {
+  // Impianti dettagliati — solo nuovi
+  (data.electrical || []).filter(isProgetto).forEach((e) => {
     if (e.type === "presa" || e.type === "interruttore" || e.type === "luce") add("punto_luce", 1);
   });
-  (data.plumbing || []).forEach((p) => add("punto_acqua", 1));
-  (data.hvac || []).forEach((h) => {
+  (data.plumbing || []).filter(isProgetto).forEach((p) => add("punto_acqua", 1));
+  (data.hvac || []).filter(isProgetto).forEach((h) => {
     if (h.type === "predisposizione") add("predisposizione_clima", 1);
+    else if (h.type === "caldaia") add("caldaia_condensazione", 1);
+    else if (h.type === "canalizzato-ui") add("canalizzato_unita_interna", 1);
+    else if (h.type === "canalizzato-canale") add("canalizzato_canale_ml", h.lengthMl || 1);
     else if (h.kind === "dual") add("climatizzatore_dual", 1);
     else if (h.kind === "trial") add("climatizzatore_trial", 1);
     else add("predisposizione_clima", 1);

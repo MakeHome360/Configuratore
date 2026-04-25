@@ -143,43 +143,44 @@ export function InfissoQuickConfigurator({ open, onClose, onConfirm }) {
             const vet = conf.vetri.find((x) => x.id === it.vetro_id);
             const price = calcPrice(it);
             return (
-              <div key={i} className="border border-zinc-200 rounded p-3 grid grid-cols-12 gap-2 items-end" data-testid={`iqc-row-${i}`}>
+              <div key={i} className="border border-zinc-200 rounded p-3 grid grid-cols-12 gap-3 items-end" data-testid={`iqc-row-${i}`}>
                 <div className="col-span-12 mb-2">
                   <AbacoInfissoMini tipologia={tip} colore={it.colore} larghezza={it.larghezza} altezza={it.altezza}
                     ante={it.ante} tapparella={it.tapparella} tapparella_colore={it.tapparella_colore} zanzariera={it.zanzariera} />
                 </div>
-                <div className="col-span-3"><Label className="text-xs">Tipologia</Label>
-                  <select className="w-full border border-zinc-300 rounded h-9 px-2 text-sm" value={it.tipologia_id} onChange={(e) => upd(i, "tipologia_id", e.target.value)}>
+                <div className="col-span-6 sm:col-span-4 lg:col-span-3"><Label className="text-xs">Tipologia</Label>
+                  <select className="w-full border border-zinc-300 rounded h-10 px-2 text-sm" value={it.tipologia_id} onChange={(e) => upd(i, "tipologia_id", e.target.value)}>
                     {conf.tipologie.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </div>
-                <div className="col-span-2"><Label className="text-xs">Materiale</Label>
-                  <select className="w-full border border-zinc-300 rounded h-9 px-2 text-sm" value={it.materiale_id} onChange={(e) => upd(i, "materiale_id", e.target.value)}>
+                <div className="col-span-6 sm:col-span-4 lg:col-span-2"><Label className="text-xs">Materiale</Label>
+                  <select className="w-full border border-zinc-300 rounded h-10 px-2 text-sm" value={it.materiale_id} onChange={(e) => upd(i, "materiale_id", e.target.value)}>
                     {conf.materiali.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </div>
-                <div className="col-span-2"><Label className="text-xs">Vetro</Label>
-                  <select className="w-full border border-zinc-300 rounded h-9 px-2 text-sm" value={it.vetro_id} onChange={(e) => upd(i, "vetro_id", e.target.value)}>
+                <div className="col-span-6 sm:col-span-4 lg:col-span-2"><Label className="text-xs">Vetro</Label>
+                  <select className="w-full border border-zinc-300 rounded h-10 px-2 text-sm" value={it.vetro_id} onChange={(e) => upd(i, "vetro_id", e.target.value)}>
                     {conf.vetri.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </div>
-                <div className="col-span-1"><Label className="text-xs">Colore</Label>
-                  <select className="w-full border border-zinc-300 rounded h-9 px-2 text-sm" value={it.colore} onChange={(e) => upd(i, "colore", e.target.value)}>
+                <div className="col-span-6 sm:col-span-3 lg:col-span-2"><Label className="text-xs">Colore</Label>
+                  <select className="w-full border border-zinc-300 rounded h-10 px-2 text-sm" value={it.colore} onChange={(e) => upd(i, "colore", e.target.value)}>
                     <option value="bianco">Bianco</option>
                     <option value="antracite">Antracite</option>
                     <option value="grigio">Grigio</option>
                     <option value="marrone">Marrone</option>
                     <option value="noce">Noce</option>
+                    <option value="rovere">Rovere</option>
                   </select>
                 </div>
-                <div className="col-span-1"><Label className="text-xs">Ante</Label>
-                  <select className="w-full border border-zinc-300 rounded h-9 px-2 text-sm" value={it.ante} onChange={(e) => upd(i, "ante", Number(e.target.value))} data-testid={`iqc-ante-${i}`}>
+                <div className="col-span-6 sm:col-span-2 lg:col-span-1"><Label className="text-xs">Ante</Label>
+                  <select className="w-full border border-zinc-300 rounded h-10 px-2 text-sm font-mono font-bold" value={it.ante} onChange={(e) => upd(i, "ante", Number(e.target.value))} data-testid={`iqc-ante-${i}`}>
                     <option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={4}>4</option>
                   </select>
                 </div>
-                <div className="col-span-1"><Label className="text-xs">L (cm)</Label><Input type="number" value={it.larghezza} onChange={(e) => upd(i, "larghezza", Number(e.target.value))} /></div>
-                <div className="col-span-1"><Label className="text-xs">H (cm)</Label><Input type="number" value={it.altezza} onChange={(e) => upd(i, "altezza", Number(e.target.value))} /></div>
-                <div className="col-span-1"><Label className="text-xs">Qty</Label><Input type="number" value={it.qty} onChange={(e) => upd(i, "qty", Number(e.target.value))} /></div>
+                <div className="col-span-4 sm:col-span-3 lg:col-span-1"><Label className="text-xs">L (cm)</Label><Input type="number" className="h-10 text-base font-mono font-bold text-center" value={it.larghezza} onChange={(e) => upd(i, "larghezza", Number(e.target.value))} /></div>
+                <div className="col-span-4 sm:col-span-3 lg:col-span-1"><Label className="text-xs">H (cm)</Label><Input type="number" className="h-10 text-base font-mono font-bold text-center" value={it.altezza} onChange={(e) => upd(i, "altezza", Number(e.target.value))} /></div>
+                <div className="col-span-4 sm:col-span-2 lg:col-span-1"><Label className="text-xs">Qty</Label><Input type="number" className="h-10 text-base font-mono font-bold text-center" value={it.qty} onChange={(e) => upd(i, "qty", Number(e.target.value))} /></div>
                 <div className="col-span-12 mt-1 flex flex-wrap items-center gap-3 bg-zinc-50 border border-dashed border-zinc-300 rounded p-2 text-xs">
                   <span className="font-semibold text-zinc-700">Accessori:</span>
                   <label className="flex items-center gap-1.5 cursor-pointer">

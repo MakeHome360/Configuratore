@@ -16,7 +16,7 @@ import {
   MousePointer2, Minus, Square, DoorClosed, RectangleHorizontal, Sofa, Trash2,
   Save, Download, Sparkles, Eye, EyeOff, Box, Ruler, X, Home, Bath, ChefHat, Bed,
   ChevronRight, ChevronLeft, Hammer, Layers, Zap, Droplet, Flame, Wind, Grid3x3,
-  Package, Upload, FileImage, FileText,
+  Package, Upload, FileImage, FileText, Type,
 } from "lucide-react";
 import { estimateProject, estimateProjectV2, fmtEuro, fmtEuro2, fmtNum, emptyProjectData, uid, polygonArea, polygonPerimeter } from "../editor/utils";
 import { ProspettoWall, ProspettoInputs, computeInterestingWalls } from "../editor/Prospetti";
@@ -31,11 +31,13 @@ const TOOL_GROUPS = [
     { id: "door", icon: DoorClosed, label: "Porta" },
     { id: "window", icon: RectangleHorizontal, label: "Finestra" },
     { id: "item", icon: Sofa, label: "Arredo" },
+    { id: "text", icon: Type, label: "Testo" },
     { id: "delete", icon: Trash2, label: "Elimina" },
   ]},
   { id: "demo", label: "Demolizioni / Costruzioni", tools: [
     { id: "demolish-wall", icon: Hammer, label: "Demolisci muro" },
-    { id: "demolish-floor", icon: Hammer, label: "Demolisci pavimento" },
+    { id: "demolish-floor", icon: Hammer, label: "Demolisci pavimento (totale)" },
+    { id: "demolish-floor-partial", icon: Hammer, label: "Demolisci pavimento %" },
     { id: "demolish-rivestimento", icon: Hammer, label: "Demolisci rivestim." },
     { id: "controsoffitto", icon: Layers, label: "Controsoffitto" },
   ]},
@@ -397,7 +399,14 @@ export default function Editor() {
           )}
           {activeGroup === "impianti" && tool === "hvac" && (
             <SubKindPicker label="Elemento" value={hvacKind} onChange={setHvacKind} options={[
-              { v: "split", l: "Split" }, { v: "esterna", l: "Unità esterna" }, { v: "predisposizione", l: "Predisposizione" }
+              { v: "split", l: "Split a parete" },
+              { v: "esterna", l: "Unità esterna" },
+              { v: "predisposizione", l: "Predisposizione" },
+              { v: "caldaia", l: "Caldaia condensazione" },
+              { v: "caldaia-ibrida", l: "Caldaia ibrida (pompa di calore)" },
+              { v: "canalizzato-ui", l: "Canalizzato · Unità interna" },
+              { v: "canalizzato-canale", l: "Canalizzato · Canale aria (auto plenum)" },
+              { v: "vmc", l: "VMC (ventil. meccanica)" },
             ]} testid="hvac-kind" />
           )}
           {tool === "tiling" && (
@@ -558,17 +567,36 @@ function ToolParamsPanel({ tool, doorParams, setDoorParams, windowParams, setWin
           <div>
             <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Tipo</Label>
             <Select value={doorParams.type} onValueChange={(v) => {
-              const presets = { interna: { width: 80, height: 210 }, blindata: { width: 90, height: 215 }, scorrevole: { width: 90, height: 210 } };
+              const presets = { interna: { width: 80, height: 210 }, "blindata-cl3": { width: 90, height: 215 }, "blindata-cl4": { width: 90, height: 215 }, scorrevole: { width: 90, height: 210 } };
               setDoorParams((p) => ({ ...p, type: v, ...(presets[v] || {}) }));
             }}>
               <SelectTrigger className="rounded-sm h-8 mt-1" data-testid="door-type-select"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="interna">Porta interna</SelectItem>
-                <SelectItem value="blindata">Porta blindata</SelectItem>
+                <SelectItem value="blindata-cl3">Porta blindata Classe 3</SelectItem>
+                <SelectItem value="blindata-cl4">Porta blindata Classe 4</SelectItem>
                 <SelectItem value="scorrevole">Porta scorrevole</SelectItem>
               </SelectContent>
             </Select>
           </div>
+          {doorParams.type !== "scorrevole" && (
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Cardine</Label>
+                <Select value={doorParams.hinge || "left"} onValueChange={(v) => setDoorParams((p) => ({ ...p, hinge: v }))}>
+                  <SelectTrigger className="rounded-sm h-8 mt-1" data-testid="door-default-hinge"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="left">Sinistra</SelectItem><SelectItem value="right">Destra</SelectItem></SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Apertura</Label>
+                <Select value={doorParams.swing || "in"} onValueChange={(v) => setDoorParams((p) => ({ ...p, swing: v }))}>
+                  <SelectTrigger className="rounded-sm h-8 mt-1" data-testid="door-default-swing"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="in">Verso interno</SelectItem><SelectItem value="out">Verso esterno</SelectItem></SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <div><Label className="text-[10px] uppercase tracking-widest text-zinc-500">L (cm)</Label><Input type="number" value={doorParams.width} onChange={(e) => setDoorParams((p) => ({ ...p, width: parseInt(e.target.value) || 80 }))} className="rounded-sm h-8 mt-1 mono" data-testid="door-width-input" /></div>
             <div><Label className="text-[10px] uppercase tracking-widest text-zinc-500">H (cm)</Label><Input type="number" value={doorParams.height} onChange={(e) => setDoorParams((p) => ({ ...p, height: parseInt(e.target.value) || 210 }))} className="rounded-sm h-8 mt-1 mono" data-testid="door-height-input" /></div>
@@ -695,8 +723,8 @@ function PropertiesPanel({ project, setProject, selected, catalog }) {
           <Select value={obj.type || (isDoor ? "interna" : "finestra")} onValueChange={(v) => updateObj({ type: v })}>
             <SelectTrigger className="rounded-sm h-9 mt-1.5"><SelectValue /></SelectTrigger>
             <SelectContent>
-              {isDoor ? (<><SelectItem value="interna">Porta interna</SelectItem><SelectItem value="blindata">Porta blindata</SelectItem><SelectItem value="scorrevole">Porta scorrevole</SelectItem></>) :
-                (<><SelectItem value="finestra">Finestra</SelectItem><SelectItem value="porta-finestra">Porta finestra</SelectItem><SelectItem value="scorrevole">Scorrevole</SelectItem></>)}
+              {isDoor ? (<><SelectItem value="interna">Porta interna</SelectItem><SelectItem value="blindata-cl3">Porta blindata Classe 3</SelectItem><SelectItem value="blindata-cl4">Porta blindata Classe 4</SelectItem><SelectItem value="scorrevole">Porta scorrevole</SelectItem></>) :
+                (<><SelectItem value="finestra">Finestra</SelectItem><SelectItem value="porta-finestra">Porta finestra</SelectItem><SelectItem value="scorrevole">Scorrevole</SelectItem><SelectItem value="vasistas">Vasistas</SelectItem></>)}
             </SelectContent>
           </Select>
         </div>
@@ -706,11 +734,12 @@ function PropertiesPanel({ project, setProject, selected, catalog }) {
             <SelectContent><SelectItem value="pvc">PVC</SelectItem><SelectItem value="alluminio">Alluminio T.T.</SelectItem><SelectItem value="legno">Legno/Alluminio</SelectItem></SelectContent>
           </Select>
         </div>)}
-        {isDoor && obj.type !== "scorrevole" && (
-          <>
+        {/* Cardine + apertura: ora ANCHE per porte interne, blindate, finestre (esclusi scorrevoli) */}
+        {obj.type !== "scorrevole" && obj.type !== "vasistas" && (
+          <div className="grid grid-cols-2 gap-2">
             <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Cardine</Label>
               <Select value={obj.hinge || "left"} onValueChange={(v) => updateObj({ hinge: v })}>
-                <SelectTrigger className="rounded-sm h-9 mt-1.5" data-testid="door-hinge-select"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="rounded-sm h-9 mt-1.5" data-testid={isDoor ? "door-hinge-select" : "win-hinge-select"}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="left">Sinistra</SelectItem>
                   <SelectItem value="right">Destra</SelectItem>
@@ -719,14 +748,14 @@ function PropertiesPanel({ project, setProject, selected, catalog }) {
             </div>
             <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Apertura</Label>
               <Select value={obj.swing || "in"} onValueChange={(v) => updateObj({ swing: v })}>
-                <SelectTrigger className="rounded-sm h-9 mt-1.5" data-testid="door-swing-select"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="rounded-sm h-9 mt-1.5" data-testid={isDoor ? "door-swing-select" : "win-swing-select"}><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="in">Apre verso interno</SelectItem>
-                  <SelectItem value="out">Apre verso esterno</SelectItem>
+                  <SelectItem value="in">{isDoor ? "Verso interno" : "Verso interno"}</SelectItem>
+                  <SelectItem value="out">{isDoor ? "Verso esterno" : "Verso esterno"}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-          </>
+          </div>
         )}
         <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Larghezza (cm)</Label><Input type="number" value={obj.width} onChange={(e) => updateObj({ width: parseInt(e.target.value) || 80 })} className="rounded-sm h-9 mt-1.5 mono" /></div>
         <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Altezza (cm)</Label><Input type="number" value={obj.height} onChange={(e) => updateObj({ height: parseInt(e.target.value) || 210 })} className="rounded-sm h-9 mt-1.5 mono" /></div>

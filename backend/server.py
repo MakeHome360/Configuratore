@@ -442,6 +442,100 @@ async def ai_render(body: AIRenderReq, user: Dict[str, Any] = Depends(get_curren
     }
 
 
+# ---------------- AI Floorplan Import ----------------
+@api.post("/ai/floorplan-import")
+async def ai_floorplan_import(body: dict, user: Dict[str, Any] = Depends(get_current_user)):
+    """Analyze a floorplan image and extract rooms + walls as CAD project_data (cm)."""
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(status_code=500, detail="EMERGENT_LLM_KEY non configurata")
+    img_b64 = body.get("image_base64", "")
+    if "," in img_b64:
+        img_b64 = img_b64.split(",", 1)[1]
+    if not img_b64:
+        raise HTTPException(400, "Immagine mancante")
+    session_id = f"floorplan-{user['id']}-{uuid.uuid4().hex[:8]}"
+    chat = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=session_id,
+        system_message=(
+            "You are a CAD assistant that converts floorplan images into structured JSON.\n"
+            "Output ONLY valid JSON, no prose, no markdown fences.\n"
+            "Coordinates in CENTIMETERS, origin top-left. Estimate realistic apartment dimensions (typical room 300-500cm).\n"
+            "Schema: {\"rooms\":[{\"name\":\"Cucina\",\"points\":[{\"x\":0,\"y\":0},{\"x\":400,\"y\":0},{\"x\":400,\"y\":350},{\"x\":0,\"y\":350}],\"floorMaterial\":\"floor-ceramic\",\"electrical\":true,\"plumbing\":false}]}\n"
+            "Use rectangular polygons unless the room is clearly L-shaped. Identify rooms by labels (Cucina, Bagno, Camera, Soggiorno, Ingresso, Corridoio, Studio) when visible.\n"
+            "Use floor-ceramic for kitchens/bathrooms, floor-parquet for bedrooms/livingroom.\n"
+            "Set plumbing=true for bathrooms/kitchens.\n"
+            "Place rooms adjacent (no gaps) to mimic the source layout. Limit to 2-8 rooms total."
+        ),
+    ).with_model("gemini", "gemini-2.5-pro")
+    try:
+        msg = UserMessage(text="Analizza questa pianta e ritorna il JSON strutturato delle stanze.", file_contents=[ImageContent(img_b64)])
+        response = await chat.send_message(msg)
+    except Exception as e:
+        logger.exception("AI floorplan import failed")
+        raise HTTPException(status_code=500, detail=f"Errore AI: {str(e)[:200]}")
+    # Clean response
+    text = (response or "").strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        # remove first line if it's "json"
+        lines = text.split("\n", 1)
+        if lines and lines[0].strip().lower().startswith("json"):
+            text = lines[1] if len(lines) > 1 else ""
+        text = text.strip("`").strip()
+    # Find JSON braces
+    import json as _json
+    try:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            data = _json.loads(text[start:end+1])
+        else:
+            data = _json.loads(text)
+    except Exception:
+        raise HTTPException(500, f"Risposta AI non parsabile: {text[:200]}")
+
+    rooms_in = data.get("rooms", [])
+    out_rooms = []
+    out_walls = []
+    for r in rooms_in:
+        pts = r.get("points") or []
+        if len(pts) < 3:
+            continue
+        room_id = uuid.uuid4().hex[:8]
+        out_rooms.append({
+            "id": room_id,
+            "name": r.get("name", "Stanza"),
+            "points": [{"x": float(p["x"]), "y": float(p["y"])} for p in pts],
+            "floorMaterial": r.get("floorMaterial", "floor-ceramic"),
+            "wallMaterial": r.get("wallMaterial", "wall-paint"),
+            "ceilingMaterial": r.get("ceilingMaterial", "ceil-paint"),
+            "electrical": bool(r.get("electrical", True)),
+            "plumbing": bool(r.get("plumbing", False)),
+        })
+        # generate walls from points
+        for i in range(len(pts)):
+            a = pts[i]
+            b = pts[(i + 1) % len(pts)]
+            out_walls.append({
+                "id": uuid.uuid4().hex[:8],
+                "x1": float(a["x"]), "y1": float(a["y"]),
+                "x2": float(b["x"]), "y2": float(b["y"]),
+                "thickness": 10, "kind": "mattone",
+            })
+    return {
+        "project_data": {
+            "rooms": out_rooms,
+            "walls": out_walls,
+            "doors": [], "windows": [], "items": [],
+            "electrical": [], "plumbing": [], "gas": [], "hvac": [],
+            "demolitions": [], "tiling": [],
+            "roomHeight": 270, "currency": "EUR",
+        },
+        "rooms_count": len(out_rooms),
+    }
+
+
 # ---------------- Health ----------------
 @api.get("/")
 async def root():

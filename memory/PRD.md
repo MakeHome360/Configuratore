@@ -73,9 +73,21 @@
   - Fix bug doppio-click chiusura stanza (timeout-based per evitare punto vagante)
   - Pareti automatiche e quotate sui bordi della stanza al doppio click
   - Sidebar destra collassabile (toggle ChevronLeft/Right)
-  - Fix inserimento porte/finestre: i muri/stanze non bloccano più il click in modalità door/window
-  - Pannello parametri porta/finestra (tipo: interna/blindata/scorrevole · finestra/porta-finestra/scorrevole + larghezza/altezza/parapetto)
-  - Tooltip etichette su porte/finestre con larghezza
+  - Fix inserimento porte/finestre: i muri/stanze non bloccano più il click
+  - Pannello parametri porta/finestra (tipo: interna/blindata/scorrevole · finestra/porta-finestra/scorrevole + larghezza/altezza/parapetto + materiale PVC/Alluminio/Legno)
+- **CAD avanzato (current session)**:
+  - Tool gruppi: BASE / DEMOLIZIONI / IMPIANTI / FINITURE
+  - Demolizioni: muri (toggle flag rosso tratteggiato), pavimenti, controsoffitti
+  - Costruzioni: muri mattone vs cartongesso (stile diverso)
+  - Impianti elettrico: quadro Q, scatole derivazione, prese, interruttori, punti luce
+  - Impianti idraulico: acqua fredda F, calda C, scarico S
+  - Gas + Condizionamento (split / unità esterna / predisposizione)
+  - Schema posa piastrelle: 30x60, 60x60, 60x120, 80x80, 22.5x90, 25x150 + angolo + punto di partenza (algoritmo poligono clipPath)
+  - **Sincronizzazione live preventivo ↔ Voci Backoffice**: ogni elemento CAD aggiorna automaticamente il computo metrico (mq/ml/punto/pz). Mappa 25+ chiavi → voce backoffice via `VOCE_MAP`.
+  - **Pacchetto attivo**: selettore in alto. Calcola "incluso" vs "extra" per ogni voce. UI: incluso in verde, extra in rosso.
+  - **Tavole di Progetto**: 8 tavole (Stato di Fatto, Stato di Progetto, Demolizioni/Costruzioni, Imp. Elettrico, Idraulico, Gas, Condizionamento, Schema Posa) con layer toggle. Anteprime grid + esporta PDF A3 multi-pagina + Conferma in Commessa (salvataggio flag su progetto)
+  - **AI Floorplan Import**: upload immagine pianta → POST `/api/ai/floorplan-import` → Gemini 2.5 Pro Vision estrae JSON stanze (cm) → progetto 2D/3D auto-generato modificabile
+- **Abaco Infissi visuale** in PreventivoInfissi: SVG schematico con telaio colorato, vetro, anta, maniglia, quote, materiale/vetro/colore/misura. Aggiunto campo Colore (bianco/antracite/grigio/marrone/noce/rovere)
 - Full base44 replica implemented in one session
 - Sidebar teal persistente con 4 sezioni + ruoli-based nav
 - 4 wizard preventivi completi con calcoli live

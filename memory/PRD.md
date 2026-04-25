@@ -68,7 +68,14 @@
 - **negozi / subappaltatori / impostazioni / dati_azienda**
 - **materials / projects** (CAD)
 
-## Changelog (Feb 2026 — round 7 finalizzazione critica)
+## Changelog (Feb 2026 — round 8: separazione fatto/progetto + pacchetto live)
+- **STATO DI FATTO IMMUTABILE in mode Progetto**: PropertiesPanel ora riceve `editMode`. Per stanze/muri con `phase=fatto` mostra banner 🔒 e disabilita i campi (`fieldset disabled` + opacity-60). Nelle stanze fatto compare un blocco amber "⚒ Modifiche di progetto" con override floorMaterial/wallMaterial/ceilingMaterial/controsoffitto/electrical/plumbing/pittura. La stanza fatto resta intatta nel DB; solo `room.progetto` viene popolato.
+- **PREVENTIVO LIVE LE MODIFICHE DI PROGETTO**: `estimateProjectV2` ora itera tutte le stanze (fatto+progetto). Per fatto considera SOLO se ha `room.progetto` overrides. Per progetto usa direttamente le sue proprietà. Esempio test reale: cucina 14m² fatto + progetto={parquet, controsoffitto, elettrico} → 4599€ senza pacchetto.
+- **PACCHETTO LIVE corretto**: il packageRef ora salva `price_per_m2` e `package_base_total` (mq_inclusi × prezzo). estimateProjectV2 calcola: total = forfait_pacchetto + extra_non_coperti. CostPanelV2 mostra 3 righe: "Forfait pacchetto", "Voci incluse (coperte)", "Extra (non coperti)". Test reale: stessa cucina con BASIC → 31.162€ = 30.400€ forfait + 762€ extra controsoffitto. SENZA pacchetto era 4599€. ORA i numeri cambiano correttamente.
+- **PHASE MIGRATION**: al caricamento del progetto, ensurePhase() assegna automaticamente phase="fatto" a tutti gli elementi senza phase (correzione legacy che faceva apparire roba di progetto anche in tavola fatto).
+- **addQuickRoom** ora setta `phase` corretto in base a editMode (era il bug che causava elementi senza phase, mostrati in entrambe le viste).
+- **Label "Stato di Fatto"** ripristinato (era stato accorciato a "Fatto").
+- **Stanze con modifiche di progetto** sul canvas mostrano overlay tratteggiato amber + label "⚒ MODIFICHE PROGETTO".
 - **FIX SPLIT STANZA ROBUSTO**: riscritta `splitRoomByWall` con line-line intersection (non più segment-segment), tolleranza snap-grid (u in [-1e-3, 1+1e-3]), dedup intersezioni vicine, validazione midpoint-in-polygon per poligoni concavi. Test E2E browser-validated: stanza Cucina + muro orizzontale → split in 'Cucina A' + 'Cucina B' (verificato anche nel computo metrico: 1094€ muro nuovo + 428€ demoliz. muri + 227€ demoliz. pavim).
 - **FIX VOCI PREVENTIVO SEPARATE**: aggiunte 4 voci backoffice distinte (Demolizione muri 22€/m², Demolizione pavimento 18€/m², Demolizione rivestimento pareti 16.5€/m², Demolizione controsoffitto 14€/m²). Aggiunto endpoint `POST /api/voci-backoffice/seed-missing` per popolarle senza distruggere voci esistenti. VOCE_MAP in utils.js aggiornata (demolizione_muro/pavimento/rivestimento/controsoffitto puntano a 4 voci specifiche).
 - **FIX DEMOLIZIONE PAVIMENTO PARZIALE**: il rendering canvas ora distingue demolizione TOTALE (hatch+contorno su tutta la stanza, label "DEMO PAV. TOTALE") da PARZIALE (solo poligono area free-form, label "DEMO X.XX m²"). estimateProjectV2 ricalcola area dal poligono se presente.

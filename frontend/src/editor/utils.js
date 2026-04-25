@@ -218,38 +218,58 @@ function priceOf(voce) {
 export function estimateProjectV2(project, voci, packageRef) {
   const data = project || {};
   const height = data.roomHeight || 270;
-  // FIX CRITICO: fatturare SOLO elementi del Progetto (phase==="progetto"). Tutto ciò che è
-  // 'fatto' o legacy (no phase) NON entra nel preventivo. Cartongesso/demolizioni hanno il loro
-  // filtro specifico (sempre progetto perché operativamente sono interventi nuovi).
-  const isProgetto = (el) => el?.phase === "progetto";
-  const rooms = (data.rooms || []).filter(isProgetto);
-
   // Aggregate quantities
   const qtyByKey = {};
   const add = (k, n) => { qtyByKey[k] = (qtyByKey[k] || 0) + n; };
 
-  // Floors / Ceilings / Walls (by room)
-  rooms.forEach((r) => {
+  // Floors / Ceilings / Walls (by room): considera STANZE PROGETTO + STANZE FATTO con override progetto
+  const allRoomsForBilling = [];
+  (data.rooms || []).forEach((r) => {
+    const isFatto = (r.phase || "fatto") === "fatto";
+    if (!isFatto) {
+      // Stanza nuova di progetto: usa direttamente le sue proprietà
+      allRoomsForBilling.push({ room: r, fm: r.floorMaterial, wm: r.wallMaterial, ctr: r.controsoffitto, elec: r.electrical, plumb: r.plumbing, pittura: true });
+    } else if (r.progetto) {
+      // Stanza esistente con modifiche di progetto: usa SOLO gli override
+      const p = r.progetto;
+      allRoomsForBilling.push({
+        room: r,
+        fm: p.floorMaterial || null,
+        wm: p.wallMaterial || null,
+        ctr: !!p.controsoffitto,
+        elec: !!p.electrical,
+        plumb: !!p.plumbing,
+        pittura: p.pittura !== false && (!!p.wallMaterial || !!p.floorMaterial || !!p.controsoffitto || !!p.electrical || !!p.plumbing),
+      });
+    }
+  });
+
+  allRoomsForBilling.forEach(({ room: r, fm, wm, ctr, elec, plumb, pittura }) => {
     const areaM2 = polygonArea(r.points) / 10000;
     const perimM = polygonPerimeter(r.points) / 100;
     const wallAreaM2 = perimM * (height / 100);
-    // pavimento by material id heuristic
-    const fm = (r.floorMaterial || "").toLowerCase();
-    if (fm.includes("parquet")) add("pavimento_parquet", areaM2);
-    else if (fm.includes("pvc") || fm.includes("laminat")) add("pavimento_pvc", areaM2);
-    else add("pavimento_piastrelle", areaM2);
-    // pittura pareti
-    add("pittura_pareti", wallAreaM2);
-    // battiscopa
-    add("battiscopa", perimM);
-    // rivestimento bagno (se plumbing)
-    if (r.plumbing) add("rivestimento_piastrelle", wallAreaM2 * 0.5);
-    // impianto elettrico/idraulico per mq
-    if (r.electrical) add("impianto_elettrico_mq", areaM2);
-    if (r.plumbing) add("impianto_idraulico_mq", areaM2);
-    // controsoffitto se flaggato
-    if (r.controsoffitto) add("controsoffitto", areaM2);
+    if (fm) {
+      const f = (fm || "").toLowerCase();
+      if (f.includes("parquet")) add("pavimento_parquet", areaM2);
+      else if (f.includes("pvc") || f.includes("laminat")) add("pavimento_pvc", areaM2);
+      else add("pavimento_piastrelle", areaM2);
+      add("battiscopa", perimM);
+    }
+    if (wm) {
+      const w = (wm || "").toLowerCase();
+      if (w.includes("piastrell") || w.includes("tile") || w.includes("ceramic")) add("rivestimento_piastrelle", wallAreaM2 * 0.5);
+    }
+    if (pittura) add("pittura_pareti", wallAreaM2);
+    if (elec) add("impianto_elettrico_mq", areaM2);
+    if (plumb) {
+      add("impianto_idraulico_mq", areaM2);
+      if (!wm) add("rivestimento_piastrelle", wallAreaM2 * 0.5);
+    }
+    if (ctr) add("controsoffitto", areaM2);
   });
+
+  // helper isProgetto per gli ELEMENTI (porte, finestre, items, impianti, scale)
+  const isProgetto = (el) => el?.phase === "progetto";
 
   // Walls: fatturare SOLO se phase==="progetto". (cartongesso o kind="nuovo" senza phase = legacy → trattati come progetto)
   (data.walls || []).forEach((w) => {
@@ -380,9 +400,10 @@ export function estimateProjectV2(project, voci, packageRef) {
 
   return {
     items,
-    total: round2(totalExtra + totalIncluded),
+    total: round2(totalExtra + (packageRef?.package_base_total || totalIncluded)),
     extra_total: round2(totalExtra),
     included_total: round2(totalIncluded),
+    package_base: round2(packageRef?.package_base_total || 0),
     byCategory: byCat,
     package_name: packageRef?.name || null,
   };

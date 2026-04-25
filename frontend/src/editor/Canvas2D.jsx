@@ -638,6 +638,7 @@ export default function Canvas2D({
           const isFullFloorDemolito = demolitions.some((d) => d.kind === "pavimento" && d.roomId === r.id && !d.partial && !d.polygon);
           const isRivestDemolito = demolitions.some((d) => d.kind === "rivestimento" && d.roomId === r.id && !d.wallId);
           const showFloor = L.floors !== false && !isFullFloorDemolito;
+          const hasProgettoMods = !!r.progetto && (r.progetto.floorMaterial || r.progetto.wallMaterial || r.progetto.ceilingMaterial || r.progetto.controsoffitto || r.progetto.electrical || r.progetto.plumbing);
           return (
             <g key={r.id}
               onMouseDown={(e) => { if (isPlacementTool) return; e.stopPropagation(); handleElementClick("rooms", r.id); }}
@@ -672,6 +673,13 @@ export default function Canvas2D({
               {r.controsoffitto && <text x={cx} y={cy + 28} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#0F766E" fontWeight="700" pointerEvents="none">CTRSF</text>}
               {isFullFloorDemolito && <text x={cx} y={cy + 28} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#DC2626" fontWeight="700" pointerEvents="none">DEMO PAV. TOTALE</text>}
               {isRivestDemolito && <text x={cx} y={cy + 42} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#F97316" fontWeight="700" pointerEvents="none">DEMO RIV. TOTALE</text>}
+              {/* Indicatore modifiche di progetto stanza */}
+              {hasProgettoMods && VM !== "fatto" && (
+                <>
+                  <polygon points={pts} fill="#FBBF24" fillOpacity="0.10" stroke="#F59E0B" strokeWidth="1.5" strokeDasharray="2,3" pointerEvents="none" />
+                  <text x={cx} y={cy + 56} fontSize="8" textAnchor="middle" fontFamily="JetBrains Mono" fill="#B45309" fontWeight="700" pointerEvents="none">⚒ MODIFICHE PROGETTO</text>
+                </>
+              )}
               {/* corner dots + angle labels (fuori-quadro detection) */}
               {r.points.map((pt, i) => {
                 const prev = r.points[(i - 1 + r.points.length) % r.points.length];

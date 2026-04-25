@@ -198,6 +198,18 @@ export default function Editor() {
           api.get("/packages").catch(() => ({ data: [] })),
         ]);
         const data = pr.data.data && Object.keys(pr.data.data).length > 0 ? { ...emptyProjectData(), ...pr.data.data } : emptyProjectData();
+        // Migrazione phase: assegna "fatto" agli elementi senza phase (progetti legacy)
+        const ensurePhase = (arr) => (arr || []).map((el) => el.phase ? el : { ...el, phase: "fatto" });
+        data.walls = ensurePhase(data.walls);
+        data.rooms = ensurePhase(data.rooms);
+        data.doors = ensurePhase(data.doors);
+        data.windows = ensurePhase(data.windows);
+        data.electrical = ensurePhase(data.electrical);
+        data.plumbing = ensurePhase(data.plumbing);
+        data.gas = ensurePhase(data.gas);
+        data.hvac = ensurePhase(data.hvac);
+        data.stairs = ensurePhase(data.stairs);
+        data.items = ensurePhase(data.items);
         setProject({ ...pr.data, data });
         setCatalog(cat.data);
         setVoci(vc.data || []);
@@ -228,6 +240,7 @@ export default function Editor() {
 
   const addQuickRoom = (q) => {
     const existing = project?.data?.rooms || [];
+    const phase = editMode === "fatto" ? "fatto" : "progetto";
     let startX = 200, startY = 200;
     if (existing.length > 0) {
       let maxX = 0;
@@ -240,11 +253,12 @@ export default function Editor() {
       { x: startX, y: startY }, { x: startX + w, y: startY },
       { x: startX + w, y: startY + h }, { x: startX, y: startY + h },
     ];
+    const wallKind = phase === "fatto" ? "esistente" : "nuovo";
     const walls = [
-      { id: wallIds[0], x1: corners[0].x, y1: corners[0].y, x2: corners[1].x, y2: corners[1].y, thickness: 10, kind: "mattone" },
-      { id: wallIds[1], x1: corners[1].x, y1: corners[1].y, x2: corners[2].x, y2: corners[2].y, thickness: 10, kind: "mattone" },
-      { id: wallIds[2], x1: corners[2].x, y1: corners[2].y, x2: corners[3].x, y2: corners[3].y, thickness: 10, kind: "mattone" },
-      { id: wallIds[3], x1: corners[3].x, y1: corners[3].y, x2: corners[0].x, y2: corners[0].y, thickness: 10, kind: "mattone" },
+      { id: wallIds[0], x1: corners[0].x, y1: corners[0].y, x2: corners[1].x, y2: corners[1].y, thickness: 10, kind: wallKind, phase },
+      { id: wallIds[1], x1: corners[1].x, y1: corners[1].y, x2: corners[2].x, y2: corners[2].y, thickness: 10, kind: wallKind, phase },
+      { id: wallIds[2], x1: corners[2].x, y1: corners[2].y, x2: corners[3].x, y2: corners[3].y, thickness: 10, kind: wallKind, phase },
+      { id: wallIds[3], x1: corners[3].x, y1: corners[3].y, x2: corners[0].x, y2: corners[0].y, thickness: 10, kind: wallKind, phase },
     ];
     const room = {
       id: uid(),
@@ -255,9 +269,10 @@ export default function Editor() {
       ceilingMaterial: "ceil-paint",
       electrical: true,
       plumbing: !!q.plumbing,
+      phase,
     };
     setProjectData((p) => ({ ...p, walls: [...(p.walls || []), ...walls], rooms: [...(p.rooms || []), room] }));
-    toast.success(`${q.label} aggiunta`);
+    toast.success(`${q.label} aggiunta · ${phase === "fatto" ? "Stato di Fatto" : "Progetto"}`);
   };
 
   const estimate = useMemo(() => (project ? estimateProject(project.data, catalog) : null), [project, catalog]);
@@ -490,7 +505,7 @@ export default function Editor() {
         <Input value={project.name} onChange={(e) => setProject((p) => ({ ...p, name: e.target.value }))} className="rounded-sm h-8 border-transparent hover:border-zinc-200 focus:border-zinc-300 max-w-[160px] shrink-0" data-testid="project-name-input" />
         <div className="mono text-[10px] text-zinc-400 shrink-0">#{project.id.slice(0, 6)}</div>
         <div className="flex border border-zinc-300 shrink-0" data-testid="edit-mode-toggle">
-          <button onClick={() => setEditMode("fatto")} className={`px-2 py-1 text-[10px] uppercase tracking-widest ${editMode === "fatto" ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-50"}`} data-testid="mode-fatto" title="Disegna lo stato esistente del cliente">Fatto</button>
+          <button onClick={() => setEditMode("fatto")} className={`px-2 py-1 text-[10px] uppercase tracking-widest ${editMode === "fatto" ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-50"}`} data-testid="mode-fatto" title="Disegna lo stato esistente del cliente">Stato di Fatto</button>
           <button onClick={() => setEditMode("progetto")} className={`px-2 py-1 text-[10px] uppercase tracking-widest border-l border-zinc-300 ${editMode === "progetto" ? "bg-amber-500 text-white" : "text-zinc-700 hover:bg-zinc-50"}`} data-testid="mode-progetto" title="Lavora sul progetto: il preventivo si aggiorna live">Progetto</button>
         </div>
         <PackagePicker project={project} setProjectData={setProjectData} packages={packages} voci={voci} />
@@ -624,7 +639,7 @@ export default function Editor() {
                 <TabsTrigger value="cost" className="rounded-none text-xs uppercase tracking-widest" data-testid="tab-cost">Preventivo Live</TabsTrigger>
               </TabsList>
               <TabsContent value="properties" className="p-4 overflow-auto flex-1 mt-0">
-                <PropertiesPanel project={project.data} setProject={setProjectData} selected={selected} catalog={catalog} />
+                <PropertiesPanel project={project.data} setProject={setProjectData} selected={selected} catalog={catalog} editMode={editMode} />
               </TabsContent>
               <TabsContent value="catalog" className="p-0 overflow-auto flex-1 mt-0">
                 <CatalogPanel catalog={catalog} selectedMaterial={selectedMaterial} setSelectedMaterial={(id) => { setSelectedMaterial(id); setTool("item"); }} />
@@ -691,7 +706,7 @@ function PackagePicker({ project, setProjectData, packages, voci }) {
       { key: "demolizione_muro", qty_inclusa: 10 },
       { key: "rivestimento_piastrelle", qty_inclusa: 18 },
     ];
-    setProjectData((p) => ({ ...p, packageRef: { package_id: pkg.id, name: pkg.name, mq_inclusi: mq, voci_incluse } }));
+    setProjectData((p) => ({ ...p, packageRef: { package_id: pkg.id, name: pkg.name, mq_inclusi: mq, price_per_m2: pkg.price_per_m2 || 0, package_base_total: Math.round((pkg.price_per_m2 || 0) * mq * 100) / 100, voci_incluse } }));
   };
   return (
     <Select value={ref?.package_id || "_none"} onValueChange={handleSelect}>
@@ -787,7 +802,7 @@ function ToolParamsPanel({ tool, doorParams, setDoorParams, windowParams, setWin
   );
 }
 
-function PropertiesPanel({ project, setProject, selected, catalog }) {
+function PropertiesPanel({ project, setProject, selected, catalog, editMode }) {
   if (!selected) {
     return (
       <div>
@@ -807,33 +822,68 @@ function PropertiesPanel({ project, setProject, selected, catalog }) {
   const obj = (project[kind] || []).find((x) => x.id === selected.id);
   if (!obj) return <div className="text-sm text-zinc-500">Elemento non trovato</div>;
   const updateObj = (patch) => setProject((p) => ({ ...p, [kind]: (p[kind] || []).map((x) => x.id === selected.id ? { ...x, ...patch } : x) }));
+  const isFattoElement = (obj.phase || "fatto") === "fatto";
+  const isProgettoMode = editMode === "progetto";
+  const lockedFatto = isFattoElement && isProgettoMode;
 
   if (kind === "rooms") {
+    const prog = obj.progetto || {};
+    const updateProgetto = (patch) => updateObj({ progetto: { ...prog, ...patch } });
     return (
       <div className="space-y-4">
-        <div className="label-kicker">Stanza</div>
-        <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Nome</Label><Input value={obj.name} onChange={(e) => updateObj({ name: e.target.value })} className="rounded-sm h-9 mt-1.5" data-testid="room-name-input" /></div>
-        <MaterialSelect label="Pavimento" category="floor" catalog={catalog} value={obj.floorMaterial} onChange={(v) => updateObj({ floorMaterial: v })} testid="room-floor-select" />
-        <MaterialSelect label="Pareti" category="wall" catalog={catalog} value={obj.wallMaterial} onChange={(v) => updateObj({ wallMaterial: v })} testid="room-wall-select" />
-        <MaterialSelect label="Soffitto" category="ceiling" catalog={catalog} value={obj.ceilingMaterial} onChange={(v) => updateObj({ ceilingMaterial: v })} testid="room-ceiling-select" />
-        <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-zinc-500">Imp. elettrico</Label><Switch checked={!!obj.electrical} onCheckedChange={(v) => updateObj({ electrical: v })} data-testid="room-electrical-switch" /></div>
-        <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-zinc-500">Imp. idraulico</Label><Switch checked={!!obj.plumbing} onCheckedChange={(v) => updateObj({ plumbing: v })} data-testid="room-plumbing-switch" /></div>
-        <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-zinc-500">Controsoffitto</Label><Switch checked={!!obj.controsoffitto} onCheckedChange={(v) => updateObj({ controsoffitto: v })} data-testid="room-controsoff-switch" /></div>
+        <div className="label-kicker">Stanza{isFattoElement ? " (Stato di Fatto)" : " (Progetto)"}</div>
+        {lockedFatto && (
+          <div className="bg-amber-50 border border-amber-300 p-2 text-xs text-amber-900">
+            🔒 Elemento dello Stato di Fatto. In modalità Progetto le proprietà sono read-only — usa le <b>Modifiche di progetto</b> qui sotto per definire le nuove finiture, oppure torna in modalità "Stato di Fatto" per modificarlo.
+          </div>
+        )}
+        <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Nome</Label><Input value={obj.name} onChange={(e) => updateObj({ name: e.target.value })} disabled={lockedFatto} className="rounded-sm h-9 mt-1.5" data-testid="room-name-input" /></div>
+        <fieldset disabled={lockedFatto} className={lockedFatto ? "opacity-60 pointer-events-none" : ""}>
+          <MaterialSelect label="Pavimento (esistente)" category="floor" catalog={catalog} value={obj.floorMaterial} onChange={(v) => updateObj({ floorMaterial: v })} testid="room-floor-select" />
+          <div className="h-3"></div>
+          <MaterialSelect label="Pareti (esistente)" category="wall" catalog={catalog} value={obj.wallMaterial} onChange={(v) => updateObj({ wallMaterial: v })} testid="room-wall-select" />
+          <div className="h-3"></div>
+          <MaterialSelect label="Soffitto (esistente)" category="ceiling" catalog={catalog} value={obj.ceilingMaterial} onChange={(v) => updateObj({ ceilingMaterial: v })} testid="room-ceiling-select" />
+          <div className="flex items-center justify-between mt-3"><Label className="text-xs uppercase tracking-widest text-zinc-500">Imp. elettrico</Label><Switch checked={!!obj.electrical} onCheckedChange={(v) => updateObj({ electrical: v })} data-testid="room-electrical-switch" /></div>
+          <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-zinc-500">Imp. idraulico</Label><Switch checked={!!obj.plumbing} onCheckedChange={(v) => updateObj({ plumbing: v })} data-testid="room-plumbing-switch" /></div>
+          <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-zinc-500">Controsoffitto</Label><Switch checked={!!obj.controsoffitto} onCheckedChange={(v) => updateObj({ controsoffitto: v })} data-testid="room-controsoff-switch" /></div>
+        </fieldset>
+        {/* MODIFICHE DI PROGETTO: visibili sempre per stanze fatto+progetto, modificabili in mode progetto */}
+        {isProgettoMode && (
+          <div className="bg-amber-50 border border-amber-300 p-3 space-y-3" data-testid="room-progetto-overrides">
+            <div className="label-kicker text-amber-800">⚒ Modifiche di progetto</div>
+            <MaterialSelect label="Nuovo pavimento" category="floor" catalog={catalog} value={prog.floorMaterial || ""} onChange={(v) => updateProgetto({ floorMaterial: v })} testid="room-prog-floor" />
+            <MaterialSelect label="Nuovo rivestimento pareti" category="wall" catalog={catalog} value={prog.wallMaterial || ""} onChange={(v) => updateProgetto({ wallMaterial: v })} testid="room-prog-wall" />
+            <MaterialSelect label="Nuovo soffitto" category="ceiling" catalog={catalog} value={prog.ceilingMaterial || ""} onChange={(v) => updateProgetto({ ceilingMaterial: v })} testid="room-prog-ceiling" />
+            <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-amber-800">Aggiungi controsoffitto</Label><Switch checked={!!prog.controsoffitto} onCheckedChange={(v) => updateProgetto({ controsoffitto: v })} data-testid="room-prog-ctrsoff" /></div>
+            <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-amber-800">Rifare imp. elettrico</Label><Switch checked={!!prog.electrical} onCheckedChange={(v) => updateProgetto({ electrical: v })} data-testid="room-prog-elec" /></div>
+            <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-amber-800">Rifare imp. idraulico</Label><Switch checked={!!prog.plumbing} onCheckedChange={(v) => updateProgetto({ plumbing: v })} data-testid="room-prog-plumb" /></div>
+            <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-amber-800">Pittura pareti</Label><Switch checked={prog.pittura !== false} onCheckedChange={(v) => updateProgetto({ pittura: v })} data-testid="room-prog-pittura" /></div>
+            <button onClick={() => updateObj({ progetto: null })} className="text-xs text-amber-700 underline" data-testid="room-prog-clear">Rimuovi tutte le modifiche di progetto</button>
+          </div>
+        )}
       </div>
     );
   }
   if (kind === "walls") {
     return (
       <div className="space-y-4">
-        <div className="label-kicker">Parete</div>
+        <div className="label-kicker">Parete{isFattoElement ? " (Stato di Fatto)" : " (Progetto)"}</div>
+        {lockedFatto && (
+          <div className="bg-amber-50 border border-amber-300 p-2 text-xs text-amber-900">
+            🔒 Muro dello Stato di Fatto. In modalità Progetto puoi solo demolirlo (totale o parziale) ma non modificarne le proprietà fisiche.
+          </div>
+        )}
         <div className="mono text-xs text-zinc-500">Lunghezza: {fmtNum(Math.hypot(obj.x2 - obj.x1, obj.y2 - obj.y1) / 100, 2)} m</div>
-        <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Tipo</Label>
-          <Select value={obj.kind || "mattone"} onValueChange={(v) => updateObj({ kind: v })}>
-            <SelectTrigger className="rounded-sm h-9 mt-1.5"><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="esistente">Esistente (mattone)</SelectItem><SelectItem value="nuovo">Nuovo (mattone)</SelectItem><SelectItem value="cartongesso">Cartongesso</SelectItem></SelectContent>
-          </Select>
-        </div>
-        <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Spessore (cm)</Label><Input type="number" value={obj.thickness || 10} onChange={(e) => updateObj({ thickness: parseInt(e.target.value) || 10 })} className="rounded-sm h-9 mt-1.5 mono" /></div>
+        <fieldset disabled={lockedFatto} className={lockedFatto ? "opacity-60 pointer-events-none" : ""}>
+          <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Tipo</Label>
+            <Select value={obj.kind || "mattone"} onValueChange={(v) => updateObj({ kind: v })}>
+              <SelectTrigger className="rounded-sm h-9 mt-1.5"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="esistente">Esistente (mattone)</SelectItem><SelectItem value="nuovo">Nuovo (mattone)</SelectItem><SelectItem value="cartongesso">Cartongesso</SelectItem></SelectContent>
+            </Select>
+          </div>
+          <div className="mt-3"><Label className="text-xs uppercase tracking-widest text-zinc-500">Spessore (cm)</Label><Input type="number" value={obj.thickness || 10} onChange={(e) => updateObj({ thickness: parseInt(e.target.value) || 10 })} className="rounded-sm h-9 mt-1.5 mono" /></div>
+        </fieldset>
         <Separator />
         <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-zinc-500">Demolisci tutto</Label><Switch checked={!!obj.demolito} onCheckedChange={(v) => updateObj({ demolito: v, demolito_partial: v ? null : obj.demolito_partial })} data-testid="wall-demolito-switch" /></div>
         {!obj.demolito && (
@@ -1027,6 +1077,9 @@ function CostPanelV2({ estimate, packageRef, legacy }) {
         <div className="border border-emerald-300 bg-emerald-50 p-3">
           <div className="label-kicker text-emerald-700 mb-1">Pacchetto attivo</div>
           <div className="font-medium" data-testid="active-package">{packageRef.name} · {packageRef.mq_inclusi} mq inclusi</div>
+          {packageRef.package_base_total > 0 && (
+            <div className="mono text-xs text-emerald-800 mt-1">Forfait base: {fmtEuro(packageRef.package_base_total)} ({fmtEuro(packageRef.price_per_m2 || 0)}/mq × {packageRef.mq_inclusi} mq)</div>
+          )}
         </div>
       )}
       <div>
@@ -1034,8 +1087,9 @@ function CostPanelV2({ estimate, packageRef, legacy }) {
         <div className="text-3xl font-semibold tracking-tight mono text-zinc-900" data-testid="total-cost-v2">{fmtEuro(estimate.total)}</div>
         {packageRef && (
           <div className="mono text-xs text-zinc-500 mt-2 space-y-0.5">
-            <div className="flex justify-between"><span>Incluso pacchetto</span><span data-testid="included-total">{fmtEuro(estimate.included_total)}</span></div>
-            <div className="flex justify-between text-rose-700"><span>Extra</span><span data-testid="extra-total">{fmtEuro(estimate.extra_total)}</span></div>
+            <div className="flex justify-between text-emerald-700"><span>Forfait pacchetto</span><span data-testid="package-base">{fmtEuro(estimate.package_base || 0)}</span></div>
+            <div className="flex justify-between"><span>Voci incluse (coperte dal forfait)</span><span data-testid="included-total" className="text-zinc-400">{fmtEuro(estimate.included_total)}</span></div>
+            <div className="flex justify-between text-rose-700 font-medium"><span>Extra (non coperti)</span><span data-testid="extra-total">{fmtEuro(estimate.extra_total)}</span></div>
           </div>
         )}
       </div>

@@ -162,8 +162,70 @@ function ChecklistTab({ c, save }) {
             )}
             {f.data_completamento && <span className="text-xs text-emerald-600 shrink-0">{new Date(f.data_completamento).toLocaleDateString("it-IT")}</span>}
           </div>
+          {/* Pannello rilievo misure infissi (solo per la fase rilievo-misure) */}
+          {f.fase_id === "rilievo-misure" && Array.isArray(f.rilievo_misure) && (
+            <RilievoMisureTable misure={f.rilievo_misure} onChange={(updated) => {
+              const cl = [...(c.checklist || [])]; cl[i] = { ...cl[i], rilievo_misure: updated };
+              save({ checklist: cl });
+            }} />
+          )}
         </div>
       ))}
+    </div>
+  );
+}
+
+function RilievoMisureTable({ misure, onChange }) {
+  const update = (idx, key, val) => {
+    const next = misure.map((m, j) => j === idx ? { ...m, [key]: val } : m);
+    // Auto-calculate tolerance and stato
+    const m = next[idx];
+    if (m.L_originale && m.L_definitiva && m.H_originale && m.H_definitiva) {
+      const dL = Math.abs((m.L_definitiva - m.L_originale) / m.L_originale * 100);
+      const dH = Math.abs((m.H_definitiva - m.H_originale) / m.H_originale * 100);
+      const tol = Math.max(dL, dH);
+      m.tolleranza_pct = parseFloat(tol.toFixed(2));
+      m.stato = tol <= 5 ? "ok" : tol <= 8 ? "attenzione" : "blocco";
+    } else {
+      m.stato = "da_rilevare";
+    }
+    onChange(next);
+  };
+  return (
+    <div className="mt-3 ml-9 bg-white border border-zinc-200 rounded p-2" data-testid="rilievo-misure-table">
+      <div className="text-xs text-zinc-600 mb-2">
+        Inserisci le <strong>misure rilevate sul posto</strong>. Tolleranza: <span className="text-emerald-700">≤5% OK</span> · <span className="text-amber-700">5-8% attenzione</span> · <span className="text-rose-700">&gt;8% richiede approvazione</span>
+      </div>
+      <table className="w-full text-xs">
+        <thead className="bg-zinc-50 text-zinc-500">
+          <tr>
+            <th className="px-2 py-1 text-left">Infisso</th>
+            <th className="px-2 py-1 text-center">L Preventivo</th>
+            <th className="px-2 py-1 text-center">L Rilevata</th>
+            <th className="px-2 py-1 text-center">H Preventivo</th>
+            <th className="px-2 py-1 text-center">H Rilevata</th>
+            <th className="px-2 py-1 text-center">Δ%</th>
+            <th className="px-2 py-1 text-center">Stato</th>
+          </tr>
+        </thead>
+        <tbody>
+          {misure.map((m, idx) => {
+            const stColor = m.stato === "ok" ? "text-emerald-700 bg-emerald-50" : m.stato === "attenzione" ? "text-amber-700 bg-amber-50" : m.stato === "blocco" ? "text-rose-700 bg-rose-50" : "text-zinc-500";
+            return (
+              <tr key={m.id} className="border-t border-zinc-100" data-testid={`rilievo-row-${m.id}`}>
+                <td className="px-2 py-1">{m.descrizione}</td>
+                <td className="px-2 py-1 text-center font-mono">{m.L_originale} cm</td>
+                <td className="px-2 py-1 text-center"><input type="number" className="w-16 text-center border border-zinc-300 rounded h-7 px-1 mono" value={m.L_definitiva ?? ""} onChange={(e) => update(idx, "L_definitiva", e.target.value === "" ? null : Number(e.target.value))} data-testid={`rilievo-L-${m.id}`} /></td>
+                <td className="px-2 py-1 text-center font-mono">{m.H_originale} cm</td>
+                <td className="px-2 py-1 text-center"><input type="number" className="w-16 text-center border border-zinc-300 rounded h-7 px-1 mono" value={m.H_definitiva ?? ""} onChange={(e) => update(idx, "H_definitiva", e.target.value === "" ? null : Number(e.target.value))} data-testid={`rilievo-H-${m.id}`} /></td>
+                <td className="px-2 py-1 text-center font-mono">{m.tolleranza_pct != null ? `${m.tolleranza_pct}%` : "—"}</td>
+                <td className={`px-2 py-1 text-center font-bold uppercase text-[10px] ${stColor}`}>{m.stato || "da rilevare"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <div className="text-[11px] text-zinc-500 italic mt-1">Le misure rilevate vengono salvate ma <strong>non modificano il preventivo originale</strong>.</div>
     </div>
   );
 }

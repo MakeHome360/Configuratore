@@ -68,7 +68,38 @@
 - **negozi / subappaltatori / impostazioni / dati_azienda**
 - **materials / projects** (CAD)
 
-## Changelog (Feb 2026 current session)
+## Changelog (Feb 2026 — round 6 bug fixing)
+- **FIX CRITICO: Stato di Fatto NON fattura più nel preventivo**:
+  - `isProgetto` ora ESATTAMENTE filtra solo `phase === "progetto"` (era anche `!phase`, troppo permissivo)
+  - Walls: filtro stretto, solo se phase=progetto OR (legacy senza phase E kind=cartongesso/nuovo)
+  - Rooms con phase=fatto NON fatturano più impianto_elettrico_mq/idraulico_mq
+- **FIX BUG: Presa diventava "punto luce LED"**:
+  - Mapping electrical aggiornato: presa→`punto_presa`, interruttore→`punto_interruttore`, luce→`punto_luce`, quadro→`quadro_elettrico`
+  - Nuove voci backoffice: punto_presa (35€), punto_interruttore (28€), quadro_elettrico (280€), punto_scarico (75€), punto_gas (110€), caldaia_condensazione (1500€), caldaia_ibrida (3800€), canalizzato_unita_interna (1100€), canalizzato_canale_ml (45€/ml), vmc (1900€), porta_blindata_cl3 (720€), porta_blindata_cl4 (1100€), scala_chiocciola (1200€), scala_muratura (2500€), scala_legno (1800€)
+- **Editor: UNDO / REDO**:
+  - Bottoni "Annulla" / "Ripristina" in toolbar editor (data-testid: undo-btn, redo-btn)
+  - Shortcut Ctrl/Cmd+Z e Ctrl/Cmd+Shift+Z (skip se in input)
+  - Stack snapshot fino a 50 stati
+- **PreventivoComposite**:
+  - Bottone "Infissi" spostato in alto a destra (no più mescolato con dati cliente)
+  - Sezione "Infissi (extra configuratore)" in sidebar separata da divider
+  - Loading state visibile se sezioni non ancora caricate
+  - Toast errore migliorato con messaggio backend
+- **Frontend "Conferma rilievo misure infissi"** (DettaglioCommessa):
+  - Nuova `RilievoMisureTable` mostrata sotto la voce checklist con `fase_id="rilievo-misure"`
+  - Input per L_definitiva/H_definitiva, calcolo automatico Δ% e stato (verde≤5%, giallo 5-8%, rosso>8%)
+  - Persistenza tramite save({checklist})
+- **Export PDF Tavole**: gestione errori robusta, ora se un SVG fallisce non rompe l'intero export e mostra messaggio "Anteprima non disponibile" sulla pagina specifica. Toast finale con conteggio tavole esportate
+
+## TASK NON COMPLETATI (richiedono round successivo o decisione utente):
+- ❌ Split automatico stanza con muro divisorio (richiede algoritmo polygon split + dialog conferma)
+- ❌ Tool scale CAD (chiocciola/muratura/legno) - serve simbolo SVG + Properties panel
+- ❌ Demolizione pavimento per AREA selezionata (serve rect tool)
+- ❌ Tavola demolizioni con muri perimetrali ghost (richiede modifica TavoleModal layers)
+- ❌ Prospetti pareti: quote elementi (h, dx, sx) per ogni MEP (modifica Prospetti.jsx)
+- ❌ Bottone "Apri progettazione" da preventivo + collegamento bidirezionale preventivo↔progetto (serve project.preventivo_id nel backend e UI)
+- ❌ Pacchetto: prezzo TOTALE per MQ visibile subito (parzialmente già visibile, richiede UI tweak)
+- ⚠️ Trasparenza prezzi (badge "da Voci Backoffice") - cosmetic enhancement
 - **Lotto F-G-H-I — Bug critici CAD + UI infissi + nuove feature progettazione**:
   - **FIX CRITICO Phase-aware estimate**: aggiunto campo `phase: "fatto"|"progetto"` su muri/porte/finestre/items/electrical/plumbing/gas/hvac/text/rooms in Canvas2D. estimateProjectV2 ora fattura SOLO elementi con `phase==='progetto'` (più demolizioni e muri cartongesso/nuovo). Lo "Stato di Fatto" non contagia più il preventivo.
   - Cartongesso visibile in stato fatto (filtro basato su phase, non più su kind)

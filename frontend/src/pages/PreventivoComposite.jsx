@@ -96,7 +96,10 @@ export default function PreventivoComposite() {
       } else {
         await api.put(`/preventivi/${id}`, payload); toast.success("Aggiornato");
       }
-    } catch { toast.error("Errore"); }
+    } catch (e) {
+      console.error("[PreventivoComposite] save error:", e);
+      toast.error(e?.response?.data?.detail || "Errore salvataggio");
+    }
   };
 
   const sec = sections.find((s) => s.id === activeSection);
@@ -110,6 +113,9 @@ export default function PreventivoComposite() {
           <div><div className="text-[10px] uppercase text-zinc-500">Sicurezza {sicurezzaPct}%</div><div className="text-sm font-mono">{fmtEur(sicurezzaAmt)}</div></div>
           <div><div className="text-[10px] uppercase text-zinc-500">Dir. Lav {direzionePct}%</div><div className="text-sm font-mono">{fmtEur(direzioneAmt)}</div></div>
           <div><div className="text-[10px] uppercase text-zinc-500">Totale IVA Incl.</div><div className="text-lg font-bold" data-testid="totale-composite">{fmtEur2(totale)}</div></div>
+          <Button onClick={() => setInfissiModalOpen(true)} variant="outline" size="sm" className="rounded-sm" data-testid="comp-add-infissi-top-btn">
+            <Plus className="h-4 w-4 mr-1" />Infissi {infissiExtras.length > 0 && `(${infissiExtras.length})`}
+          </Button>
         </div>} />
       <Page>
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
@@ -120,30 +126,36 @@ export default function PreventivoComposite() {
               <Input placeholder="Email" className="mt-1" value={cliente.email} onChange={(e) => setCliente({ ...cliente, email: e.target.value })} />
               <Input placeholder="Indirizzo" className="mt-1" value={cliente.indirizzo} onChange={(e) => setCliente({ ...cliente, indirizzo: e.target.value })} />
             </div>
-            <div className="space-y-1">
-              {sections.map((s) => {
-                const count = s.voci.filter((v) => selections[v.id]?.qty > 0).length;
-                const tot = s.voci.reduce((acc, v) => acc + (selections[v.id]?.qty || 0) * v.price, 0);
-                return (
-                  <button key={s.id} onClick={() => setActiveSection(s.id)} data-testid={`comp-sec-${s.id}`}
-                    className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${activeSection === s.id ? "bg-zinc-900 text-white" : "hover:bg-zinc-100"}`}>
-                    <div className="flex items-center justify-between">
-                      <span>{s.name}</span>
-                      {count > 0 && <span className="text-xs opacity-70">{count}</span>}
-                    </div>
-                    {tot > 0 && <div className="text-[10px] font-mono opacity-60">{fmtEur(tot)}</div>}
-                  </button>
-                );
-              })}
-              <button onClick={() => setActiveSection("__infissi__")} data-testid="comp-sec-infissi"
-                className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${activeSection === "__infissi__" ? "bg-amber-600 text-white" : "hover:bg-amber-50 text-amber-700"}`}>
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5"><Plus className="h-3 w-3" />Infissi (configuratore)</span>
-                  {infissiExtras.length > 0 && <span className="text-xs opacity-70">{infissiExtras.length}</span>}
-                </div>
-                {infissiTot > 0 && <div className="text-[10px] font-mono opacity-60">{fmtEur(infissiTot)}</div>}
-              </button>
-            </div>
+            {sections.length === 0 ? (
+              <div className="text-xs text-zinc-500 italic px-2 py-3 border border-dashed border-zinc-300 rounded">
+                Caricamento sezioni in corso… Se non appaiono, controlla che il backoffice contenga le voci.
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {sections.map((s) => {
+                  const count = s.voci.filter((v) => selections[v.id]?.qty > 0).length;
+                  const tot = s.voci.reduce((acc, v) => acc + (selections[v.id]?.qty || 0) * v.price, 0);
+                  return (
+                    <button key={s.id} onClick={() => setActiveSection(s.id)} data-testid={`comp-sec-${s.id}`}
+                      className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${activeSection === s.id ? "bg-zinc-900 text-white" : "hover:bg-zinc-100"}`}>
+                      <div className="flex items-center justify-between">
+                        <span>{s.name}</span>
+                        {count > 0 && <span className="text-xs opacity-70">{count}</span>}
+                      </div>
+                      {tot > 0 && <div className="text-[10px] font-mono opacity-60">{fmtEur(tot)}</div>}
+                    </button>
+                  );
+                })}
+                <button onClick={() => setActiveSection("__infissi__")} data-testid="comp-sec-infissi"
+                  className={`w-full text-left px-3 py-2 rounded text-sm transition-colors mt-2 border-t border-zinc-200 pt-3 ${activeSection === "__infissi__" ? "bg-amber-600 text-white" : "hover:bg-amber-50 text-amber-700"}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5"><Plus className="h-3 w-3" />Infissi (extra configuratore)</span>
+                    {infissiExtras.length > 0 && <span className="text-xs opacity-70">{infissiExtras.length}</span>}
+                  </div>
+                  {infissiTot > 0 && <div className="text-[10px] font-mono opacity-60">{fmtEur(infissiTot)}</div>}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="lg:col-span-3 bg-white border border-zinc-200 rounded-lg p-5">

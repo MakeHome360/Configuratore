@@ -97,22 +97,36 @@ export const VOCE_MAP = {
   battiscopa: "Posa Battiscopa",
   impianto_elettrico_mq: "Impianto elettrico completo",
   punto_luce: "Punto luce LED",
+  punto_presa: "Punto presa",
+  punto_interruttore: "Punto interruttore",
+  quadro_elettrico: "Quadro elettrico",
   impianto_idraulico_mq: "Impianto idraulico completo",
   punto_acqua: "Punto acqua",
+  punto_scarico: "Punto scarico",
+  punto_gas: "Punto gas",
   riscaldamento_radiatori: "Impianto riscaldamento radiatori",
   riscaldamento_pavimento: "Impianto riscaldamento a pavimento",
   predisposizione_clima: "Predisposizione climatizzatore",
   climatizzatore_dual: "Climatizzatore dual split",
   climatizzatore_trial: "Climatizzatore trial split",
-  caldaia: "Caldaia a condensazione",
+  caldaia_condensazione: "Caldaia a condensazione",
+  caldaia_ibrida: "Caldaia ibrida (pompa di calore)",
+  canalizzato_unita_interna: "Canalizzato · Unità interna",
+  canalizzato_canale_ml: "Canalizzato · Canale aria con plenum",
+  vmc: "VMC ventilazione meccanica",
   porta_interna: "Porte interne serie standard",
+  porta_blindata_cl3: "Porta blindata Classe 3",
+  porta_blindata_cl4: "Porta blindata Classe 4",
   porta_blindata: "Pannello porta blindata",
-  finestre_pvc: "Infissi PVC bianchi",
-  finestre_alluminio: "Infissi alluminio taglio termico",
-  finestre_legno: "Infissi legno/alluminio",
+  finestre_pvc: "Infissi PVC bianchi (esterni)",
+  finestre_alluminio: "Infissi alluminio taglio termico (esterni)",
+  finestre_legno: "Infissi legno/alluminio (esterni)",
   sanitari_bagno: "Sanitari bagno (WC+bidet+lavabo)",
   box_doccia: "Box doccia",
   mobile_bagno: "Mobile bagno",
+  scala_chiocciola: "Scala a chiocciola",
+  scala_muratura: "Scala in muratura",
+  scala_legno: "Scala in legno",
 };
 
 // Ordine lavorazioni basato su listinoMh.pdf:
@@ -203,9 +217,9 @@ function priceOf(voce) {
 export function estimateProjectV2(project, voci, packageRef) {
   const data = project || {};
   const height = data.roomHeight || 270;
-  // FIX CRITICO: fatturare SOLO elementi del Progetto (phase==="progetto") oppure NUOVI/cartongesso/demolizioni.
-  // Le geometrie/items con phase==="fatto" o senza phase (legacy) rappresentano lo stato esistente del cliente
-  // e NON devono finire nel preventivo. Cartongesso e demolizioni hanno il loro filtro specifico più sotto.
+  // FIX CRITICO: fatturare SOLO elementi del Progetto (phase==="progetto"). Tutto ciò che è
+  // 'fatto' o legacy (no phase) NON entra nel preventivo. Cartongesso/demolizioni hanno il loro
+  // filtro specifico (sempre progetto perché operativamente sono interventi nuovi).
   const isProgetto = (el) => el?.phase === "progetto";
   const rooms = (data.rooms || []).filter(isProgetto);
 
@@ -236,24 +250,26 @@ export function estimateProjectV2(project, voci, packageRef) {
     if (r.controsoffitto) add("controsoffitto", areaM2);
   });
 
-  // Walls (built m²)
+  // Walls: fatturare SOLO se phase==="progetto". (cartongesso o kind="nuovo" senza phase = legacy → trattati come progetto)
   (data.walls || []).forEach((w) => {
     const lenM = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) / 100;
     const aM2 = lenM * (height / 100);
     if (w.demolito) {
       add("demolizione_muro", aM2);
-    } else if (w.demolito_partial && w.demolito_partial.to > w.demolito_partial.from) {
+      return;
+    }
+    if (w.demolito_partial && w.demolito_partial.to > w.demolito_partial.from) {
       const portionM = lenM * (w.demolito_partial.to - w.demolito_partial.from);
       const hM = (w.demolito_partial.height || height) / 100;
       add("demolizione_muro", portionM * hM);
     }
-    if (!w.demolito) {
-      // Fattura SOLO muri di progetto (cartongesso, kind="nuovo", o phase="progetto"). Skip "esistente" e phase="fatto".
-      const isProgWall = w.kind === "cartongesso" || w.kind === "nuovo" || (w.phase === "progetto" && w.kind !== "esistente");
-      if (isProgWall) {
-        if (w.kind === "cartongesso") add("costruzione_muro_cartongesso", aM2);
-        else add("costruzione_muro_mattone", aM2);
-      }
+    // Se phase è settata e !== "progetto" → SKIP (è stato di fatto, non si fattura)
+    if (w.phase && w.phase !== "progetto") return;
+    // Se non ha phase, considera phase implicita basata su kind
+    const isProgWall = w.kind === "cartongesso" || w.kind === "nuovo";
+    if (isProgWall) {
+      if (w.kind === "cartongesso") add("costruzione_muro_cartongesso", aM2);
+      else add("costruzione_muro_mattone", aM2);
     }
   });
 
@@ -278,17 +294,33 @@ export function estimateProjectV2(project, voci, packageRef) {
 
   // Impianti dettagliati — solo nuovi
   (data.electrical || []).filter(isProgetto).forEach((e) => {
-    if (e.type === "presa" || e.type === "interruttore" || e.type === "luce") add("punto_luce", 1);
+    if (e.type === "presa") add("punto_presa", 1);
+    else if (e.type === "interruttore") add("punto_interruttore", 1);
+    else if (e.type === "luce") add("punto_luce", 1);
+    else if (e.type === "quadro" || e.type === "quadro-elettrico") add("quadro_elettrico", 1);
+    else add("punto_luce", 1); // fallback per altri tipi
   });
-  (data.plumbing || []).filter(isProgetto).forEach((p) => add("punto_acqua", 1));
+  (data.plumbing || []).filter(isProgetto).forEach((p) => {
+    if (p.type === "scarico" || p.type === "acqua-scarico") add("punto_scarico", 1);
+    else add("punto_acqua", 1);
+  });
+  (data.gas || []).filter(isProgetto).forEach(() => add("punto_gas", 1));
   (data.hvac || []).filter(isProgetto).forEach((h) => {
     if (h.type === "predisposizione") add("predisposizione_clima", 1);
     else if (h.type === "caldaia") add("caldaia_condensazione", 1);
+    else if (h.type === "caldaia-ibrida") add("caldaia_ibrida", 1);
     else if (h.type === "canalizzato-ui") add("canalizzato_unita_interna", 1);
     else if (h.type === "canalizzato-canale") add("canalizzato_canale_ml", h.lengthMl || 1);
+    else if (h.type === "vmc") add("vmc", 1);
     else if (h.kind === "dual") add("climatizzatore_dual", 1);
     else if (h.kind === "trial") add("climatizzatore_trial", 1);
     else add("predisposizione_clima", 1);
+  });
+  // Scale
+  (data.stairs || []).filter(isProgetto).forEach((s) => {
+    if (s.type === "chiocciola") add("scala_chiocciola", 1);
+    else if (s.type === "muratura") add("scala_muratura", 1);
+    else if (s.type === "legno") add("scala_legno", 1);
   });
 
   // Sanitari: count fixture items

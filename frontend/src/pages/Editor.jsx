@@ -16,7 +16,7 @@ import {
   MousePointer2, Minus, Square, DoorClosed, RectangleHorizontal, Sofa, Trash2,
   Save, Download, Sparkles, Eye, EyeOff, Box, Ruler, X, Home, Bath, ChefHat, Bed,
   ChevronRight, ChevronLeft, Hammer, Layers, Zap, Droplet, Flame, Wind, Grid3x3,
-  Package, Upload, FileImage, FileText, Type,
+  Package, Upload, FileImage, FileText, Type, RotateCcw, RotateCw,
 } from "lucide-react";
 import { estimateProject, estimateProjectV2, fmtEuro, fmtEuro2, fmtNum, emptyProjectData, uid, polygonArea, polygonPerimeter } from "../editor/utils";
 import { ProspettoWall, ProspettoInputs, computeInterestingWalls } from "../editor/Prospetti";
@@ -98,6 +98,63 @@ export default function Editor() {
   const [activeGroup, setActiveGroup] = useState("base");
   const [editMode, setEditMode] = useState("fatto"); // "fatto" | "progetto"
   const viewer3DRef = useRef(null);
+
+  // Undo / Redo history stacks (snapshots di project)
+  const undoStackRef = useRef([]);
+  const redoStackRef = useRef([]);
+  const lastSnapshotJsonRef = useRef(null);
+  const skipNextSnapshotRef = useRef(false);
+
+  // Snapshot automatico ogni volta che project cambia (eccetto durante undo/redo stesso)
+  useEffect(() => {
+    if (!project) return;
+    if (skipNextSnapshotRef.current) { skipNextSnapshotRef.current = false; return; }
+    const json = JSON.stringify(project);
+    if (lastSnapshotJsonRef.current === null) {
+      lastSnapshotJsonRef.current = json;
+      return;
+    }
+    if (json === lastSnapshotJsonRef.current) return;
+    undoStackRef.current.push(lastSnapshotJsonRef.current);
+    if (undoStackRef.current.length > 50) undoStackRef.current.shift();
+    redoStackRef.current = []; // qualsiasi nuova azione invalida il redo
+    lastSnapshotJsonRef.current = json;
+  }, [project]);
+
+  const undo = () => {
+    if (undoStackRef.current.length === 0) { toast.info("Niente da annullare"); return; }
+    const prevJson = undoStackRef.current.pop();
+    redoStackRef.current.push(JSON.stringify(project));
+    skipNextSnapshotRef.current = true;
+    lastSnapshotJsonRef.current = prevJson;
+    setProject(JSON.parse(prevJson));
+    toast.success("Annullato");
+  };
+  const redo = () => {
+    if (redoStackRef.current.length === 0) { toast.info("Niente da ripristinare"); return; }
+    const nextJson = redoStackRef.current.pop();
+    undoStackRef.current.push(JSON.stringify(project));
+    skipNextSnapshotRef.current = true;
+    lastSnapshotJsonRef.current = nextJson;
+    setProject(JSON.parse(nextJson));
+    toast.success("Ripristinato");
+  };
+
+  // Keyboard shortcuts: Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z redo
+  useEffect(() => {
+    const onKey = (e) => {
+      const t = e.target;
+      // Skip se sta scrivendo in un input/textarea
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) redo(); else undo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project]);
 
   useEffect(() => {
     (async () => {
@@ -268,17 +325,34 @@ export default function Editor() {
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
     const captureSvg = async (svgEl, w = 2200, h = 1400) => {
-      const svgData = new XMLSerializer().serializeToString(svgEl);
-      const svgBlob = new Blob([svgData], { type: "image/svg+xml" });
-      const url = URL.createObjectURL(svgBlob);
-      const img = new Image();
-      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
-      const canvas = document.createElement("canvas");
-      canvas.width = w; canvas.height = h;
-      const ctx = canvas.getContext("2d"); ctx.fillStyle = "#FFFFFF"; ctx.fillRect(0, 0, w, h);
-      ctx.drawImage(img, 0, 0, w, h);
-      URL.revokeObjectURL(url);
-      return canvas.toDataURL("image/png");
+      try {
+        // Clona per evitare mutazioni e imposta dimensioni esplicite
+        const cloned = svgEl.cloneNode(true);
+        cloned.setAttribute("width", w);
+        cloned.setAttribute("height", h);
+        if (!cloned.getAttribute("xmlns")) cloned.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+        const svgData = new XMLSerializer().serializeToString(cloned);
+        const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+        const url = URL.createObjectURL(svgBlob);
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        await new Promise((res, rej) => {
+          img.onload = res;
+          img.onerror = (e) => rej(new Error("SVG load failed"));
+          img.src = url;
+          // Timeout safety
+          setTimeout(() => rej(new Error("SVG load timeout")), 8000);
+        });
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d"); ctx.fillStyle = "#FFFFFF"; ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        return canvas.toDataURL("image/png");
+      } catch (err) {
+        console.warn("[exportTavole] captureSvg failed:", err);
+        return null;
+      }
     };
 
     const renderTavola = (title, png) => {
@@ -293,17 +367,22 @@ export default function Editor() {
     };
 
     let isFirst = true;
+    let exported = 0;
     // First: piante
     for (const tav of selectedTavole) {
       if (!isFirst) doc.addPage("a3", "landscape");
       isFirst = false;
       const wrapper = document.querySelector(`[data-testid="tavola-preview-${tav.id}"]`);
       const svgEl = wrapper ? wrapper.querySelector('svg[data-testid="canvas-2d"]') : null;
-      if (svgEl) {
-        const png = await captureSvg(svgEl);
+      const png = svgEl ? await captureSvg(svgEl) : null;
+      if (png) {
         renderTavola(tav.title, png);
+        exported++;
       } else {
-        doc.text(`Tavola "${tav.title}" non disponibile`, 20, 30);
+        doc.setFont("helvetica", "bold"); doc.setFontSize(14);
+        doc.text(tav.title, 15, 30);
+        doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+        doc.text("Anteprima non disponibile. Apri la tavola dal modal e riprova.", 15, 40);
       }
     }
     // Then: prospetti pareti
@@ -313,11 +392,18 @@ export default function Editor() {
         if (!isFirst) doc.addPage("a3", "landscape");
         isFirst = false;
         const png = await captureSvg(svgEl, 2400, 1100);
-        renderTavola(`Prospetto Parete · ${fmtNum(ent.length / 100, 2)}m`, png);
+        if (png) {
+          renderTavola(`Prospetto Parete · ${fmtNum(ent.length / 100, 2)}m`, png);
+          exported++;
+        }
       }
     }
+    if (exported === 0) {
+      toast.error("Nessuna tavola esportabile. Assicurati di aver aperto il preview almeno una volta.");
+      return;
+    }
     doc.save(`${project.name.replace(/[^a-z0-9]+/gi, "-")}-tavole.pdf`);
-    toast.success("Tavole esportate");
+    toast.success(`Tavole esportate (${exported})`);
   };
 
   const confirmaTavoleInCommessa = async (selectedTavole, prospettiInteresting, commessaId) => {
@@ -359,6 +445,8 @@ export default function Editor() {
         </div>
         <PackagePicker project={project} setProjectData={setProjectData} packages={packages} voci={voci} />
         <div className="ml-auto flex items-center gap-2">
+          <Button size="sm" variant="outline" className="rounded-sm h-8" onClick={undo} title="Annulla (Ctrl+Z)" data-testid="undo-btn"><RotateCcw size={14} className="mr-1.5" /> Annulla</Button>
+          <Button size="sm" variant="outline" className="rounded-sm h-8" onClick={redo} title="Ripristina (Ctrl+Shift+Z)" data-testid="redo-btn"><RotateCw size={14} className="mr-1.5" /> Ripristina</Button>
           <Button size="sm" variant="outline" className="rounded-sm h-8" onClick={() => setFloorplanOpen(true)} data-testid="open-floorplan-import"><Upload size={14} className="mr-1.5" /> Importa Pianta</Button>
           <Button size="sm" variant="outline" className="rounded-sm h-8" onClick={() => setShow3D(v => !v)} data-testid="toggle-3d">{show3D ? <EyeOff size={14} className="mr-1.5" /> : <Eye size={14} className="mr-1.5" />}{show3D ? "Nascondi 3D" : "Mostra 3D"}</Button>
           <Button size="sm" variant="outline" className="rounded-sm h-8" onClick={() => setAiOpen(true)} data-testid="open-ai-render"><Sparkles size={14} className="mr-1.5" /> Render AI</Button>

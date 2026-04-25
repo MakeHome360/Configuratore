@@ -93,6 +93,7 @@ export default function Editor() {
   const [hvacKind, setHvacKind] = useState("split");
   const [tilingParams, setTilingParams] = useState({ size: "60x60", angle: 0 });
   const [activeGroup, setActiveGroup] = useState("base");
+  const [editMode, setEditMode] = useState("fatto"); // "fatto" | "progetto"
   const viewer3DRef = useRef(null);
 
   useEffect(() => {
@@ -349,6 +350,10 @@ export default function Editor() {
       <div className="h-12 border-b border-zinc-200 px-4 flex items-center gap-3 bg-white">
         <Input value={project.name} onChange={(e) => setProject((p) => ({ ...p, name: e.target.value }))} className="rounded-sm h-8 border-transparent hover:border-zinc-200 focus:border-zinc-300 max-w-xs" data-testid="project-name-input" />
         <div className="mono text-xs text-zinc-400">#{project.id.slice(0, 8)}</div>
+        <div className="flex border border-zinc-300 ml-3" data-testid="edit-mode-toggle">
+          <button onClick={() => setEditMode("fatto")} className={`px-3 py-1 text-xs uppercase tracking-widest ${editMode === "fatto" ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-50"}`} data-testid="mode-fatto" title="Disegna lo stato esistente del cliente">Stato di Fatto</button>
+          <button onClick={() => setEditMode("progetto")} className={`px-3 py-1 text-xs uppercase tracking-widest border-l border-zinc-300 ${editMode === "progetto" ? "bg-amber-500 text-white" : "text-zinc-700 hover:bg-zinc-50"}`} data-testid="mode-progetto" title="Lavora sul progetto: il preventivo si aggiorna live">Progetto</button>
+        </div>
         <PackagePicker project={project} setProjectData={setProjectData} packages={packages} voci={voci} />
         <div className="ml-auto flex items-center gap-2">
           <Button size="sm" variant="outline" className="rounded-sm h-8" onClick={() => setFloorplanOpen(true)} data-testid="open-floorplan-import"><Upload size={14} className="mr-1.5" /> Importa Pianta</Button>
@@ -362,18 +367,22 @@ export default function Editor() {
 
       <div className="flex-1 flex min-h-0">
         {/* Left tools */}
-        <aside className="w-44 border-r border-zinc-200 flex flex-col py-3 gap-1 bg-white overflow-y-auto">
-          <div className="flex border-b border-zinc-200 mb-2">
+        <aside className="w-52 border-r border-zinc-200 flex flex-col bg-white overflow-y-auto">
+          <div className="grid grid-cols-2 border-b border-zinc-200 sticky top-0 bg-white z-10">
             {TOOL_GROUPS.map((g) => (
-              <button key={g.id} onClick={() => setActiveGroup(g.id)} className={`flex-1 text-[9px] uppercase tracking-widest py-1.5 ${activeGroup === g.id ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50"}`} data-testid={`tool-group-${g.id}`}>{g.label.split(" ")[0]}</button>
+              <button key={g.id} onClick={() => setActiveGroup(g.id)} className={`text-[10px] uppercase tracking-wider py-2 ${activeGroup === g.id ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-50 border-b border-transparent"}`} data-testid={`tool-group-${g.id}`}>
+                {g.id === "base" ? "Base" : g.id === "demo" ? "Demoliz." : g.id === "impianti" ? "Impianti" : "Finiture"}
+              </button>
             ))}
           </div>
-          {(TOOL_GROUPS.find((g) => g.id === activeGroup)?.tools || []).map((t) => (
-            <button key={t.id} onClick={() => { setTool(t.id); setSelected(null); }} className={`mx-2 px-3 py-2 flex items-center gap-3 text-sm border-l-2 ${tool === t.id ? "bg-zinc-900 text-white border-zinc-900" : "border-transparent text-zinc-700 hover:bg-zinc-50"}`} data-testid={`tool-${t.id}`}>
-              <t.icon size={16} strokeWidth={tool === t.id ? 2.4 : 2} />
-              <span className="font-medium text-xs">{t.label}</span>
-            </button>
-          ))}
+          <div className="py-2">
+            {(TOOL_GROUPS.find((g) => g.id === activeGroup)?.tools || []).map((t) => (
+              <button key={t.id} onClick={() => { setTool(t.id); setSelected(null); }} className={`w-full px-4 py-2 flex items-center gap-3 text-sm border-l-2 ${tool === t.id ? "bg-zinc-900 text-white border-amber-400" : "border-transparent text-zinc-700 hover:bg-zinc-50 hover:border-zinc-300"}`} data-testid={`tool-${t.id}`}>
+                <t.icon size={16} strokeWidth={tool === t.id ? 2.5 : 1.8} />
+                <span className="font-medium text-xs">{t.label}</span>
+              </button>
+            ))}
+          </div>
 
           {activeGroup === "impianti" && tool === "electrical" && (
             <SubKindPicker label="Tipo elemento" value={electricalKind} onChange={setElectricalKind} options={[
@@ -431,6 +440,7 @@ export default function Editor() {
                 selectedMaterial={selectedMaterial} catalog={catalog}
                 doorParams={doorParams} windowParams={windowParams}
                 electricalKind={electricalKind} plumbingKind={plumbingKind} hvacKind={hvacKind} tilingParams={tilingParams}
+                viewMode={editMode}
               />
             </div>
           </div>
@@ -672,6 +682,28 @@ function PropertiesPanel({ project, setProject, selected, catalog }) {
             <SelectContent><SelectItem value="pvc">PVC</SelectItem><SelectItem value="alluminio">Alluminio T.T.</SelectItem><SelectItem value="legno">Legno/Alluminio</SelectItem></SelectContent>
           </Select>
         </div>)}
+        {isDoor && obj.type !== "scorrevole" && (
+          <>
+            <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Cardine</Label>
+              <Select value={obj.hinge || "left"} onValueChange={(v) => updateObj({ hinge: v })}>
+                <SelectTrigger className="rounded-sm h-9 mt-1.5" data-testid="door-hinge-select"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="left">Sinistra</SelectItem>
+                  <SelectItem value="right">Destra</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Apertura</Label>
+              <Select value={obj.swing || "in"} onValueChange={(v) => updateObj({ swing: v })}>
+                <SelectTrigger className="rounded-sm h-9 mt-1.5" data-testid="door-swing-select"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="in">Apre verso interno</SelectItem>
+                  <SelectItem value="out">Apre verso esterno</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </>
+        )}
         <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Larghezza (cm)</Label><Input type="number" value={obj.width} onChange={(e) => updateObj({ width: parseInt(e.target.value) || 80 })} className="rounded-sm h-9 mt-1.5 mono" /></div>
         <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Altezza (cm)</Label><Input type="number" value={obj.height} onChange={(e) => updateObj({ height: parseInt(e.target.value) || 210 })} className="rounded-sm h-9 mt-1.5 mono" /></div>
         {!isDoor && (<div><Label className="text-xs uppercase tracking-widest text-zinc-500">Parapetto (cm)</Label><Input type="number" value={obj.sillHeight || 90} onChange={(e) => updateObj({ sillHeight: parseInt(e.target.value) || 90 })} className="rounded-sm h-9 mt-1.5 mono" /></div>)}
@@ -700,6 +732,15 @@ function PropertiesPanel({ project, setProject, selected, catalog }) {
         <div className="label-kicker">Elemento impianto</div>
         <div className="mono text-xs text-zinc-500">Tipo: {obj.type || kind}</div>
         <div className="mono text-xs text-zinc-500">Posizione: {fmtNum(obj.x / 100, 2)}m, {fmtNum(obj.y / 100, 2)}m</div>
+        {(kind === "electrical" || kind === "hvac") && (
+          <div>
+            <Label className="text-xs uppercase tracking-widest text-zinc-500">Rotazione (°)</Label>
+            <Input type="number" step="15" value={obj.rotation || 0} onChange={(e) => updateObj({ rotation: parseInt(e.target.value) || 0 })} className="rounded-sm h-9 mt-1.5 mono" data-testid={`${kind}-rotation-input`} />
+            <div className="flex gap-1 mt-1.5">
+              {[0, 90, 180, 270].map((a) => <button key={a} onClick={() => updateObj({ rotation: a })} className="flex-1 text-[10px] mono py-1 border border-zinc-300 hover:bg-zinc-50">{a}°</button>)}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -850,14 +891,15 @@ function FloorplanImportModal({ open, setOpen, file, setFile, loading, onImport 
 }
 
 const TAVOLE = [
-  { id: "stato-fatto", title: "Stato di Fatto", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: false, plumbing: false, gas: false, hvac: false, demolitions: false, tiling: false, dimensions: true } },
-  { id: "stato-progetto", title: "Stato di Progetto", layers: { walls: true, doors: true, windows: true, rooms: true, items: true, electrical: false, plumbing: false, gas: false, hvac: false, demolitions: false, tiling: false, dimensions: true } },
-  { id: "demolizioni", title: "Demolizioni / Costruzioni", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: false, plumbing: false, gas: false, hvac: false, demolitions: true, tiling: false, dimensions: true } },
-  { id: "elettrico", title: "Impianto Elettrico", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: true, plumbing: false, gas: false, hvac: false, demolitions: false, tiling: false, dimensions: false } },
-  { id: "idraulico", title: "Impianto Idraulico", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: false, plumbing: true, gas: false, hvac: false, demolitions: false, tiling: false, dimensions: false } },
-  { id: "gas", title: "Impianto Gas", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: false, plumbing: false, gas: true, hvac: false, demolitions: false, tiling: false, dimensions: false } },
-  { id: "condizionamento", title: "Impianto Condizionamento", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: false, plumbing: false, gas: false, hvac: true, demolitions: false, tiling: false, dimensions: false } },
-  { id: "schema-posa", title: "Schema Posa Piastrelle", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: false, plumbing: false, gas: false, hvac: false, demolitions: false, tiling: true, dimensions: true } },
+  { id: "stato-fatto", title: "Stato di Fatto", viewMode: "fatto", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: false, plumbing: false, gas: false, hvac: false, demolitions: false, tiling: false, dimensions: true, floors: true } },
+  { id: "stato-progetto", title: "Stato di Progetto", viewMode: "progetto", layers: { walls: true, doors: true, windows: true, rooms: true, items: true, electrical: false, plumbing: false, gas: false, hvac: false, demolitions: false, tiling: false, dimensions: true, floors: true } },
+  { id: "demolizioni", title: "Demolizioni", viewMode: "demolizioni", layers: { walls: true, doors: false, windows: false, rooms: true, items: false, electrical: false, plumbing: false, gas: false, hvac: false, demolitions: true, tiling: false, dimensions: true, floors: true } },
+  { id: "costruzioni", title: "Costruzioni", viewMode: "costruzioni", layers: { walls: true, doors: false, windows: false, rooms: true, items: false, electrical: false, plumbing: false, gas: false, hvac: false, demolitions: false, tiling: false, dimensions: true, floors: false } },
+  { id: "elettrico", title: "Impianto Elettrico", viewMode: "progetto", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: true, plumbing: false, gas: false, hvac: false, demolitions: false, tiling: false, dimensions: false, floors: false } },
+  { id: "idraulico", title: "Impianto Idraulico", viewMode: "progetto", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: false, plumbing: true, gas: false, hvac: false, demolitions: false, tiling: false, dimensions: false, floors: false } },
+  { id: "gas", title: "Impianto Gas", viewMode: "progetto", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: false, plumbing: false, gas: true, hvac: false, demolitions: false, tiling: false, dimensions: false, floors: false } },
+  { id: "condizionamento", title: "Impianto Condizionamento", viewMode: "progetto", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: false, plumbing: false, gas: false, hvac: true, demolitions: false, tiling: false, dimensions: false, floors: false } },
+  { id: "schema-posa", title: "Schema Posa Piastrelle", viewMode: "progetto", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: false, plumbing: false, gas: false, hvac: false, demolitions: false, tiling: true, dimensions: true, floors: false } },
 ];
 
 function TavoleModal({ open, setOpen, project, catalog, estimateV2, onExport, onConferma }) {
@@ -970,7 +1012,7 @@ function TavolaPreview({ tavola, project, catalog }) {
           selected={null} setSelected={() => {}} selectedMaterial="" catalog={catalog}
           doorParams={{}} windowParams={{}}
           electricalKind="presa" plumbingKind="acqua-fredda" hvacKind="split" tilingParams={{ size: "60x60", angle: 0 }}
-          layers={tavola.layers}
+          layers={tavola.layers} viewMode={tavola.viewMode}
         />
       </div>
     </div>

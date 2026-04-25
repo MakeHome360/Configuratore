@@ -122,7 +122,7 @@ export default function Canvas2D({
   project, setProject, tool, setTool, selected, setSelected,
   selectedMaterial, catalog,
   doorParams, windowParams, electricalKind, plumbingKind, gasKind, hvacKind, tilingParams,
-  layers,
+  layers, viewMode,
 }) {
   const svgRef = useRef(null);
   const [wallDraft, setWallDraft] = useState(null);
@@ -130,12 +130,14 @@ export default function Canvas2D({
   const [cursor, setCursor] = useState({ x: 0, y: 0 });
   const [viewBox, setViewBox] = useState(INITIAL_VIEW);
   const [pan, setPan] = useState(null);
+  const [drag, setDrag] = useState(null); // {kind, id, sub?: 'p1'|'p2'|'t'|'pos', start:{x,y}, orig}
   const pendingRoomClickRef = useRef(null);
   const pendingWallClickRef = useRef(null);
 
   const catalogById = useMemo(() => Object.fromEntries((catalog || []).map((m) => [m.id, m])), [catalog]);
 
-  const L = layers || { walls: true, doors: true, windows: true, rooms: true, items: true, electrical: true, plumbing: true, gas: true, hvac: true, demolitions: true, tiling: true, dimensions: true };
+  const L = layers || { walls: true, doors: true, windows: true, rooms: true, items: true, electrical: true, plumbing: true, gas: true, hvac: true, demolitions: true, tiling: true, dimensions: true, floors: true };
+  const VM = viewMode || "progetto"; // "fatto" | "progetto" | "demolizioni" | "costruzioni"
 
   useEffect(() => () => {
     if (pendingRoomClickRef.current) clearTimeout(pendingRoomClickRef.current);
@@ -162,7 +164,43 @@ export default function Canvas2D({
       const dy = (e.clientY - pan.sy) * (viewBox.h / svgRef.current.clientHeight);
       setViewBox({ ...pan.vb, x: pan.vb.x - dx, y: pan.vb.y - dy });
     }
+    if (drag) {
+      const dx = p.x - drag.start.x, dy = p.y - drag.start.y;
+      if (drag.kind === "wall-end") {
+        // drag wall endpoint p1 or p2
+        setProject((prj) => ({
+          ...prj,
+          walls: (prj.walls || []).map((w) => {
+            if (w.id !== drag.id) return w;
+            if (drag.sub === "p1") return { ...w, x1: drag.orig.x1 + dx, y1: drag.orig.y1 + dy };
+            return { ...w, x2: drag.orig.x2 + dx, y2: drag.orig.y2 + dy };
+          }),
+        }));
+      } else if (drag.kind === "door-t" || drag.kind === "window-t") {
+        // drag door/window along its wall
+        const arrKey = drag.kind === "door-t" ? "doors" : "windows";
+        setProject((prj) => {
+          const arr = prj[arrKey] || [];
+          const item = arr.find((x) => x.id === drag.id);
+          if (!item) return prj;
+          const w = (prj.walls || []).find((ww) => ww.id === item.wallId);
+          if (!w) return prj;
+          const len = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1;
+          const dirX = (w.x2 - w.x1) / len, dirY = (w.y2 - w.y1) / len;
+          const proj = ((p.x - w.x1) * dirX + (p.y - w.y1) * dirY) / len;
+          const tNew = Math.max(0.05, Math.min(0.95, proj));
+          return { ...prj, [arrKey]: arr.map((x) => x.id === drag.id ? { ...x, t: tNew } : x) };
+        });
+      } else if (drag.kind === "item-pos" || drag.kind === "elec-pos" || drag.kind === "plumb-pos" || drag.kind === "gas-pos" || drag.kind === "hvac-pos") {
+        const arrKey = drag.kind === "item-pos" ? "items" : drag.kind === "elec-pos" ? "electrical" : drag.kind === "plumb-pos" ? "plumbing" : drag.kind === "gas-pos" ? "gas" : "hvac";
+        setProject((prj) => ({
+          ...prj,
+          [arrKey]: (prj[arrKey] || []).map((x) => x.id === drag.id ? { ...x, x: drag.orig.x + dx, y: drag.orig.y + dy } : x),
+        }));
+      }
+    }
   };
+  const stopDrag = () => { if (drag) setDrag(null); setPan(null); };
 
   const findRoomAt = (p) => {
     const rooms = project.rooms || [];
@@ -206,7 +244,7 @@ export default function Canvas2D({
         pendingWallClickRef.current = null;
         if (!wallDraft) { setWallDraft(p); return; }
         if (Math.hypot(p.x - wallDraft.x, p.y - wallDraft.y) < 8) { setWallDraft(null); return; }
-        const newWall = { id: uid(), x1: wallDraft.x, y1: wallDraft.y, x2: p.x, y2: p.y, thickness: 10, kind: "mattone" };
+        const newWall = { id: uid(), x1: wallDraft.x, y1: wallDraft.y, x2: p.x, y2: p.y, thickness: 10, kind: VM === "fatto" ? "esistente" : "nuovo" };
         setProject((prj) => ({ ...prj, walls: [...(prj.walls || []), newWall] }));
         setWallDraft(p);
       }, 230);
@@ -334,7 +372,7 @@ export default function Canvas2D({
       if (roomDraft.length >= 3) {
         const newWalls = roomDraft.map((pt, i) => {
           const next = roomDraft[(i + 1) % roomDraft.length];
-          return { id: uid(), x1: pt.x, y1: pt.y, x2: next.x, y2: next.y, thickness: 10, kind: "mattone" };
+          return { id: uid(), x1: pt.x, y1: pt.y, x2: next.x, y2: next.y, thickness: 10, kind: VM === "fatto" ? "esistente" : "nuovo" };
         });
         const newRoom = {
           id: uid(),
@@ -379,9 +417,20 @@ export default function Canvas2D({
     "demolish-wall", "demolish-floor", "controsoffitto",
     "electrical", "plumbing", "gas", "hvac", "tiling"].includes(tool);
 
-  const walls = project.walls || [];
-  const doors = project.doors || [];
-  const windows = project.windows || [];
+  const allWalls = project.walls || [];
+  // Filter walls by view mode
+  const walls = allWalls.filter((w) => {
+    if (VM === "fatto") return !w.kind || w.kind === "esistente" || w.kind === "mattone";
+    if (VM === "demolizioni") return w.demolito;
+    if (VM === "costruzioni") return w.kind === "nuovo" || w.kind === "cartongesso";
+    // progetto: tutti tranne demoliti
+    return !w.demolito;
+  });
+  const allDoors = project.doors || [];
+  const allWindows = project.windows || [];
+  const validWallIds = new Set(walls.map((w) => w.id));
+  const doors = allDoors.filter((d) => validWallIds.has(d.wallId));
+  const windows = allWindows.filter((d) => validWallIds.has(d.wallId));
   const rooms = project.rooms || [];
   const items = project.items || [];
   const electrical = project.electrical || [];
@@ -389,6 +438,7 @@ export default function Canvas2D({
   const gas = project.gas || [];
   const hvac = project.hvac || [];
   const tiling = project.tiling || [];
+  const demolitions = project.demolitions || [];
 
   return (
     <div className="relative w-full h-full bg-[#FAFAFA]">
@@ -398,8 +448,8 @@ export default function Canvas2D({
         className="w-full h-full select-none"
         onMouseMove={onMouseMove}
         onMouseDown={onMouseDown}
-        onMouseUp={() => setPan(null)}
-        onMouseLeave={() => setPan(null)}
+        onMouseUp={stopDrag}
+        onMouseLeave={stopDrag}
         onDoubleClick={onDblClick}
         onWheel={onWheel}
         data-testid="canvas-2d"
@@ -412,6 +462,15 @@ export default function Canvas2D({
             <rect width="100" height="100" fill="url(#grid-small)" />
             <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#D4D4D8" strokeWidth="0.6" />
           </pattern>
+          <pattern id="hatch-demo" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <line x1={0} y1={0} x2={0} y2={14} stroke="#DC2626" strokeWidth="2.5" />
+          </pattern>
+          <pattern id="hatch-controsoff" width="12" height="12" patternUnits="userSpaceOnUse">
+            <circle cx={6} cy={6} r="1.5" fill="#0F766E" />
+          </pattern>
+          <pattern id="hatch-new" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
+            <line x1={0} y1={0} x2={0} y2={10} stroke="#EAB308" strokeWidth="2" />
+          </pattern>
         </defs>
         <rect x={viewBox.x} y={viewBox.y} width={viewBox.w} height={viewBox.h} fill="url(#grid-big)" pointerEvents="none" />
 
@@ -423,6 +482,8 @@ export default function Canvas2D({
           const cx = r.points.reduce((s, p) => s + p.x, 0) / r.points.length;
           const cy = r.points.reduce((s, p) => s + p.y, 0) / r.points.length;
           const areaM2 = polygonArea(r.points) / 10000;
+          const isFloorDemolito = demolitions.some((d) => d.kind === "pavimento" && d.roomId === r.id);
+          const showFloor = L.floors !== false && !isFloorDemolito;
           return (
             <g key={r.id}
               onMouseDown={(e) => { if (isPlacementTool) return; e.stopPropagation(); handleElementClick("rooms", r.id); }}
@@ -435,10 +496,27 @@ export default function Canvas2D({
               style={{ cursor: isPlacementTool ? "crosshair" : "pointer" }}
               data-testid={`room-${r.id}`}
             >
-              <polygon points={pts} fill={mat?.color || "#F4F4F5"} fillOpacity={isSel ? 0.5 : 0.25} stroke={isSel ? "#2563EB" : "transparent"} strokeWidth={isSel ? 2 : 0} />
+              {/* floor (default if no demolition) */}
+              <polygon points={pts} fill={showFloor ? (mat?.color || "#F5E9D8") : "#FAFAFA"} fillOpacity={isSel ? 0.65 : (showFloor ? 0.55 : 0.2)} stroke={isSel ? "#2563EB" : "transparent"} strokeWidth={isSel ? 2 : 0} />
+              {/* demolizione pavimento overlay */}
+              {isFloorDemolito && (
+                <>
+                  <polygon points={pts} fill="url(#hatch-demo)" fillOpacity="0.45" />
+                  <polygon points={pts} fill="none" stroke="#DC2626" strokeWidth="2" strokeDasharray="6,4" />
+                </>
+              )}
+              {/* controsoffitto overlay */}
+              {r.controsoffitto && (
+                <polygon points={pts} fill="url(#hatch-controsoff)" fillOpacity="0.4" />
+              )}
               <text x={cx} y={cy - 6} fontSize="14" textAnchor="middle" fontFamily="Outfit" fill="#0A0A0A" fontWeight="600" pointerEvents="none">{r.name}</text>
               <text x={cx} y={cy + 12} fontSize="11" textAnchor="middle" fontFamily="JetBrains Mono" fill="#71717A" pointerEvents="none">{fmtNum(areaM2, 2)} m²</text>
-              {r.controsoffitto && <text x={cx} y={cy + 28} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#0F766E" fontWeight="700" pointerEvents="none">CONTROSOFFITTO</text>}
+              {r.controsoffitto && <text x={cx} y={cy + 28} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#0F766E" fontWeight="700" pointerEvents="none">CTRSF</text>}
+              {isFloorDemolito && <text x={cx} y={cy + 28} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#DC2626" fontWeight="700" pointerEvents="none">DEMO PAV.</text>}
+              {/* corner dots */}
+              {r.points.map((pt, i) => (
+                <circle key={i} cx={pt.x} cy={pt.y} r="3" fill="#0A0A0A" pointerEvents="none" />
+              ))}
             </g>
           );
         })}
@@ -454,7 +532,11 @@ export default function Canvas2D({
         {L.walls && walls.map((w) => {
           const isSel = selected?.kind === "walls" && selected.id === w.id;
           const len = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
-          const stroke = w.demolito ? "#DC2626" : (isSel ? "#2563EB" : (w.kind === "cartongesso" ? "#525252" : "#0A0A0A"));
+          const isNuovo = w.kind === "nuovo" || w.kind === "cartongesso";
+          let stroke = isSel ? "#2563EB" : "#0A0A0A";
+          if (w.demolito) stroke = "#DC2626";
+          else if (w.kind === "cartongesso") stroke = "#525252";
+          else if (w.kind === "nuovo") stroke = "#EAB308";
           return (
             <g key={w.id}
               onMouseDown={(e) => { if (isPlacementTool) return; e.stopPropagation(); handleElementClick("walls", w.id); }}
@@ -462,12 +544,34 @@ export default function Canvas2D({
               data-testid={`wall-${w.id}`}
             >
               <line x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2}
-                stroke={stroke} strokeWidth={w.thickness || 10} strokeLinecap="butt"
-                strokeDasharray={w.demolito ? "6,4" : (w.kind === "cartongesso" ? "12,4" : undefined)}
-                opacity={w.demolito ? 0.55 : 1}
+                stroke={stroke} strokeWidth={w.thickness || 10} strokeLinecap="round"
+                strokeDasharray={w.demolito ? "8,5" : (w.kind === "cartongesso" ? "12,4" : undefined)}
+                opacity={w.demolito ? 0.65 : 1}
               />
+              {/* corner cap (close angles between two walls) */}
+              <circle cx={w.x1} cy={w.y1} r={(w.thickness || 10) / 2} fill={stroke} pointerEvents="none" />
+              <circle cx={w.x2} cy={w.y2} r={(w.thickness || 10) / 2} fill={stroke} pointerEvents="none" />
+              {/* hatched overlay if "new" wall */}
+              {isNuovo && !w.demolito && (
+                <line x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2} stroke="url(#hatch-new)" strokeWidth={(w.thickness || 10) - 4} strokeLinecap="butt" opacity="0.6" />
+              )}
               <line x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2} stroke="transparent" strokeWidth="20" />
               {L.dimensions && len > 30 && <Measurement x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2} big color={w.demolito ? "#DC2626" : "#16A34A"} />}
+              {/* drag handles when selected */}
+              {isSel && tool === "select" && (
+                <>
+                  <circle cx={w.x1} cy={w.y1} r="9" fill="white" stroke="#2563EB" strokeWidth="2.5"
+                    style={{ cursor: "move" }}
+                    onMouseDown={(e) => { e.stopPropagation(); setDrag({ kind: "wall-end", id: w.id, sub: "p1", start: snapPt(toWorld(e)), orig: { x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 } }); }}
+                    data-testid={`wall-handle-p1-${w.id}`}
+                  />
+                  <circle cx={w.x2} cy={w.y2} r="9" fill="white" stroke="#2563EB" strokeWidth="2.5"
+                    style={{ cursor: "move" }}
+                    onMouseDown={(e) => { e.stopPropagation(); setDrag({ kind: "wall-end", id: w.id, sub: "p2", start: snapPt(toWorld(e)), orig: { x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 } }); }}
+                    data-testid={`wall-handle-p2-${w.id}`}
+                  />
+                </>
+              )}
             </g>
           );
         })}
@@ -482,26 +586,52 @@ export default function Canvas2D({
           const isBlindata = d.type === "blindata";
           const isScorrevole = d.type === "scorrevole";
           const stroke = isSel ? "#2563EB" : (isBlindata ? "#7C2D12" : "#2563EB");
+          const hinge = d.hinge || "left"; // 'left' | 'right'
+          const swing = d.swing || "in"; // 'in' | 'out'
+          const sw = swing === "out" ? -1 : 1;
+          // Door drawing centered: width starts at -w/2, ends at +w/2
+          // hinge=left → pivot at -w/2; hinge=right → pivot at +w/2
+          // swing=in (default) → arc on +y side; out → arc on -y side
+          let arcD;
+          if (hinge === "left") {
+            arcD = `M ${-d.width / 2} 0 A ${d.width} ${d.width} 0 0 ${sw === 1 ? 1 : 0} ${d.width / 2} ${sw * d.width / 2}`;
+          } else {
+            arcD = `M ${d.width / 2} 0 A ${d.width} ${d.width} 0 0 ${sw === 1 ? 0 : 1} ${-d.width / 2} ${sw * d.width / 2}`;
+          }
+          const leafEndX = hinge === "left" ? -d.width / 2 + d.width * Math.cos(Math.PI / 4) : d.width / 2 - d.width * Math.cos(Math.PI / 4);
+          const leafEndY = sw * d.width * Math.sin(Math.PI / 4);
           return (
             <g key={d.id} transform={`translate(${cx},${cy}) rotate(${angle})`}
               onMouseDown={(e) => { if (isPlacementTool) return; e.stopPropagation(); handleElementClick("doors", d.id); }}
               style={{ cursor: isPlacementTool ? "crosshair" : "pointer" }}
               data-testid={`door-${d.id}`}
             >
-              <rect x={-d.width / 2} y={-7} width={d.width} height={14} fill="#FAFAFA" stroke="none" />
+              <rect x={-d.width / 2 - 2} y={-7} width={d.width + 4} height={14} fill="#FAFAFA" stroke="none" />
               {!isScorrevole && (
                 <>
-                  <path d={`M ${-d.width / 2} 0 A ${d.width} ${d.width} 0 0 1 ${d.width / 2} 0`} fill="none" stroke={stroke} strokeWidth="1.2" strokeDasharray="3,3" opacity="0.7" />
-                  <line x1={-d.width / 2} y1={0} x2={d.width / 2} y2={0} stroke={stroke} strokeWidth={isBlindata ? 3 : 1.8} />
+                  <path d={arcD} fill="none" stroke={stroke} strokeWidth="1.2" strokeDasharray="3,3" opacity="0.7" />
+                  <line x1={hinge === "left" ? -d.width / 2 : d.width / 2} y1={0}
+                        x2={hinge === "left" ? -d.width / 2 + d.width * Math.cos(Math.PI / 6) : d.width / 2 - d.width * Math.cos(Math.PI / 6)}
+                        y2={sw * d.width * Math.sin(Math.PI / 6)}
+                        stroke={stroke} strokeWidth={isBlindata ? 3 : 2} />
                 </>
               )}
               {isScorrevole && (
                 <>
                   <line x1={-d.width / 2} y1={-3} x2={d.width / 2} y2={-3} stroke={stroke} strokeWidth="1.5" />
                   <line x1={-d.width / 2} y1={3} x2={d.width / 2} y2={3} stroke={stroke} strokeWidth="1.5" />
+                  <text x={0} y={2} fontSize="9" textAnchor="middle" fill={stroke}>↔</text>
                 </>
               )}
               <text x={0} y={-12} fontSize="12" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke} pointerEvents="none">{d.width}</text>
+              {/* drag handle */}
+              {isSel && tool === "select" && (
+                <circle cx={0} cy={0} r="7" fill="white" stroke="#2563EB" strokeWidth="2"
+                  style={{ cursor: "ew-resize" }}
+                  onMouseDown={(e) => { e.stopPropagation(); setDrag({ kind: "door-t", id: d.id, start: snapPt(toWorld(e)), orig: { t: d.t } }); }}
+                  data-testid={`door-handle-${d.id}`}
+                />
+              )}
             </g>
           );
         })}
@@ -526,6 +656,13 @@ export default function Canvas2D({
               <line x1={-wn.width / 2} y1={0} x2={wn.width / 2} y2={0} stroke={stroke} strokeWidth="1" />
               {isPF && <line x1={0} y1={-3} x2={0} y2={3} stroke={stroke} strokeWidth="1.2" />}
               <text x={0} y={-12} fontSize="12" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke} pointerEvents="none">{wn.width}</text>
+              {isSel && tool === "select" && (
+                <circle cx={0} cy={0} r="7" fill="white" stroke="#2563EB" strokeWidth="2"
+                  style={{ cursor: "ew-resize" }}
+                  onMouseDown={(e) => { e.stopPropagation(); setDrag({ kind: "window-t", id: wn.id, start: snapPt(toWorld(e)), orig: { t: wn.t } }); }}
+                  data-testid={`window-handle-${wn.id}`}
+                />
+              )}
             </g>
           );
         })}
@@ -538,8 +675,15 @@ export default function Canvas2D({
           const w = it.width || 60, d = it.depth || 60;
           return (
             <g key={it.id} transform={`translate(${it.x},${it.y}) rotate(${it.rotation || 0})`}
-              onMouseDown={(e) => { if (isPlacementTool) return; e.stopPropagation(); handleElementClick("items", it.id); }}
-              style={{ cursor: isPlacementTool ? "crosshair" : "pointer" }}
+              onMouseDown={(e) => {
+                if (isPlacementTool) return;
+                e.stopPropagation();
+                handleElementClick("items", it.id);
+                if (selected?.kind === "items" && selected.id === it.id) {
+                  setDrag({ kind: "item-pos", id: it.id, start: snapPt(toWorld(e)), orig: { x: it.x, y: it.y } });
+                }
+              }}
+              style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
               data-testid={`item-${it.id}`}
             >
               <rect x={-w / 2} y={-d / 2} width={w} height={d} fill={color} fillOpacity="0.85" stroke={isSel ? "#2563EB" : "#3F3F46"} strokeWidth={isSel ? 1.5 : 0.6} />
@@ -552,9 +696,16 @@ export default function Canvas2D({
         {L.electrical && electrical.map((e) => {
           const isSel = selected?.kind === "electrical" && selected.id === e.id;
           return (
-            <g key={e.id} transform={`translate(${e.x},${e.y})`}
-              onMouseDown={(ev) => { if (isPlacementTool) return; ev.stopPropagation(); handleElementClick("electrical", e.id); }}
-              style={{ cursor: isPlacementTool ? "crosshair" : "pointer" }}
+            <g key={e.id} transform={`translate(${e.x},${e.y}) rotate(${e.rotation || 0})`}
+              onMouseDown={(ev) => {
+                if (isPlacementTool) return;
+                ev.stopPropagation();
+                handleElementClick("electrical", e.id);
+                if (selected?.kind === "electrical" && selected.id === e.id) {
+                  setDrag({ kind: "elec-pos", id: e.id, start: snapPt(toWorld(ev)), orig: { x: e.x, y: e.y } });
+                }
+              }}
+              style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
               data-testid={`elec-${e.id}`}
             ><ElectricalSymbol e={e} isSel={isSel} /></g>
           );
@@ -565,8 +716,15 @@ export default function Canvas2D({
           const isSel = selected?.kind === "plumbing" && selected.id === p.id;
           return (
             <g key={p.id} transform={`translate(${p.x},${p.y})`}
-              onMouseDown={(ev) => { if (isPlacementTool) return; ev.stopPropagation(); handleElementClick("plumbing", p.id); }}
-              style={{ cursor: isPlacementTool ? "crosshair" : "pointer" }}
+              onMouseDown={(ev) => {
+                if (isPlacementTool) return;
+                ev.stopPropagation();
+                handleElementClick("plumbing", p.id);
+                if (selected?.kind === "plumbing" && selected.id === p.id) {
+                  setDrag({ kind: "plumb-pos", id: p.id, start: snapPt(toWorld(ev)), orig: { x: p.x, y: p.y } });
+                }
+              }}
+              style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
               data-testid={`plumb-${p.id}`}
             ><PlumbingSymbol p={p} isSel={isSel} /></g>
           );
@@ -577,8 +735,15 @@ export default function Canvas2D({
           const isSel = selected?.kind === "gas" && selected.id === g.id;
           return (
             <g key={g.id} transform={`translate(${g.x},${g.y})`}
-              onMouseDown={(ev) => { if (isPlacementTool) return; ev.stopPropagation(); handleElementClick("gas", g.id); }}
-              style={{ cursor: isPlacementTool ? "crosshair" : "pointer" }}
+              onMouseDown={(ev) => {
+                if (isPlacementTool) return;
+                ev.stopPropagation();
+                handleElementClick("gas", g.id);
+                if (selected?.kind === "gas" && selected.id === g.id) {
+                  setDrag({ kind: "gas-pos", id: g.id, start: snapPt(toWorld(ev)), orig: { x: g.x, y: g.y } });
+                }
+              }}
+              style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
               data-testid={`gas-${g.id}`}
             ><GasSymbol g={g} isSel={isSel} /></g>
           );
@@ -588,9 +753,16 @@ export default function Canvas2D({
         {L.hvac && hvac.map((h) => {
           const isSel = selected?.kind === "hvac" && selected.id === h.id;
           return (
-            <g key={h.id} transform={`translate(${h.x},${h.y})`}
-              onMouseDown={(ev) => { if (isPlacementTool) return; ev.stopPropagation(); handleElementClick("hvac", h.id); }}
-              style={{ cursor: isPlacementTool ? "crosshair" : "pointer" }}
+            <g key={h.id} transform={`translate(${h.x},${h.y}) rotate(${h.rotation || 0})`}
+              onMouseDown={(ev) => {
+                if (isPlacementTool) return;
+                ev.stopPropagation();
+                handleElementClick("hvac", h.id);
+                if (selected?.kind === "hvac" && selected.id === h.id) {
+                  setDrag({ kind: "hvac-pos", id: h.id, start: snapPt(toWorld(ev)), orig: { x: h.x, y: h.y } });
+                }
+              }}
+              style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
               data-testid={`hvac-${h.id}`}
             ><HvacSymbol h={h} isSel={isSel} /></g>
           );

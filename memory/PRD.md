@@ -68,6 +68,18 @@
 - **negozi / subappaltatori / impostazioni / dati_azienda**
 - **materials / projects** (CAD)
 
+## Changelog (Feb 2026 — round 9: Editor↔Preventivi flow + bug fix)
+- **EDITOR → SALVA COME PREVENTIVO**: nuovo bottone verde nel pannello "Preventivo Live" (data-testid="save-as-preventivo-button") crea un preventivo tipo="cad" via POST /api/preventivi con tutti gli items del computo metrico, project_id linkato. Backend: PreventivoIn accetta extra fields (project_id, package_base_total, extra_total). Sync inverso bidirezionale: il progetto si salva con `preventivo_id`. Successo verificato e2e (PRV-2026-0018).
+- **EDITOR → BUDGET WARNING**: nuovo banner data-testid="budget-status" in cima al CostPanel quando il progetto è collegato a un preventivo. Mostra numero, stato (BOZZA/ACCETTATO/etc), budget. Calcola overBudget = estimate.total - linkedPreventivo.totale_iva_escl. Banner verde se sotto budget, rosso se sfora. Avvertenza specifica se preventivo accettato e si sfora.
+- **EDITOR → AGGIORNA PREVENTIVO COLLEGATO**: il bottone diventa "Aggiorna Preventivo collegato" per progetti già linkati: PUT /api/preventivi/{id} (no duplicazione).
+- **AUTO-LINK ORPHAN PREVENTIVI**: GET /api/projects/{id} ora cerca automaticamente un preventivo orphan (project_id == this) e popola project.preventivo_id se mancante. Risolve la legacy data dei progetti pre-Round-9.
+- **DEMOLIZIONE MURO PARZIALE INTERACTIVE DRAG**: tool demolish-wall-partial ora supporta drag-to-resize. Click sul muro inizializza demolito_partial.from = demolito_partial.to = tHit. Trascinando, l'intervallo si espande live. Al rilascio, switch a tool select per refining via pannello proprietà numerico.
+- **TAVOLE GHOST PERIMETRO**: estese le ghostWalls anche alla vista 'costruzioni' (mostra muri esistenti come riferimento del contesto). Vista 'demolizioni' include ANCHE i muri di progetto non demoliti (oltre a quelli fatto).
+- **FIX phase migration al caricamento**: ensurePhase() assegna "fatto" ai muri/stanze/items legacy senza phase per evitare contaminazione delle tavole separate.
+
+## Backend tests
+- `/app/backend/tests/test_iter9_round.py`: 8/8 PASS (POST /preventivi tipo=cad, GET include CAD, PUT no duplicate, projects↔preventivi bidir sync, idempotent create-project endpoint, 404 handling).
+
 ## Changelog (Feb 2026 — round 8: separazione fatto/progetto + pacchetto live)
 - **STATO DI FATTO IMMUTABILE in mode Progetto**: PropertiesPanel ora riceve `editMode`. Per stanze/muri con `phase=fatto` mostra banner 🔒 e disabilita i campi (`fieldset disabled` + opacity-60). Nelle stanze fatto compare un blocco amber "⚒ Modifiche di progetto" con override floorMaterial/wallMaterial/ceilingMaterial/controsoffitto/electrical/plumbing/pittura. La stanza fatto resta intatta nel DB; solo `room.progetto` viene popolato.
 - **PREVENTIVO LIVE LE MODIFICHE DI PROGETTO**: `estimateProjectV2` ora itera tutte le stanze (fatto+progetto). Per fatto considera SOLO se ha `room.progetto` overrides. Per progetto usa direttamente le sue proprietà. Esempio test reale: cucina 14m² fatto + progetto={parquet, controsoffitto, elettrico} → 4599€ senza pacchetto.

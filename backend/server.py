@@ -356,6 +356,16 @@ async def get_project(project_id: str, user: Dict[str, Any] = Depends(get_curren
     doc = await db.projects.find_one({"id": project_id, "user_id": user["id"]}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Progetto non trovato")
+    # Auto-link: se preventivo_id mancante, cerca un preventivo che punta a questo progetto
+    if not doc.get("preventivo_id"):
+        prev = await db.preventivi.find_one(
+            {"project_id": project_id, "user_id": user["id"]},
+            {"_id": 0, "id": 1},
+            sort=[("created_at", -1)],
+        )
+        if prev:
+            await db.projects.update_one({"id": project_id}, {"$set": {"preventivo_id": prev["id"]}})
+            doc["preventivo_id"] = prev["id"]
     return doc
 
 

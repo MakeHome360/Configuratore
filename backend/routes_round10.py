@@ -2,13 +2,14 @@
 Round 10: Portale Cliente con utenza temporanea + firma elettronica OTP,
 Dashboard Subappaltatori, Gestore Cantieri, Venditori filtrati.
 """
+import os
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 import uuid
 import secrets
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 
 def now_iso():
@@ -186,7 +187,7 @@ def build_round10_router(db, get_current_user, jwt_create_access):
     # ============================================================
     class InvitoClienteIn(BaseModel):
         commessa_id: str
-        email: str
+        email: EmailStr
         nome: str
         durata_giorni: int = 30  # giorni dopo data fine commessa
 
@@ -372,8 +373,12 @@ def build_round10_router(db, get_current_user, jwt_create_access):
             "used": False,
             "created_at": now_iso(),
         })
-        # In prod: invia email con codice. Per dev/test, restituisco il codice.
-        return {"ok": True, "scadenza": scad, "dev_otp_code": otp, "msg": "OTP inviato (in dev viene restituito direttamente)"}
+        # In prod: invia email con codice. Per dev/test, restituisco il codice solo se DEV_MODE attivo.
+        dev_mode = os.environ.get("EMERGENT_DEV_MODE", "true").lower() == "true"
+        resp = {"ok": True, "scadenza": scad, "msg": "OTP inviato all'email registrata"}
+        if dev_mode:
+            resp["dev_otp_code"] = otp
+        return resp
 
     class FirmaConfermaIn(BaseModel):
         documento_id: str
@@ -430,7 +435,7 @@ def build_round10_router(db, get_current_user, jwt_create_access):
     # AUTH cliente: usa lo stesso /api/auth/login già esistente, basta che il role sia "cliente"
     # ============================================================
     class ClientLoginReq(BaseModel):
-        email: str
+        email: EmailStr
         password: str
 
     @r.post("/auth/login-cliente")

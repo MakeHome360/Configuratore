@@ -194,7 +194,17 @@ export default function ConfiguratoreEsigenze() {
 
   const goPreventivo = async (pkgChoice) => {
     const lead = await saveLead({ pacchetto_scelto: pkgChoice.id });
-    nav(`/preventivopacchetto?package=${pkgChoice.id}&mq=${dati.mq}&cliente=${encodeURIComponent(dati.nome + " " + dati.cognome)}${lead ? `&lead_id=${lead.id}` : ""}`);
+    // Prefill: extras + cliente in sessionStorage (URL sarebbe troppo lunga)
+    const prefill = {
+      package_id: pkgChoice.id,
+      mq: dati.mq || 80,
+      cliente: { nome: dati.nome, cognome: dati.cognome, telefono: dati.telefono, email: dati.email, indirizzo: dati.indirizzo },
+      extras: (pkgChoice.extras || []).map((ex) => ({ voce_id: ex.voce_id, name: ex.name, unit: ex.unit, qty: ex.qty, unit_price: ex.unit_price })),
+      note: `Configuratore: pacchetto ${pkgChoice.name}` + ((pkgChoice.extras && pkgChoice.extras.length) ? ` con ${pkgChoice.extras.length} extra` : ""),
+      lead_id: lead?.id || null,
+    };
+    sessionStorage.setItem("preventivo_prefill", JSON.stringify(prefill));
+    nav(`/preventivopacchetto?prefill=1`);
   };
 
   const goProgettazione = async (pkgChoice) => {

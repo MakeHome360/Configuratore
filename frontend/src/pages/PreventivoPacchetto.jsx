@@ -60,6 +60,24 @@ export default function PreventivoPacchetto() {
           });
           setNumero(data.numero); setStato(data.stato);
           setStep(6);
+        } else {
+          // Prefill dal configuratore esigenze (sessionStorage)
+          try {
+            const raw = sessionStorage.getItem("preventivo_prefill");
+            if (raw) {
+              const pf = JSON.parse(raw);
+              sessionStorage.removeItem("preventivo_prefill");
+              setPrev((p) => ({
+                ...p,
+                package_id: pf.package_id || null,
+                mq: pf.mq || p.mq,
+                cliente: { ...p.cliente, ...(pf.cliente || {}) },
+                note: pf.note || p.note,
+                _pendingExtras: pf.extras || [],
+              }));
+              if (pf.package_id) setStep(2); // skip package and mq selection
+            }
+          } catch { /* ignore */ }
         }
       } catch { toast.error("Errore caricamento"); }
       setLoading(false);
@@ -83,13 +101,36 @@ export default function PreventivoPacchetto() {
         return {
           id: it.id, voce_id: it.voce_id || it.id, name: it.name, category: it.category, unit: it.unit,
           qty_mode: it.qty_mode, qty_ratio: it.qty_ratio, qty_value: it.qty_value,
-          // unit_price = prezzo backoffice (sempre live) — usato per calcolare il costo dell'EXTRA oltre l'incluso
           unit_price: it.prezzo_rivendita || 0,
           included_qty: parseFloat(included.toFixed(2)),
           qty_richiesta: existing ? existing.qty_richiesta : parseFloat(included.toFixed(2)),
         };
       });
-      return { ...p, items: newItems };
+      // Apply pending extras dal configuratore
+      const pending = p._pendingExtras;
+      if (pending && pending.length > 0) {
+        pending.forEach((ex) => {
+          const idx = newItems.findIndex((it) => (it.voce_id || it.id) === ex.voce_id);
+          if (idx >= 0) {
+            // voce già nel pacchetto → aumenta qty_richiesta oltre l'incluso
+            newItems[idx] = {
+              ...newItems[idx],
+              qty_richiesta: parseFloat(((newItems[idx].included_qty || 0) + (ex.qty || 0)).toFixed(2)),
+            };
+          } else {
+            // voce non inclusa → aggiungi come riga extra (included_qty=0)
+            newItems.push({
+              id: ex.voce_id, voce_id: ex.voce_id, name: ex.name, category: "EXTRA", unit: ex.unit || "pz",
+              qty_mode: "fissa", qty_ratio: 0, qty_value: ex.qty || 1,
+              unit_price: ex.unit_price || 0,
+              included_qty: 0,
+              qty_richiesta: parseFloat((ex.qty || 1).toFixed(2)),
+              from_configuratore: true,
+            });
+          }
+        });
+      }
+      return { ...p, items: newItems, _pendingExtras: undefined };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prev.package_id, prev.mq, packages]);

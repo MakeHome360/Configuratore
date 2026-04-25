@@ -315,7 +315,7 @@ export default function ConfiguratoreEsigenze() {
               <div className="flex justify-between items-center mt-8">
                 <Button variant="outline" disabled={domandaIdx === 0} onClick={() => setDomandaIdx(domandaIdx - 1)}><ChevronLeft className="h-4 w-4 mr-1" />Indietro</Button>
                 <div className="text-xs text-zinc-500">Tip: clicca un'opzione per passare alla prossima ✨</div>
-                <Button disabled={!esigenze[dq.key] && !dq.optional} onClick={() => domandaIdx < totalQs - 1 ? setDomandaIdx(domandaIdx + 1) : setStep(2)} style={{ background: "var(--brand)", color: "white" }} data-testid="ce-q-next">
+                <Button disabled={!esigenze[dq.key] && !dq.optional} onClick={() => domandaIdx < totalQs - 1 ? setDomandaIdx(domandaIdx + 1) : setStep(2)} style={{ background: "var(--brand)", color: "white" }} data-testid={domandaIdx === totalQs - 1 ? "ce-q-see-result" : "ce-q-next"}>
                   {domandaIdx === totalQs - 1 ? "Vedi risultato" : "Avanti"} <ChevronRight className="h-4 w-4 ml-1" />
                 </Button>
               </div>

@@ -114,10 +114,13 @@
 - Fix bug: /api/commesse/{id}/stato 404 handling, role-gating su POST commesse
 
 ## Backlog (P0/P1/P2)
-- **P0 (next, big features)**:
-  - Quotazione dinamica CAD ↔ Voci Backoffice (live update preventivo mentre disegni / demolisci muri / aggiungi impianti). Gestione "extra" rispetto al pacchetto scelto.
-  - Export Tavole di Progetto: Stato di Fatto, Stato di Progetto (con sanitari/ingombri quotati), Demolizioni/Costruzioni, Impianto Elettrico, Impianto Idraulico, Impianto Gas, Impianto Condizionamento, Prospetti pareti con impianti (cucine/bagni/split) — modificabili e poi flaggati nei documenti commessa.
-  - Import AI planimetria 2D → 2D/3D CAD (upload immagine + Gemini parsing)
+- **P0 (RESOLVED)**:
+  - ✅ Fix Configuratore Esigenze → Preventivo: extras correttamente iniettati via sessionStorage prefill, useRef + from_configuratore flag per gestire StrictMode dev double-mount
+  - ✅ Fix toast "Errore salvataggio" falso (era saveLead lead 422 per anno_costruzione vuoto)
+  - ✅ Fix bagno surcharge negativo quando bathroom_tier null
+  - ✅ Render categoria EXTRA nel tab Lavorazioni
+  - ✅ Badge "Conforme al pacchetto X" in UI riepilogo + PDF
+  - ✅ Editing posizione orizzontale (XY) e altezza dei punti nei Prospetti
 - **P1**:
   - Abaco infissi visuale in PreventivoInfissi (anteprima grafica per finestra / porta-finestra / colore / vetro / dimensioni)
   - Schema posa piastrelle: 30x60, 60x60, 60x120, 80x80 (effetto marmo/cemento), 22.5x90, 25x150 (effetto legno) + scelta punto di partenza e direzione/angolo

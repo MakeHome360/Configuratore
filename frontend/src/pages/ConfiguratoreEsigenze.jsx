@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ChevronLeft, ChevronRight, Sparkles, Home, Clock, Bath, ChefHat, Zap, Droplet, Flame, Wind, Square, Layers, Award, DoorClosed, RectangleHorizontal, Hammer, ShieldCheck, Loader2, Check } from "lucide-react";
 import { toast } from "sonner";
+import { computeRealisticExtras } from "@/editor/utils";
 
 // PSYCHOLOGY: Avoid asking budget directly. Frame each question to make
 // the customer FEEL they need quality. The dealer can use this to upsell.
@@ -120,7 +121,7 @@ const PKG_TIERS = [
   { id: "pkg-elite",   name: "ELITE",   color: "#0A0A0A", desc: "Lusso assoluto, finiture top di gamma", maxScore: 999 },
 ];
 
-function computePackages(esigenze, dati, packagesDb) {
+function computePackages(esigenze, dati, packagesDb, voci) {
   const score = scorePkg(esigenze);
   const tier = PKG_TIERS.find((t) => score <= t.maxScore) || PKG_TIERS[3];
   const tierIdx = PKG_TIERS.indexOf(tier);
@@ -131,15 +132,10 @@ function computePackages(esigenze, dati, packagesDb) {
   const mq = dati.mq || 80;
   const priceTier = tierDb?.prezzo_mq || (tier.id === "pkg-basic" ? 380 : tier.id === "pkg-smart" ? 580 : tier.id === "pkg-premium" ? 850 : 1300);
   const priceLower = lowerDb?.prezzo_mq || (lower.id === "pkg-basic" ? 380 : lower.id === "pkg-smart" ? 580 : lower.id === "pkg-premium" ? 850 : 1300);
-  // Compute extras for the lower tier alternative based on what's "above" base
-  const extras = [];
-  if (esigenze.blindata === "Sì") extras.push({ name: "Porta blindata top di gamma", price: 1200 });
-  if (esigenze.clima === "Sì installato") extras.push({ name: "Climatizzatore dual split", price: 1800 });
-  if (esigenze.termico === "Pavimento") extras.push({ name: "Riscaldamento a pavimento (sup.)", price: mq * 60 });
-  if (esigenze.rivestimenti === "Tutto") extras.push({ name: "Rivestimenti premium bagno+cucina", price: 2500 });
-  if (esigenze.infissi_materiale === "Legno") extras.push({ name: "Upgrade infissi a legno/alluminio", price: 3500 });
-  if (esigenze.finiture === "Premium" || esigenze.finiture === "Luxury") extras.push({ name: "Upgrade finiture", price: 2200 });
-  const extrasTotal = extras.reduce((s, x) => s + x.price, 0);
+  // REAL extras: differenza voci tra pacchetto consigliato e alternativo, filtrate per esigenze cliente
+  const realisticExtras = computeRealisticExtras(tierDb, lowerDb, esigenze, mq, voci);
+  const extras = realisticExtras.extras;
+  const extrasTotal = realisticExtras.total;
   const tierTotal = priceTier * mq;
   const lowerTotal = priceLower * mq + extrasTotal;
   return {
@@ -156,12 +152,16 @@ export default function ConfiguratoreEsigenze() {
   const [esigenze, setEsigenze] = useState({});
   const [domandaIdx, setDomandaIdx] = useState(0);
   const [packagesDb, setPackagesDb] = useState([]);
+  const [voci, setVoci] = useState([]);
   const [aiText, setAiText] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
 
-  useEffect(() => { api.get("/packages").then((r) => setPackagesDb(r.data || [])).catch(() => {}); }, []);
+  useEffect(() => {
+    api.get("/packages").then((r) => setPackagesDb(r.data || [])).catch(() => {});
+    api.get("/voci-backoffice").then((r) => setVoci(r.data || [])).catch(() => {});
+  }, []);
 
-  const result = useMemo(() => computePackages(esigenze, dati, packagesDb), [esigenze, dati, packagesDb]);
+  const result = useMemo(() => computePackages(esigenze, dati, packagesDb, voci), [esigenze, dati, packagesDb, voci]);
   const totalQs = DOMANDE.length;
   const answeredCount = Object.keys(esigenze).filter((k) => esigenze[k]).length;
 
@@ -377,12 +377,12 @@ function PkgCard({ tier, mq, dati, primary, onPreventivo, onProgettazione, testi
       <div className="p-5 space-y-4">
         {tier.extras && tier.extras.length > 0 && (
           <div className="bg-amber-50 border border-amber-200 p-3 rounded">
-            <div className="text-xs uppercase tracking-widest text-amber-800 mb-2 font-semibold">Extra inclusi</div>
+            <div className="text-xs uppercase tracking-widest text-amber-800 mb-2 font-semibold">Extra inclusi (solo ciò che ti serve davvero)</div>
             <ul className="space-y-1">
               {tier.extras.map((ex, i) => (
-                <li key={i} className="flex justify-between text-sm">
-                  <span>+ {ex.name}</span>
-                  <span className="font-mono text-zinc-700">€ {ex.price.toLocaleString("it-IT")}</span>
+                <li key={i} className="flex justify-between gap-2 text-sm">
+                  <span className="flex-1 truncate">+ {ex.name} {ex.qty && ex.unit ? <span className="text-zinc-500 font-mono text-xs">({ex.qty} {ex.unit})</span> : null}</span>
+                  <span className="font-mono text-zinc-700 whitespace-nowrap">€ {Math.round(ex.total ?? ex.price ?? 0).toLocaleString("it-IT")}</span>
                 </li>
               ))}
               <li className="pt-1 border-t border-amber-300 flex justify-between text-sm font-semibold">
@@ -390,6 +390,7 @@ function PkgCard({ tier, mq, dati, primary, onPreventivo, onProgettazione, testi
                 <span className="font-mono">€ {tier.extras_total.toLocaleString("it-IT")}</span>
               </li>
             </ul>
+            <div className="text-[10px] text-amber-700 italic mt-2">💡 Differenza reale tra {tier.name} e il pacchetto consigliato, calcolata sulle TUE risposte</div>
           </div>
         )}
         <div className="grid grid-cols-2 gap-2">

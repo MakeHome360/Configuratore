@@ -338,6 +338,88 @@ export function estimateProjectV2(project, voci, packageRef) {
   };
 }
 
+// Mapping: per ogni voce backoffice (per nome o keyword), quale chiave esigenze
+// deve essere "attiva" per giustificarne l'inclusione tra gli extra.
+// Ritorna true se la voce è giustificata dalle risposte del cliente.
+function voceJustifiedByEsigenze(voceName, esigenze) {
+  const n = (voceName || "").toLowerCase();
+  // Default: voce inclusa solo se chiaramente collegata
+  if (n.includes("demoliz")) return ["Si, rivoluziono", "Qualche modifica", "Tutto nuovo", "Solo bagni"].some((v) => Object.values(esigenze).includes(v));
+  if (n.includes("muro mattone") || n.includes("muro cartongesso")) return ["Si, rivoluziono", "Qualche modifica"].includes(esigenze.muratura);
+  if (n.includes("controsoff")) return ["Si, rivoluziono", "Qualche modifica"].includes(esigenze.muratura) || esigenze.finiture === "Premium" || esigenze.finiture === "Luxury";
+  if (n.includes("piastrelle pavim")) return ["Tutto nuovo", "Solo zone"].includes(esigenze.pavimenti);
+  if (n.includes("parquet")) return ["Tutto nuovo", "Solo zone"].includes(esigenze.pavimenti);
+  if (n.includes("pvc/laminat")) return esigenze.pavimenti === "Sopra";
+  if (n.includes("piastrelle rivestim")) return ["Tutto", "Solo bagni"].includes(esigenze.rivestimenti);
+  if (n.includes("pittur")) return true; // pittura quasi sempre necessaria
+  if (n.includes("battiscop")) return ["Tutto nuovo", "Solo zone"].includes(esigenze.pavimenti);
+  if (n.includes("impianto elettrico")) return ["Tutto nuovo", "Adeguamento"].includes(esigenze.elettrico);
+  if (n.includes("punto luce")) return ["Tutto nuovo", "Adeguamento"].includes(esigenze.elettrico);
+  if (n.includes("impianto idraulico")) return ["Tutto nuovo", "Solo bagni"].includes(esigenze.idraulico);
+  if (n.includes("punto acqua")) return ["Tutto nuovo", "Solo bagni"].includes(esigenze.idraulico);
+  if (n.includes("riscaldamento radiator")) return esigenze.termico === "Radiatori";
+  if (n.includes("riscaldamento a pavim")) return esigenze.termico === "Pavimento";
+  if (n.includes("predisposizione climat")) return esigenze.clima === "Predisposizione" || esigenze.clima === "Sì installato";
+  if (n.includes("climatizzatore dual")) return esigenze.clima === "Sì installato" && (esigenze.bagni === "1" || esigenze.bagni === "2");
+  if (n.includes("climatizzatore trial")) return esigenze.clima === "Sì installato" && (esigenze.bagni === "2" || esigenze.bagni === "3+");
+  if (n.includes("caldaia")) return ["Solo caldaia", "Radiatori", "Pavimento"].includes(esigenze.termico);
+  if (n.includes("porte interne")) return esigenze.porte_interne && esigenze.porte_interne !== "0";
+  if (n.includes("blindata")) return esigenze.blindata === "Sì" || esigenze.blindata === "Standard";
+  if (n.includes("infissi pvc")) return esigenze.infissi_esterni !== "No" && (esigenze.infissi_materiale === "PVC" || esigenze.infissi_materiale === "Indeciso");
+  if (n.includes("infissi alluminio")) return esigenze.infissi_esterni !== "No" && esigenze.infissi_materiale === "Alluminio";
+  if (n.includes("infissi legno") || n.includes("legno/alluminio")) return esigenze.infissi_esterni !== "No" && esigenze.infissi_materiale === "Legno";
+  if (n.includes("sanitari bagno") || n.includes("box doccia") || n.includes("mobile bagno")) return esigenze.bagni && esigenze.bagni !== "0";
+  if (n.includes("autolivell")) return ["Tutto nuovo", "Solo zone"].includes(esigenze.pavimenti);
+  if (n.includes("massetto")) return ["Tutto nuovo", "Solo zone"].includes(esigenze.pavimenti) || esigenze.termico === "Pavimento";
+  if (n.includes("posa rivest") || n.includes("posa-riv")) return ["Tutto", "Solo bagni"].includes(esigenze.rivestimenti);
+  if (n.includes("posa") && (n.includes("ceramica") || n.includes("piastrell"))) return ["Tutto", "Solo bagni"].includes(esigenze.rivestimenti) || ["Tutto nuovo", "Solo zone"].includes(esigenze.pavimenti);
+  if (n.includes("decoraz") || n.includes("idropittur")) return true;
+  if (n.includes("cila") || n.includes("scia") || n.includes("pratich")) return true; // pratiche edilizie sempre
+  if (n.includes("intonac") || n.includes("rasatur")) return ["Si, rivoluziono", "Qualche modifica"].includes(esigenze.muratura) || esigenze.finiture !== "Essenziale";
+  if (n.includes("sicurezza cantier")) return true; // sempre presente
+  return false;
+}
+
+function computeQtyForVoce(voce, packageItem, mq) {
+  if (!packageItem) return 1;
+  const mode = packageItem.qty_mode || "fissa";
+  if (mode === "mq") return mq * (packageItem.qty_ratio || 1);
+  if (mode === "ml") return mq * (packageItem.qty_ratio || 0.4); // approx perimetro/mq
+  if (mode === "mq_coeff") return mq * (packageItem.qty_ratio || 1);
+  return packageItem.qty_value || 1;
+}
+
+/**
+ * Compute realistic extras between two packages based on customer needs.
+ * Returns: { extras: [{name, unit, qty, unit_price, total}], total }
+ */
+export function computeRealisticExtras(recommendedPkg, alternativePkg, esigenze, mq, voci) {
+  if (!recommendedPkg || !alternativePkg) return { extras: [], total: 0 };
+  const recItems = recommendedPkg.items || [];
+  const altVoceIds = new Set((alternativePkg.items || []).map((i) => i.voce_id));
+  const extras = [];
+  let total = 0;
+  for (const recItem of recItems) {
+    if (altVoceIds.has(recItem.voce_id)) continue; // già nel pacchetto alternativo
+    const voce = (voci || []).find((v) => v.id === recItem.voce_id);
+    if (!voce) continue;
+    if (!voceJustifiedByEsigenze(voce.name, esigenze)) continue;
+    const qty = computeQtyForVoce(voce, recItem, mq);
+    const unitPrice = (voce.prezzo_acquisto || 0) * (voce.ricarico || 1.8);
+    const lineTotal = qty * unitPrice;
+    extras.push({
+      voce_id: voce.id,
+      name: voce.name,
+      unit: voce.unit,
+      qty: Math.round(qty * 100) / 100,
+      unit_price: Math.round(unitPrice * 100) / 100,
+      total: Math.round(lineTotal * 100) / 100,
+    });
+    total += lineTotal;
+  }
+  return { extras, total: Math.round(total * 100) / 100 };
+}
+
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 export const fmtEuro = (n) =>

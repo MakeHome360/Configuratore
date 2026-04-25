@@ -236,10 +236,30 @@ export default function Canvas2D({
           ...prj,
           [arrKey]: (prj[arrKey] || []).map((x) => x.id === drag.id ? { ...x, x: drag.orig.x + dx, y: drag.orig.y + dy } : x),
         }));
+      } else if (drag.kind === "demo-partial-drag") {
+        // Trascina lungo il muro per estendere la zona demolita
+        setProject((prj) => {
+          const w = (prj.walls || []).find((ww) => ww.id === drag.id);
+          if (!w) return prj;
+          const len = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1;
+          const dirX = (w.x2 - w.x1) / len, dirY = (w.y2 - w.y1) / len;
+          const proj = ((p.x - w.x1) * dirX + (p.y - w.y1) * dirY) / len;
+          const tNow = Math.max(0, Math.min(1, proj));
+          const fromT = Math.min(drag.startT, tNow);
+          const toT = Math.max(drag.startT, tNow);
+          return { ...prj, walls: (prj.walls || []).map((x) => x.id === drag.id ? { ...x, demolito_partial: { ...(x.demolito_partial || { height: prj.roomHeight || 270 }), from: fromT, to: toT } } : x) };
+        });
       }
     }
   };
-  const stopDrag = () => { if (drag) setDrag(null); setPan(null); };
+  const stopDrag = () => {
+    if (drag?.kind === "demo-partial-drag") {
+      // Switch to select per consentire il refining via pannello proprietà
+      setTool("select");
+    }
+    if (drag) setDrag(null);
+    setPan(null);
+  };
 
   const findRoomAt = (p) => {
     const rooms = project.rooms || [];
@@ -348,15 +368,12 @@ export default function Canvas2D({
         if (d < bestD) { bestD = d; best = { w, tHit: t.t }; }
       });
       if (best && bestD < 30) {
-        // Inizializza una demolizione parziale al click point con larghezza 80cm di default centrata
+        // Inizializza un drag per definire l'estensione della demolizione: from = tHit, to = tHit
+        // Su mousemove l'utente "trascina" lungo il muro per allargare la zona; al rilascio commit
         const W = best.w;
-        const len = Math.hypot(W.x2 - W.x1, W.y2 - W.y1) || 1;
-        const halfPct = Math.min(0.4, 80 / len); // 80cm o 40% della parete
-        const from = Math.max(0, best.tHit - halfPct);
-        const to = Math.min(1, best.tHit + halfPct);
-        setProject((prj) => ({ ...prj, walls: (prj.walls || []).map((x) => x.id === W.id ? { ...x, demolito_partial: { from, to, height: 270 } } : x) }));
+        setProject((prj) => ({ ...prj, walls: (prj.walls || []).map((x) => x.id === W.id ? { ...x, demolito_partial: { from: best.tHit, to: best.tHit, height: prj.roomHeight || 270 } } : x) }));
         setSelected({ kind: "walls", id: W.id });
-        setTool("select");
+        setDrag({ kind: "demo-partial-drag", id: W.id, startT: best.tHit });
       }
       return;
     }
@@ -561,13 +578,18 @@ export default function Canvas2D({
     // progetto: tutti tranne demoliti
     return !w.demolito;
   });
-  // Walls "ghost" (stato di fatto NON demoliti) da mostrare come riferimento solo in vista demolizioni
-  const ghostWalls = VM === "demolizioni"
-    ? allWalls.filter((w) => {
-        const phase = w.phase || (w.kind === "nuovo" || w.kind === "cartongesso" ? "progetto" : "fatto");
-        return !w.demolito && phase === "fatto";
-      })
-    : [];
+  // Walls "ghost" (riferimento perimetrale) — visibili come riferimento nelle viste tavole specifiche
+  let ghostWalls = [];
+  if (VM === "demolizioni") {
+    // Demolizioni: mostra i muri NON demoliti (sia fatto che progetto) come riferimento
+    ghostWalls = allWalls.filter((w) => !w.demolito);
+  } else if (VM === "costruzioni") {
+    // Costruzioni: mostra i muri esistenti (fatto) come riferimento del contesto
+    ghostWalls = allWalls.filter((w) => {
+      const ph = w.phase || "fatto";
+      return ph === "fatto" && !w.demolito;
+    });
+  }
   const allDoors = project.doors || [];
   const allWindows = project.windows || [];
   const validWallIds = new Set(walls.map((w) => w.id));

@@ -16,7 +16,7 @@ import {
   MousePointer2, Minus, Square, DoorClosed, RectangleHorizontal, Sofa, Trash2,
   Save, Download, Sparkles, Eye, EyeOff, Box, Ruler, X, Home, Bath, ChefHat, Bed,
   ChevronRight, ChevronLeft, Hammer, Layers, Zap, Droplet, Flame, Wind, Grid3x3,
-  Package, Upload, FileImage, FileText, Type, RotateCcw, RotateCw,
+  Package, Upload, FileImage, FileText, Type, RotateCcw, RotateCw, Receipt,
 } from "lucide-react";
 import { estimateProject, estimateProjectV2, fmtEuro, fmtEuro2, fmtNum, emptyProjectData, uid, polygonArea, polygonPerimeter, splitRoomByWall } from "../editor/utils";
 import { ProspettoWall, ProspettoInputs, computeInterestingWalls } from "../editor/Prospetti";
@@ -277,6 +277,58 @@ export default function Editor() {
 
   const estimate = useMemo(() => (project ? estimateProject(project.data, catalog) : null), [project, catalog]);
   const estimateV2 = useMemo(() => (project ? estimateProjectV2(project.data, voci, project.data?.packageRef) : null), [project, voci]);
+
+  // Carica preventivo collegato (se esiste) per mostrare il confronto budget
+  const [linkedPreventivo, setLinkedPreventivo] = useState(null);
+  useEffect(() => {
+    if (!project?.preventivo_id) { setLinkedPreventivo(null); return; }
+    api.get(`/preventivi/${project.preventivo_id}`).then((r) => setLinkedPreventivo(r.data)).catch(() => setLinkedPreventivo(null));
+  }, [project?.preventivo_id]);
+
+  // Salva il computo metrico CAD live come Preventivo nel DB
+  const saveAsPreventivo = async () => {
+    if (!estimateV2) { toast.error("Nessun computo da salvare"); return; }
+    const items = estimateV2.items.map((it) => ({
+      voce_id: it.voce_id, name: it.name, unit: it.unit, qty: it.qty,
+      qty_inclusa: it.qty_inclusa, qty_extra: it.qty_extra,
+      unit_price: it.unit_price, total: it.total, category: it.category,
+    }));
+    // Se il progetto è già collegato a un preventivo CAD, aggiorna; altrimenti crea
+    const totale = estimateV2.total;
+    const iva = totale * 0.10;
+    const cliente_default = project?.cliente || { nome: project?.name || "Cliente CAD" };
+    const body = {
+      tipo: "cad",
+      cliente: cliente_default,
+      package_id: project.data?.packageRef?.package_id || null,
+      mq: project.data?.packageRef?.mq_inclusi || 0,
+      items, optional: [],
+      note: `Preventivo generato dal CAD · Progetto: ${project.name}`,
+      sconto_pct: 0, sconto_eur: 0, iva_pct: 10,
+      totale_iva_escl: Math.round(totale * 100) / 100,
+      totale_iva_incl: Math.round((totale + iva) * 100) / 100,
+      project_id: project.id,
+      package_base_total: project.data?.packageRef?.package_base_total || 0,
+      extra_total: estimateV2.extra_total,
+    };
+    try {
+      let saved;
+      if (project.preventivo_id) {
+        saved = await api.put(`/preventivi/${project.preventivo_id}`, body);
+        toast.success(`Preventivo aggiornato (${saved.data.numero || project.preventivo_id})`);
+      } else {
+        saved = await api.post("/preventivi", body);
+        // collega il progetto al nuovo preventivo
+        const newPid = saved.data.id;
+        await api.put(`/projects/${project.id}`, { ...project, preventivo_id: newPid });
+        setProject((p) => ({ ...p, preventivo_id: newPid }));
+        toast.success(`Preventivo creato (${saved.data.numero})`);
+      }
+      setLinkedPreventivo(saved.data);
+    } catch (e) {
+      toast.error("Errore salvataggio preventivo");
+    }
+  };
 
   const generateAIRender = async () => {
     // Forza la vista 3D se non attiva (necessaria per snapshot)
@@ -645,7 +697,7 @@ export default function Editor() {
                 <CatalogPanel catalog={catalog} selectedMaterial={selectedMaterial} setSelectedMaterial={(id) => { setSelectedMaterial(id); setTool("item"); }} />
               </TabsContent>
               <TabsContent value="cost" className="p-0 overflow-auto flex-1 mt-0">
-                <CostPanelV2 estimate={estimateV2} packageRef={project.data?.packageRef} legacy={estimate} />
+                <CostPanelV2 estimate={estimateV2} packageRef={project.data?.packageRef} legacy={estimate} linkedPreventivo={linkedPreventivo} saveAsPreventivo={saveAsPreventivo} />
               </TabsContent>
             </Tabs>
           </aside>
@@ -1069,10 +1121,31 @@ function CatalogPanel({ catalog, selectedMaterial, setSelectedMaterial }) {
   );
 }
 
-function CostPanelV2({ estimate, packageRef, legacy }) {
+function CostPanelV2({ estimate, packageRef, legacy, linkedPreventivo, saveAsPreventivo }) {
   if (!estimate) return null;
+  // Calcola scostamento vs budget preventivo approvato (se collegato)
+  const budgetTotal = linkedPreventivo?.totale_iva_escl || linkedPreventivo?.total || 0;
+  const overBudget = budgetTotal > 0 ? estimate.total - budgetTotal : 0;
+  const overPct = budgetTotal > 0 ? (overBudget / budgetTotal) * 100 : 0;
   return (
     <div className="p-4 flex flex-col gap-5" data-testid="cost-panel">
+      {linkedPreventivo && (
+        <div className={`border p-3 ${overBudget > 0 ? "bg-rose-50 border-rose-300" : "bg-emerald-50 border-emerald-300"}`} data-testid="budget-status">
+          <div className="label-kicker mb-1">Preventivo collegato · {linkedPreventivo.numero || linkedPreventivo.id?.slice(0, 8)}</div>
+          <div className="mono text-xs flex items-center gap-2">
+            <span className={linkedPreventivo.stato === "accettato" ? "px-1.5 py-0.5 bg-emerald-600 text-white" : "px-1.5 py-0.5 bg-zinc-300 text-zinc-700"}>{(linkedPreventivo.stato || "bozza").toUpperCase()}</span>
+            <span>budget {fmtEuro(budgetTotal)}</span>
+          </div>
+          {overBudget !== 0 && (
+            <div className={`mono text-xs mt-1.5 font-medium ${overBudget > 0 ? "text-rose-700" : "text-emerald-700"}`} data-testid="budget-delta">
+              {overBudget > 0 ? "⚠ SFORI budget" : "✓ Sotto budget"}: {overBudget > 0 ? "+" : ""}{fmtEuro(overBudget)} ({overPct.toFixed(1)}%)
+            </div>
+          )}
+          {linkedPreventivo.stato === "accettato" && overBudget > 0 && (
+            <div className="text-[10px] text-rose-700 mt-1">⚠ Il preventivo è ACCETTATO. Sforare significa lavorazioni extra non pagate dal cliente: rinegozia o riduci.</div>
+          )}
+        </div>
+      )}
       {packageRef && (
         <div className="border border-emerald-300 bg-emerald-50 p-3">
           <div className="label-kicker text-emerald-700 mb-1">Pacchetto attivo</div>
@@ -1117,6 +1190,12 @@ function CostPanelV2({ estimate, packageRef, legacy }) {
             </tbody>
           </table>
         )}
+      </div>
+      <Separator />
+      <div className="flex gap-2">
+        <Button onClick={saveAsPreventivo} className="rounded-sm w-full h-10 bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="save-as-preventivo-button">
+          <Receipt size={14} className="mr-2" /> {linkedPreventivo ? "Aggiorna Preventivo collegato" : "Salva come Preventivo"}
+        </Button>
       </div>
       <Separator />
       <div>

@@ -367,9 +367,14 @@ async def update_project(project_id: str, body: ProjectIn, user: Dict[str, Any] 
         "thumbnail": body.thumbnail,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
+    if body.preventivo_id is not None:
+        update_doc["preventivo_id"] = body.preventivo_id
     result = await db.projects.update_one({"id": project_id, "user_id": user["id"]}, {"$set": update_doc})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Progetto non trovato")
+    # Sync inverso preventivi.project_id
+    if body.preventivo_id:
+        await db.preventivi.update_one({"id": body.preventivo_id, "user_id": user["id"]}, {"$set": {"project_id": project_id}})
     doc = await db.projects.find_one({"id": project_id}, {"_id": 0})
     return doc
 
@@ -786,7 +791,7 @@ async def list_lavorazioni(user: Dict[str, Any] = Depends(get_current_user)):
 
 class PreventivoIn(BaseModel):
     model_config = ConfigDict(extra="allow")
-    tipo: str = "pacchetto"  # pacchetto | bagno | composite | infissi
+    tipo: str = "pacchetto"  # pacchetto | bagno | composite | infissi | cad
     cliente: Dict[str, Any]
     package_id: Optional[str] = None
     mq: float = 0

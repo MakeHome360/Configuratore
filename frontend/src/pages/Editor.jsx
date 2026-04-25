@@ -931,6 +931,7 @@ function TavoleModal({ open, setOpen, project, catalog, estimateV2, onExport, on
   const [showProspetti, setShowProspetti] = useState(true);
   const [editProspetti, setEditProspetti] = useState(false);
   const [heightOverrides, setHeightOverrides] = useState(project.data?.prospetti_heights || {});
+  const [positionOverrides, setPositionOverrides] = useState(project.data?.prospetti_positions || {});
   const [commessaList, setCommessaList] = useState([]);
   const [selectedCommessa, setSelectedCommessa] = useState(project.data?.commessa_id || "");
   const [tab, setTab] = useState("piante");
@@ -943,12 +944,21 @@ function TavoleModal({ open, setOpen, project, catalog, estimateV2, onExport, on
   const toggle = (id) => setSelected((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
   const sel = TAVOLE.filter((t) => selected.includes(t.id));
   const updateHeight = (id, h) => setHeightOverrides((o) => ({ ...o, [id]: h }));
+  const updatePosition = (id, t) => setPositionOverrides((o) => ({ ...o, [id]: t }));
   const saveHeights = async () => {
     try {
-      await api.put(`/projects/${project.id}`, { name: project.name, data: { ...project.data, prospetti_heights: heightOverrides } });
-      toast.success("Altezze prospetti salvate");
+      await api.put(`/projects/${project.id}`, { name: project.name, data: { ...project.data, prospetti_heights: heightOverrides, prospetti_positions: positionOverrides } });
+      toast.success("Modifiche prospetti salvate");
     } catch { toast.error("Errore salvataggio"); }
   };
+
+  // Apply position overrides to entries (so the prospetto draws at custom t positions)
+  const entriesWithPositions = useMemo(() => {
+    return interestingWalls.map((ent) => ({
+      ...ent,
+      points: ent.points.map((p) => positionOverrides[p.id] != null ? { ...p, t: positionOverrides[p.id] } : p),
+    }));
+  }, [interestingWalls, positionOverrides]);
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" data-testid="tavole-modal">
@@ -975,9 +985,9 @@ function TavoleModal({ open, setOpen, project, catalog, estimateV2, onExport, on
             </label>
             <label className="flex items-center gap-2 py-1.5 text-sm">
               <input type="checkbox" checked={editProspetti} onChange={(e) => setEditProspetti(e.target.checked)} data-testid="edit-prospetti-toggle" />
-              <span>Modifica altezze</span>
+              <span>Modifica posizioni e altezze</span>
             </label>
-            {editProspetti && <Button size="sm" variant="outline" className="rounded-sm w-full h-8 mt-2" onClick={saveHeights} data-testid="save-heights-btn">Salva altezze</Button>}
+            {editProspetti && <Button size="sm" variant="outline" className="rounded-sm w-full h-8 mt-2" onClick={saveHeights} data-testid="save-heights-btn">Salva modifiche</Button>}
             <Separator className="my-4" />
             <div className="label-kicker mb-2">Conferma in</div>
             <Select value={selectedCommessa || "_none"} onValueChange={(v) => setSelectedCommessa(v === "_none" ? "" : v)}>
@@ -1005,14 +1015,14 @@ function TavoleModal({ open, setOpen, project, catalog, estimateV2, onExport, on
                 {interestingWalls.length === 0 && (
                   <div className="text-sm text-zinc-500 p-6 bg-white border border-zinc-200 italic">Nessuna parete con elementi rilevanti (prese/scarichi/split) entro 80cm. Aggiungi impianti al progetto per generare i prospetti.</div>
                 )}
-                {interestingWalls.map((ent) => (
+                {entriesWithPositions.map((ent) => (
                   <div key={ent.wall.id} className="bg-white border border-zinc-300 p-3" data-testid={`prospetto-card-${ent.wall.id}`}>
                     <div className="flex items-center justify-between mb-2">
                       <div className="font-semibold text-sm" style={{ fontFamily: "Outfit" }}>Prospetto Parete · L={fmtNum(ent.length / 100, 2)}m</div>
                       <div className="text-[10px] mono text-zinc-400">{ent.points.length} elementi · {ent.doors.length} porte · {ent.windows.length} finestre</div>
                     </div>
-                    <ProspettoWall entry={ent} roomHeight={project.data?.roomHeight || 270} editable={editProspetti} heightOverrides={heightOverrides} onChangeHeight={updateHeight} />
-                    {editProspetti && <ProspettoInputs entry={ent} heightOverrides={heightOverrides} onChangeHeight={updateHeight} />}
+                    <ProspettoWall entry={ent} roomHeight={project.data?.roomHeight || 270} editable={editProspetti} heightOverrides={heightOverrides} onChangeHeight={updateHeight} onChangePosition={updatePosition} />
+                    {editProspetti && <ProspettoInputs entry={ent} heightOverrides={heightOverrides} onChangeHeight={updateHeight} onChangePosition={updatePosition} />}
                   </div>
                 ))}
               </div>

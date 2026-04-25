@@ -69,6 +69,18 @@
 - **materials / projects** (CAD)
 
 ## Changelog (Feb 2026 current session)
+- **Fix bug critico Configuratore → Preventivo (Feb 2026)**:
+  - Risolto: extras del Configuratore Esigenze NON venivano iniettati nel preventivo
+  - Causa root: React StrictMode (dev) provoca double-mount + double-invocation dei functional updaters di setState. Il primo mount cancellava `sessionStorage`, il secondo non trovava più i dati. Inoltre l'updater mutava `prefillRef.current.applied` rendendolo impuro.
+  - Soluzione: `useRef` con flag `loaded`, gating su `?prefill=1` URL param, NO removeItem in load (cleanup spostato al success del save POST), updater puro che rileva `applied` via presenza di items con `from_configuratore: true`, preservazione delle EXTRA rows tra recompute.
+  - Bonus fix: `bathroom_surcharge` calcolata a 0 quando `bathroom_tier=null` (prima calcolava un valore negativo). `anno_costruzione=""` causava 422 sul POST /leads → ora sanitizzato lato client.
+  - Aggiunta categoria "EXTRA · Configuratore Esigenze" nel render Lavorazioni (prima il render era limitato a DEMOLIZIONI/MURATURA/IMPIANTI/INFISSI/SERVIZI, escludendo gli extras dal configuratore).
+  - Badge "✓ Conforme al pacchetto X scelto in fase di consulenza" sia in UI riepilogo che nel PDF generato.
+- **Prospetti pareti: editing 2D completo**:
+  - Drag XY dei punti (non più solo verticale): cambia posizione orizzontale `t` lungo la parete + altezza `h`
+  - Input numerici per editing preciso di `h` (altezza in cm) e `x` (posizione orizzontale in cm dal lato sinistro)
+  - Persistenza su `prospetti_positions` accanto a `prospetti_heights`
+  - Quote sotto ogni punto in modalità edit
 - **CAD UX fixes (current session)**:
   - Fix bug doppio-click chiusura stanza (timeout-based per evitare punto vagante)
   - Pareti automatiche e quotate sui bordi della stanza al doppio click

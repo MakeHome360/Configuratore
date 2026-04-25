@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
@@ -41,6 +41,9 @@ export default function PreventivoPacchetto() {
   const [numero, setNumero] = useState(null);
   const [stato, setStato] = useState("bozza");
 
+  // Prefill ref: sopravvive a re-mount (StrictMode dev). Applichiamo extras una sola volta.
+  const prefillRef = useRef({ data: null, applied: false, loaded: false });
+
   useEffect(() => {
     (async () => {
       try {
@@ -54,30 +57,35 @@ export default function PreventivoPacchetto() {
             package_id: data.package_id, mq: data.mq,
             items: data.items || [], optional: data.optional || [],
             bathroom_tier: data.bathroom_tier,
-            bathroom_surcharge: ((bt.data.find((t) => t.id === data.bathroom_tier)?.price || 0) - (bt.data[0]?.price || 0)) || 0,
+            bathroom_surcharge: data.bathroom_tier ? (((bt.data.find((t) => t.id === data.bathroom_tier)?.price || 0) - (bt.data[0]?.price || 0)) || 0) : 0,
             cliente: data.cliente || {}, note: data.note || "",
             sconto_pct: data.sconto_pct || 0, iva_pct: data.iva_pct || 10,
           });
           setNumero(data.numero); setStato(data.stato);
           setStep(6);
         } else {
-          // Prefill dal configuratore esigenze (sessionStorage)
+          // Prefill dal configuratore esigenze (sessionStorage + URL ?prefill=1)
+          // NON rimuoviamo subito sessionStorage: StrictMode (dev) può causare doppio mount,
+          // l'eventuale removeItem nel primo mount cancellerebbe il dato prima del secondo mount.
+          // Lo puliamo solo dopo aver salvato il preventivo.
           try {
-            const raw = sessionStorage.getItem("preventivo_prefill");
-            if (raw) {
-              const pf = JSON.parse(raw);
-              sessionStorage.removeItem("preventivo_prefill");
-              setPrev((p) => ({
-                ...p,
-                package_id: pf.package_id || null,
-                mq: pf.mq || p.mq,
-                cliente: { ...p.cliente, ...(pf.cliente || {}) },
-                note: pf.note || p.note,
-                _pendingExtras: pf.extras || [],
-              }));
-              if (pf.package_id) setStep(2); // skip package and mq selection
+            const params = new URLSearchParams(window.location.search);
+            if (params.get("prefill") === "1" && !prefillRef.current.loaded) {
+              const raw = sessionStorage.getItem("preventivo_prefill");
+              if (raw) {
+                const pf = JSON.parse(raw);
+                prefillRef.current = { data: pf, applied: false, loaded: true };
+                setPrev((p) => ({
+                  ...p,
+                  package_id: pf.package_id || null,
+                  mq: pf.mq || p.mq,
+                  cliente: { ...p.cliente, ...(pf.cliente || {}) },
+                  note: pf.note || p.note,
+                }));
+                if (pf.package_id) setStep(2); // skip package and mq selection
+              }
             }
-          } catch { /* ignore */ }
+          } catch (e) { /* prefill not available */ }
         }
       } catch { toast.error("Errore caricamento"); }
       setLoading(false);
@@ -106,16 +114,29 @@ export default function PreventivoPacchetto() {
           qty_richiesta: existing ? existing.qty_richiesta : parseFloat(included.toFixed(2)),
         };
       });
-      // Apply pending extras dal configuratore
-      const pending = p._pendingExtras;
-      if (pending && pending.length > 0) {
-        pending.forEach((ex) => {
+      // Preserve EXTRA rows aggiunte dal configuratore (from_configuratore=true)
+      // che non corrispondono a voci del pacchetto corrente
+      const pkgVoceIds = new Set(newItems.map((it) => it.voce_id || it.id));
+      const preservedExtras = [];
+      (p.items || []).forEach((it) => {
+        if (it.from_configuratore && !pkgVoceIds.has(it.voce_id || it.id)) {
+          preservedExtras.push(it);
+        }
+      });
+      newItems.push(...preservedExtras);
+      // Apply prefill extras (UNA SOLA VOLTA: rilevato tramite presenza di item from_configuratore)
+      const prefill = prefillRef.current;
+      const alreadyApplied = (p.items || []).some((it) => it.from_configuratore);
+      if (prefill.data && !alreadyApplied) {
+        const extras = prefill.data.extras || [];
+        extras.forEach((ex) => {
           const idx = newItems.findIndex((it) => (it.voce_id || it.id) === ex.voce_id);
           if (idx >= 0) {
             // voce già nel pacchetto → aumenta qty_richiesta oltre l'incluso
             newItems[idx] = {
               ...newItems[idx],
               qty_richiesta: parseFloat(((newItems[idx].included_qty || 0) + (ex.qty || 0)).toFixed(2)),
+              from_configuratore: true,
             };
           } else {
             // voce non inclusa → aggiungi come riga extra (included_qty=0)
@@ -130,7 +151,7 @@ export default function PreventivoPacchetto() {
           }
         });
       }
-      return { ...p, items: newItems, _pendingExtras: undefined };
+      return { ...p, items: newItems };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prev.package_id, prev.mq, packages]);
@@ -174,13 +195,18 @@ export default function PreventivoPacchetto() {
       if (isNew || !numero) {
         const { data } = await api.post("/preventivi", payload);
         setNumero(data.numero);
+        // Pulisci sessionStorage del configuratore (ora che il preventivo è salvato)
+        try { sessionStorage.removeItem("preventivo_prefill"); } catch {}
         toast.success("Preventivo salvato");
         nav(`/preventivopacchetto/${data.id}`, { replace: true });
       } else {
         await api.put(`/preventivi/${id}`, payload);
         toast.success("Aggiornato");
       }
-    } catch { toast.error("Errore salvataggio"); }
+    } catch (e) {
+      console.error("[PREVENTIVO] save error:", e);
+      toast.error("Errore salvataggio");
+    }
     setSaving(false);
   };
 
@@ -287,17 +313,19 @@ export default function PreventivoPacchetto() {
               <div>
                 <h2 className="text-2xl font-semibold mb-2" style={{ fontFamily: "Outfit" }}>Lavorazioni incluse nel pacchetto</h2>
                 <p className="text-sm text-zinc-600 mb-6">Tutto questo è già <strong>incluso nel prezzo a m² del pacchetto {pkg?.name}</strong>. Se il cliente vuole una quantità superiore a quella inclusa, paga solo la differenza al prezzo del backoffice.</p>
-                {["DEMOLIZIONI", "MURATURA", "IMPIANTI", "INFISSI", "SERVIZI"].map((cat) => {
+                {["DEMOLIZIONI", "MURATURA", "IMPIANTI", "INFISSI", "SERVIZI", "EXTRA"].map((cat) => {
                   const list = prev.items.filter((it) => {
                     const isDemo = /demoliz|smaltim|rimoz/i.test(it.name);
                     if (cat === "DEMOLIZIONI") return isDemo;
+                    if (cat === "EXTRA") return it.category === "EXTRA";
                     return !isDemo && it.category === cat;
                   });
                   if (list.length === 0) return null;
-                  const colorMap = { DEMOLIZIONI: "#DC2626", MURATURA: "#0F766E", IMPIANTI: "#2563EB", INFISSI: "#9333EA", SERVIZI: "#B45309" };
+                  const colorMap = { DEMOLIZIONI: "#DC2626", MURATURA: "#0F766E", IMPIANTI: "#2563EB", INFISSI: "#9333EA", SERVIZI: "#B45309", EXTRA: "#EA580C" };
+                  const catLabel = cat === "EXTRA" ? "EXTRA · Configuratore Esigenze" : cat;
                   return (
                     <div key={cat} className="mb-6">
-                      <div className="text-xs uppercase tracking-widest font-bold mb-2" style={{ color: colorMap[cat] }}>{cat}</div>
+                      <div className="text-xs uppercase tracking-widest font-bold mb-2" style={{ color: colorMap[cat] }}>{catLabel}</div>
                       <table className="w-full text-sm border border-zinc-200">
                         <thead className="bg-zinc-50 text-xs uppercase tracking-widest text-zinc-500">
                           <tr>
@@ -463,6 +491,14 @@ export default function PreventivoPacchetto() {
             {step === 6 && (
               <div>
                 <h2 className="text-2xl font-semibold mb-6" style={{ fontFamily: "Outfit" }}>Riepilogo preventivo</h2>
+                {((prev.items || []).some((it) => it.from_configuratore) || /Configuratore/i.test(prev.note || "")) && pkg && (
+                  <div className="bg-amber-50 border border-amber-300 px-4 py-3 mb-4 flex items-center gap-3" data-testid="conforme-badge">
+                    <Sparkles size={16} className="text-amber-700 flex-shrink-0" />
+                    <div className="text-sm text-amber-900">
+                      <strong>Conforme al pacchetto {pkg.name}</strong> scelto in fase di consulenza (Configuratore Esigenze)
+                    </div>
+                  </div>
+                )}
                 <div className="border border-zinc-200 p-6 space-y-5">
                   <div className="flex items-center justify-between pb-4 border-b border-zinc-100">
                     <div>
@@ -551,6 +587,19 @@ function exportPDF(prev, pkg, totals, numero) {
   if (prev.cliente?.email) { doc.text(prev.cliente.email, 18, y); y += 4; }
   doc.setTextColor(0);
   y += 4;
+
+  // Badge "Conforme al pacchetto X scelto in fase di consulenza" (se origina dal configuratore)
+  const fromConfiguratore = (prev.items || []).some((it) => it.from_configuratore) || /Configuratore/i.test(prev.note || "");
+  if (fromConfiguratore && pkg) {
+    doc.setFillColor(254, 243, 199); // amber-50
+    doc.setDrawColor(217, 119, 6); // amber-600
+    doc.setLineWidth(0.4);
+    doc.rect(18, y, W - 36, 10, "FD");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(146, 64, 14); // amber-800
+    doc.text(`Conforme al pacchetto ${pkg.name} scelto in fase di consulenza (Configuratore Esigenze)`, 22, y + 6.5);
+    doc.setTextColor(0);
+    y += 14;
+  }
 
   doc.setFont("helvetica", "bold"); doc.setFontSize(14);
   doc.text(`Pacchetto ${pkg.name}`, 18, y);

@@ -180,8 +180,12 @@ export default function ConfiguratoreEsigenze() {
   const saveLead = async (extra = {}) => {
     if (!dati.nome) { toast.error("Nome obbligatorio"); return null; }
     try {
+      // Sanitizza i campi numerici opzionali (server accetta solo int o null)
+      const cleanDati = { ...dati };
+      if (cleanDati.anno_costruzione === "" || Number.isNaN(cleanDati.anno_costruzione)) cleanDati.anno_costruzione = null;
+      if (cleanDati.mq === "" || Number.isNaN(cleanDati.mq)) cleanDati.mq = 0;
       const { data } = await api.post("/leads", {
-        ...dati,
+        ...cleanDati,
         esigenze: Object.entries(esigenze).map(([k, v]) => ({ key: k, val: v })),
         pacchetto_consigliato: result.primary.id,
         stato: "nuovo",
@@ -189,7 +193,11 @@ export default function ConfiguratoreEsigenze() {
       });
       toast.success("Lead salvato!");
       return data;
-    } catch { toast.error("Errore salvataggio"); return null; }
+    } catch (e) {
+      console.error("[ConfiguratoreEsigenze] saveLead error:", e);
+      toast.error("Errore salvataggio lead");
+      return null;
+    }
   };
 
   const goPreventivo = async (pkgChoice) => {

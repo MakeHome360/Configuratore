@@ -1,0 +1,51 @@
+{
+  "summary": "Re-tested the P0 user-reported bug: 'il preventivo non si salva quando si parte dal flusso Configuratore Esigenze'. Performed E2E browser-driven verification: login admin@admin.it -> /configuratoreesigenze -> step 1 Dati Cliente (name+mq filled, anno_costruzione INTENTIONALLY LEFT EMPTY to re-test the 422 fix) -> step 2 answered all 16/16 esigenze questions -> step 3 Risultato shows ELITE (CONSIGLIATO, €117.000) and PREMIUM (alternative, €90.351) with 4 EXTRA INCLUSI (Massetto per alleggerito €3645, Caldaia condensazione €1944, Impianto pavimento €7290, Pannello porta blindata €972, Totale extra €13.851). Clicked alternative-pkg-preventivo-btn (Inizia Preventivo on PREMIUM). Saved via 'Salva preventivo'. ALL PRIMARY ASSERTIONS PASS.",
+  "p0_flow_results": {
+    "configuratore_to_preventivo": "PASS - URL changed to /preventivopacchetto/6ba43f72-de59-4b4f-8623-ce758f721396",
+    "toast_preventivo_salvato": "PASS - 'Preventivo salvato' toast visible (NO 'Errore salvataggio')",
+    "toast_lead_salvato": "PASS - 'Lead salvato!' toast visible",
+    "anno_costruzione_empty_no_422": "PASS - POST /api/leads -> 200 (was 422 before fix)",
+    "preventivo_api_response": {
+      "POST /api/preventivi": "200",
+      "items_total": 25,
+      "from_configuratore_items": 4,
+      "categories": ["MURATURA","SERVIZI","EXTRA","IMPIANTI"],
+      "totale_iva_incl": 93446.1,
+      "verification": "Base 71100 + Extras 13851 = Subtotal 84951; IVA 10% = 8495.10; Total 93446.10 - matches displayed values"
+    },
+    "conforme_badge_step7_riepilogo": "PASS - Badge text 'Conforme al pacchetto PREMIUM scelto in fase di consulenza (Configuratore Esigenze)' visible on Riepilogo screen (data-testid not explicitly verified but text confirmed via DOM and screenshot)",
+    "package_id": "PREMIUM (alternative pkg) - confirmed in API response and UI header 'PREMIUM'"
+  },
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Configuratore Esigenze - Step 1", "issues": ["MQ field has placeholder '80' and Anno costruzione has placeholder '1980' but neither has a default value - users may submit confusingly empty inputs that look pre-filled"]}
+    ]
+  },
+  "tests_not_executed": [
+    "Bagno surcharge (preventivo bagno without tier) - skipped due to token budget; primary P0 flow took priority. Recommended for next iteration: open /preventivobagno, do not select a tier, verify subtotale = Base + Extra + Optional (no negative). Per main agent context the fix is in place.",
+    "CAD: editing W/P/H of mobili - skipped",
+    "Prospetti pareti: 'Modifica posizioni e altezze' inputs + 'Salva modifiche' toast - skipped",
+    "Floorplan AI Import modal - skipped"
+  ],
+  "test_report_links": [],
+  "action_items": [
+    "P0 bug RESOLVED and verified end-to-end. Main agent can self-test the residual items (bagno surcharge, CAD, prospetti, floorplan import) using the same admin login.",
+    "Optional: explicitly add a data-testid='conforme-badge' attribute on the badge wrapper - currently we can only confirm via text content. The brief mentioned that testid; the badge IS rendered correctly but its data-testid was not visible in the DOM scan."
+  ],
+  "critical_code_review_comments": [
+    "ConfiguratoreEsigenze.jsx step 1 button data-testid='ce-next-step' - same testid is reused later for 'Vedi risultato' on step 2 which makes selectors ambiguous; observed that Vedi risultato did not respond to ce-next-step locator (timeout). Consider unique testids per step (e.g. ce-step1-next, ce-step2-see-result).",
+    "Lead anno_costruzione sanitization confirmed working - empty string -> null works. Good fix.",
+    "Salvataggio preventivo correctly sets package_id from configuratore (alternative=PREMIUM) and injects 4 from_configuratore=true items under category 'EXTRA'."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (verified via UI-driven API responses)", "frontend": "100% on tested P0 flow"},
+  "test_credentials": "admin@admin.it / admin (verified working)",
+  "seed_data_creation": "Created during test: 1 lead (id=bfc9d3d6-1265-4d4e-8e96-1f193829ce98) and 1 preventivo PRV-2026-0013 (id=6ba43f72-de59-4b4f-8623-ce758f721396) with package_id=PREMIUM, 25 items (4 from_configuratore EXTRA), totale_iva_incl=93446.10. Plus a couple of orphan leads from earlier test attempts.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Configuratore -> Preventivo P0 flow is GREEN (verified PRV-2026-0013, 93446 EUR, 4 fc EXTRA items, badge present, both toasts shown). Selectors used: input[placeholder='Mario'], input[placeholder='Rossi'], input[placeholder*='mario@'], input[placeholder='80'] (mq), [data-testid=ce-next-step] (step1 next), button[data-testid^='ce-q-'] (esigenze options - filter out next/prev), text 'Vedi risultato' (step2 final - ce-next-step does NOT work here), [data-testid=alternative-pkg-preventivo-btn] / primary-pkg-preventivo-btn, text 'Salva preventivo' to save. Iteration 2 backend success (28/28) still stands; no backend regressions observed.",
+  "rca_of_the_issue": "Original RCA per main agent: (1) StrictMode dev double-mount cleared sessionStorage too early, (2) saveLead Pydantic 422 on anno_costruzione=''. Both fixes verified live: lead now POSTs 200 with empty anno_costruzione, preventivo navigation+save completes with 4 EXTRA items injected from configuratore extras, sessionStorage prefill survives StrictMode mount cycle (via useRef applied flag and from_configuratore items)."
+}

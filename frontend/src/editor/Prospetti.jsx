@@ -69,12 +69,12 @@ const COLORS = {
  * ProspettoWall: side-view (elevation) of one wall.
  * Renders length × height (cm). Doors anchored to floor, windows at sillHeight.
  * Electrical/plumbing/gas/hvac points placed at standard heights (or override via heightOverrides[id]).
- * Editable: drag points vertically to change height.
+ * Editable: drag points orizzontale per cambiare posizione (t lungo parete) e verticale per altezza.
  */
-export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, onChangeHeight }) {
+export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, onChangeHeight, onChangePosition }) {
   const { wall, length, points, doors, windows } = entry;
   const W = length, H = roomHeight || 270;
-  const [dragging, setDragging] = useState(null);
+  const [dragging, setDragging] = useState(null); // {id, axis: 'xy'}
   const svgRef = React.useRef(null);
   const pad = 60;
 
@@ -89,6 +89,9 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
     // y in viewBox; floor is at H, ceiling at 0. height = H - local.y
     const newH = Math.max(5, Math.min(H - 5, H - local.y));
     onChangeHeight && onChangeHeight(dragging, Math.round(newH / 5) * 5);
+    // horizontal: t = local.x / W (clamped 0..1)
+    const newT = Math.max(0, Math.min(1, local.x / W));
+    onChangePosition && onChangePosition(dragging, parseFloat(newT.toFixed(3)));
   };
   const stopDrag = () => setDragging(null);
 
@@ -153,28 +156,31 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
         const y = H - h;
         const color = COLORS[p.kind] || "#525252";
         return (
-          <g key={p.id} style={{ cursor: editable ? "ns-resize" : "default" }}
-             onPointerDown={editable ? (e) => { e.preventDefault(); setDragging(p.id); } : undefined}
+          <g key={p.id} style={{ cursor: editable ? "move" : "default" }}
+             onPointerDown={editable ? (e) => { e.preventDefault(); e.stopPropagation(); setDragging(p.id); } : undefined}
              data-testid={`prospetto-point-${p.id}`}
           >
             <line x1={x} y1={H} x2={x} y2={y} stroke={color} strokeWidth="1" strokeDasharray="3,3" opacity="0.5" />
             <circle cx={x} cy={y} r="14" fill="white" stroke={color} strokeWidth="2.5" />
-            <text x={x} y={y + 5} textAnchor="middle" fontSize="13" fontWeight="800" fontFamily="JetBrains Mono" fill={color}>{symbolFor(p)}</text>
-            <text x={x + 18} y={y + 5} fontFamily="JetBrains Mono" fontSize="11" fontWeight="700" fill={color}>h={h}</text>
+            <text x={x} y={y + 5} textAnchor="middle" fontSize="13" fontWeight="800" fontFamily="JetBrains Mono" fill={color} pointerEvents="none">{symbolFor(p)}</text>
+            <text x={x + 18} y={y + 5} fontFamily="JetBrains Mono" fontSize="11" fontWeight="700" fill={color} pointerEvents="none">h={h}</text>
+            {/* dimension to wall start */}
+            {editable && <text x={x} y={H + 50} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="10" fill="#525252" pointerEvents="none">{Math.round(p.t * W)}cm</text>}
           </g>
         );
       })}
 
       {/* legend at bottom */}
-      <text x={0} y={H + 60} fontFamily="Outfit" fontSize="13" fontWeight="700" fill="#0A0A0A">Parete · L={fmtNum(W / 100, 2)}m · H={fmtNum(H / 100, 2)}m</text>
-      {editable && <text x={W} y={H + 60} textAnchor="end" fontFamily="JetBrains Mono" fontSize="10" fill="#16A34A">trascina i punti per regolare l'altezza · oppure usa gli input qui sotto</text>}
+      <text x={0} y={H + 80} fontFamily="Outfit" fontSize="13" fontWeight="700" fill="#0A0A0A">Parete · L={fmtNum(W / 100, 2)}m · H={fmtNum(H / 100, 2)}m</text>
+      {editable && <text x={W} y={H + 80} textAnchor="end" fontFamily="JetBrains Mono" fontSize="10" fill="#16A34A">trascina i punti (XY) per posizione e altezza · usa input per editing preciso</text>}
     </svg>
   );
 }
 
-// Inline numeric inputs for prospetto heights (precise editing alternative to drag)
-export function ProspettoInputs({ entry, heightOverrides, onChangeHeight }) {
+// Inline numeric inputs for prospetto heights & positions (precise editing)
+export function ProspettoInputs({ entry, heightOverrides, onChangeHeight, onChangePosition }) {
   if (!entry.points.length) return null;
+  const W = entry.length;
   return (
     <div className="bg-zinc-50 border-t border-zinc-200 p-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2" data-testid={`prospetto-inputs-${entry.wall.id}`}>
       {entry.points.map((p) => {
@@ -182,19 +188,38 @@ export function ProspettoInputs({ entry, heightOverrides, onChangeHeight }) {
         const stdH = STD_HEIGHTS[stdKey] ?? 110;
         const h = heightOverrides?.[p.id] ?? stdH;
         const color = COLORS[p.kind] || "#525252";
+        const posCm = Math.round((p.t || 0) * W);
         return (
           <div key={p.id} className="flex items-center gap-2 bg-white border border-zinc-200 px-2 py-1.5">
             <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ background: "white", border: `2px solid ${color}`, color }}>{symbolFor(p)}</div>
             <div className="flex-1 min-w-0">
               <div className="text-[10px] uppercase tracking-widest text-zinc-500">{p.type || p.kind}</div>
-              <input
-                type="number"
-                value={h}
-                onChange={(e) => onChangeHeight(p.id, parseInt(e.target.value) || 0)}
-                className="w-full text-sm font-mono border-0 bg-transparent p-0 focus:outline-none"
-                step={5}
-                data-testid={`prospetto-input-${p.id}`}
-              />
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  value={h}
+                  onChange={(e) => onChangeHeight(p.id, parseInt(e.target.value) || 0)}
+                  className="w-12 text-sm font-mono border-0 bg-transparent p-0 focus:outline-none"
+                  step={5}
+                  data-testid={`prospetto-input-${p.id}`}
+                  title="Altezza (cm)"
+                />
+                <span className="text-[9px] mono text-zinc-400">h</span>
+                {onChangePosition && (
+                  <>
+                    <input
+                      type="number"
+                      value={posCm}
+                      onChange={(e) => onChangePosition(p.id, Math.max(0, Math.min(1, (parseInt(e.target.value) || 0) / W)))}
+                      className="w-14 text-sm font-mono border-0 bg-transparent p-0 focus:outline-none border-l border-zinc-200 pl-2"
+                      step={5}
+                      data-testid={`prospetto-pos-${p.id}`}
+                      title="Posizione orizzontale dal lato sinistro (cm)"
+                    />
+                    <span className="text-[9px] mono text-zinc-400">x</span>
+                  </>
+                )}
+              </div>
             </div>
             <span className="text-[10px] mono text-zinc-400">cm</span>
           </div>

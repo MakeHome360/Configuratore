@@ -131,6 +131,7 @@ class ProjectIn(BaseModel):
     name: str
     data: Dict[str, Any]
     thumbnail: Optional[str] = None
+    preventivo_id: Optional[str] = None
 
 
 class ProjectOut(BaseModel):
@@ -303,12 +304,42 @@ async def create_project(body: ProjectIn, user: Dict[str, Any] = Depends(get_cur
         "name": body.name,
         "data": body.data,
         "thumbnail": body.thumbnail,
+        "preventivo_id": body.preventivo_id,
         "created_at": now,
         "updated_at": now,
     }
     await db.projects.insert_one(doc)
     doc.pop("_id", None)
+    # Sync inverso: aggiungi project_id al preventivo
+    if body.preventivo_id:
+        await db.preventivi.update_one({"id": body.preventivo_id, "user_id": user["id"]}, {"$set": {"project_id": doc["id"]}})
     return doc
+
+
+@api.post("/preventivi/{preventivo_id}/create-project")
+async def create_project_from_preventivo(preventivo_id: str, user: Dict[str, Any] = Depends(get_current_user)):
+    """Crea un nuovo progetto CAD collegato a un preventivo esistente, con mq pre-popolato."""
+    prev = await db.preventivi.find_one({"id": preventivo_id, "user_id": user["id"]}, {"_id": 0})
+    if not prev:
+        raise HTTPException(404, "Preventivo non trovato")
+    if prev.get("project_id"):
+        return {"id": prev["project_id"], "existed": True}
+    now = datetime.now(timezone.utc).isoformat()
+    nome_cliente = (prev.get("cliente") or {}).get("nome") or "Cliente"
+    project_doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "name": f"Progetto {nome_cliente} ({prev.get('numero', '')})",
+        "data": {"mq": prev.get("mq", 70), "rooms": [], "walls": [], "doors": [], "windows": [], "items": [], "electrical": [], "plumbing": [], "gas": [], "hvac": [], "stairs": [], "texts": [], "demolitions": [], "tiling": [], "roomHeight": 270},
+        "thumbnail": None,
+        "preventivo_id": preventivo_id,
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.projects.insert_one(project_doc)
+    project_doc.pop("_id", None)
+    await db.preventivi.update_one({"id": preventivo_id, "user_id": user["id"]}, {"$set": {"project_id": project_doc["id"]}})
+    return project_doc
 
 
 @api.get("/projects/{project_id}")

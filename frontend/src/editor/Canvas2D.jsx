@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useCallback, useEffect } from "react";
-import { snap, uid, polygonArea, polygonPerimeter, fmtNum, pointInPolygon } from "./utils";
+import { snap, uid, polygonArea, polygonPerimeter, fmtNum, pointInPolygon, splitRoomByWall } from "./utils";
 
 const GRID = 10;
 const INITIAL_VIEW = { x: -300, y: -200, w: 2200, h: 1600 };
@@ -68,6 +68,44 @@ function HvacSymbol({ h, isSel }) {
   return <g><rect x={-30} y={-9} width={60} height={18} rx={3} fill="white" stroke={c} strokeWidth="1.5" /><text x={0} y={4} fontSize="10" textAnchor="middle" fontWeight="700" fill={c}>SPLIT</text></g>;
 }
 
+// Stair symbol renderer (chiocciola/muratura/legno)
+function StairSymbol({ s, isSel }) {
+  const c = isSel ? "#2563EB" : "#92400E";
+  const w = s.width || 100, d = s.depth || 200;
+  if (s.type === "chiocciola") {
+    // Spirale circolare con gradini radiali
+    const r = Math.min(w, d) / 2;
+    const steps = 12;
+    return (
+      <g>
+        <circle cx={0} cy={0} r={r} fill="white" stroke={c} strokeWidth="1.5" />
+        <circle cx={0} cy={0} r={r * 0.25} fill={c} opacity="0.2" stroke={c} strokeWidth="1" />
+        {Array.from({ length: steps }).map((_, i) => {
+          const ang = (i * 2 * Math.PI) / steps;
+          return <line key={i} x1={Math.cos(ang) * r * 0.25} y1={Math.sin(ang) * r * 0.25} x2={Math.cos(ang) * r} y2={Math.sin(ang) * r} stroke={c} strokeWidth="0.8" />;
+        })}
+        <text x={0} y={r + 16} textAnchor="middle" fontSize="10" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>SCALA CHIOCCIOLA</text>
+      </g>
+    );
+  }
+  // Rampa rettangolare con gradini
+  const stepCount = Math.max(6, Math.floor(d / 25));
+  const stepDepth = d / stepCount;
+  const fillCol = s.type === "legno" ? "#FBBF24" : (s.type === "muratura" ? "#D6D3D1" : "#FEF3C7");
+  return (
+    <g>
+      <rect x={-w / 2} y={-d / 2} width={w} height={d} fill={fillCol} fillOpacity="0.4" stroke={c} strokeWidth="1.5" />
+      {Array.from({ length: stepCount }).map((_, i) => (
+        <line key={i} x1={-w / 2} y1={-d / 2 + i * stepDepth} x2={w / 2} y2={-d / 2 + i * stepDepth} stroke={c} strokeWidth="0.8" />
+      ))}
+      {/* freccia salita */}
+      <line x1={0} y1={d / 2 - 8} x2={0} y2={-d / 2 + 12} stroke={c} strokeWidth="2" />
+      <polygon points={`0,${-d / 2 + 12} -6,${-d / 2 + 22} 6,${-d / 2 + 22}`} fill={c} />
+      <text x={0} y={d / 2 + 14} textAnchor="middle" fontSize="9" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>SCALA · {(s.type || "muratura").toUpperCase()}</text>
+    </g>
+  );
+}
+
 function TilingPattern({ t, room }) {
   if (!room) return null;
   const sizes = { "30x60": [30, 60], "60x60": [60, 60], "60x120": [60, 120], "80x80": [80, 80], "22.5x90": [22.5, 90], "25x150": [25, 150] };
@@ -121,12 +159,13 @@ function TilingPattern({ t, room }) {
 export default function Canvas2D({
   project, setProject, tool, setTool, selected, setSelected,
   selectedMaterial, catalog,
-  doorParams, windowParams, electricalKind, plumbingKind, gasKind, hvacKind, tilingParams,
+  doorParams, windowParams, electricalKind, plumbingKind, gasKind, hvacKind, tilingParams, stairsKind,
   layers, viewMode,
 }) {
   const svgRef = useRef(null);
   const [wallDraft, setWallDraft] = useState(null);
   const [roomDraft, setRoomDraft] = useState([]);
+  const [demoAreaDraft, setDemoAreaDraft] = useState([]);
   const [cursor, setCursor] = useState({ x: 0, y: 0 });
   const [viewBox, setViewBox] = useState(INITIAL_VIEW);
   const [pan, setPan] = useState(null);
@@ -191,8 +230,8 @@ export default function Canvas2D({
           const tNew = Math.max(0.05, Math.min(0.95, proj));
           return { ...prj, [arrKey]: arr.map((x) => x.id === drag.id ? { ...x, t: tNew } : x) };
         });
-      } else if (drag.kind === "item-pos" || drag.kind === "elec-pos" || drag.kind === "plumb-pos" || drag.kind === "gas-pos" || drag.kind === "hvac-pos" || drag.kind === "text-pos") {
-        const arrKey = drag.kind === "item-pos" ? "items" : drag.kind === "elec-pos" ? "electrical" : drag.kind === "plumb-pos" ? "plumbing" : drag.kind === "gas-pos" ? "gas" : drag.kind === "hvac-pos" ? "hvac" : "texts";
+      } else if (drag.kind === "item-pos" || drag.kind === "elec-pos" || drag.kind === "plumb-pos" || drag.kind === "gas-pos" || drag.kind === "hvac-pos" || drag.kind === "text-pos" || drag.kind === "stairs-pos") {
+        const arrKey = drag.kind === "item-pos" ? "items" : drag.kind === "elec-pos" ? "electrical" : drag.kind === "plumb-pos" ? "plumbing" : drag.kind === "gas-pos" ? "gas" : drag.kind === "hvac-pos" ? "hvac" : drag.kind === "stairs-pos" ? "stairs" : "texts";
         setProject((prj) => ({
           ...prj,
           [arrKey]: (prj[arrKey] || []).map((x) => x.id === drag.id ? { ...x, x: drag.orig.x + dx, y: drag.orig.y + dy } : x),
@@ -245,7 +284,7 @@ export default function Canvas2D({
         if (!wallDraft) { setWallDraft(p); return; }
         if (Math.hypot(p.x - wallDraft.x, p.y - wallDraft.y) < 8) { setWallDraft(null); return; }
         const newWall = { id: uid(), x1: wallDraft.x, y1: wallDraft.y, x2: p.x, y2: p.y, thickness: 10, kind: VM === "fatto" ? "esistente" : "nuovo", phase: VM };
-        setProject((prj) => ({ ...prj, walls: [...(prj.walls || []), newWall] }));
+        setProject((prj) => applyWallAddWithSplit(prj, newWall));
         setWallDraft(p);
       }, 230);
       return;
@@ -258,7 +297,7 @@ export default function Canvas2D({
         if (!wallDraft) { setWallDraft(p); return; }
         if (Math.hypot(p.x - wallDraft.x, p.y - wallDraft.y) < 8) { setWallDraft(null); return; }
         const newWall = { id: uid(), x1: wallDraft.x, y1: wallDraft.y, x2: p.x, y2: p.y, thickness: 8, kind: "cartongesso", phase: VM };
-        setProject((prj) => ({ ...prj, walls: [...(prj.walls || []), newWall] }));
+        setProject((prj) => applyWallAddWithSplit(prj, newWall));
         setWallDraft(p);
       }, 230);
       return;
@@ -314,18 +353,13 @@ export default function Canvas2D({
       return;
     }
     if (tool === "demolish-floor-partial") {
-      // demolizione pavimento parziale: chiede %
-      const r = findRoomAt(p);
-      if (r) {
-        const pctStr = window.prompt("Demolizione pavimento parziale - inserisci percentuale dell'area (1-100):", "50");
-        const pct = Math.max(1, Math.min(100, parseFloat(pctStr) || 50));
-        const totalArea = polygonArea(r.points) / 10000;
-        const areaM2 = totalArea * (pct / 100);
-        setProject((prj) => ({
-          ...prj,
-          demolitions: [...(prj.demolitions || []), { id: uid(), kind: "pavimento", x: p.x, y: p.y, roomId: r.id, areaM2, partial: true, partialPct: pct, phase: "progetto" }],
-        }));
-      }
+      // demolizione pavimento ad AREA: disegna un poligono con click multipli, doppio click chiude
+      if (e.detail >= 2) return;
+      setDemoAreaDraft((arr) => {
+        const last = arr[arr.length - 1];
+        if (last && Math.hypot(p.x - last.x, p.y - last.y) < 8) return arr;
+        return [...arr, p];
+      });
       return;
     }
     if (tool === "demolish-rivestimento") {
@@ -376,6 +410,13 @@ export default function Canvas2D({
       }
       return;
     }
+    if (tool === "stairs") {
+      const kind = stairsKind || "muratura";
+      const presets = { chiocciola: { width: 160, depth: 160 }, muratura: { width: 100, depth: 280 }, legno: { width: 90, depth: 240 } };
+      const sz = presets[kind] || presets.muratura;
+      setProject((prj) => ({ ...prj, stairs: [...(prj.stairs || []), { id: uid(), type: kind, x: p.x, y: p.y, rotation: 0, width: sz.width, depth: sz.depth, phase: VM }] }));
+      return;
+    }
     if (tool === "tiling") {
       const r = findRoomAt(p);
       if (r) {
@@ -406,6 +447,22 @@ export default function Canvas2D({
     if (tool === "wall" || tool === "wall-cartongesso") {
       if (pendingWallClickRef.current) { clearTimeout(pendingWallClickRef.current); pendingWallClickRef.current = null; }
       setWallDraft(null);
+    }
+    if (tool === "demolish-floor-partial") {
+      if (demoAreaDraft.length >= 3) {
+        const poly = demoAreaDraft.slice();
+        const areaM2 = polygonArea(poly) / 10000;
+        const cx = poly.reduce((s, p) => s + p.x, 0) / poly.length;
+        const cy = poly.reduce((s, p) => s + p.y, 0) / poly.length;
+        // Cerca eventuale stanza che contiene il centroide (per associazione)
+        const r = findRoomAt({ x: cx, y: cy });
+        setProject((prj) => ({
+          ...prj,
+          demolitions: [...(prj.demolitions || []), { id: uid(), kind: "pavimento", x: cx, y: cy, roomId: r?.id, areaM2, partial: true, polygon: poly, phase: "progetto" }],
+        }));
+      }
+      setDemoAreaDraft([]);
+      return;
     }
     if (tool === "room") {
       if (pendingRoomClickRef.current) { clearTimeout(pendingRoomClickRef.current); pendingRoomClickRef.current = null; }
@@ -454,12 +511,12 @@ export default function Canvas2D({
     setSelected({ kind, id });
   };
 
-  const isPlacementTool = ["door", "window", "wall", "wall-cartongesso", "room", "item", "text",
+  const isPlacementTool = ["door", "window", "wall", "wall-cartongesso", "room", "item", "text", "stairs",
     "demolish-wall", "demolish-floor", "demolish-floor-partial", "demolish-rivestimento", "controsoffitto",
     "electrical", "plumbing", "gas", "hvac", "tiling"].includes(tool);
 
   const allWalls = project.walls || [];
-  // Filter walls by view mode (basato su phase, fallback su kind per retro-compat)
+  // Walls visibili sul canvas (filtrati per VM)
   const walls = allWalls.filter((w) => {
     const phase = w.phase || (w.kind === "nuovo" || w.kind === "cartongesso" ? "progetto" : "fatto");
     if (VM === "fatto") return phase === "fatto"; // mostra tutti i muri esistenti, anche cartongesso
@@ -468,6 +525,13 @@ export default function Canvas2D({
     // progetto: tutti tranne demoliti
     return !w.demolito;
   });
+  // Walls "ghost" (stato di fatto NON demoliti) da mostrare come riferimento solo in vista demolizioni
+  const ghostWalls = VM === "demolizioni"
+    ? allWalls.filter((w) => {
+        const phase = w.phase || (w.kind === "nuovo" || w.kind === "cartongesso" ? "progetto" : "fatto");
+        return !w.demolito && phase === "fatto";
+      })
+    : [];
   const allDoors = project.doors || [];
   const allWindows = project.windows || [];
   const validWallIds = new Set(walls.map((w) => w.id));
@@ -486,6 +550,7 @@ export default function Canvas2D({
   const plumbing = (project.plumbing || []).filter(phaseOK);
   const gas = (project.gas || []).filter(phaseOK);
   const hvac = (project.hvac || []).filter(phaseOK);
+  const stairs = (project.stairs || []).filter(phaseOK);
   const tiling = project.tiling || [];
   const demolitions = project.demolitions || [];
 
@@ -604,6 +669,13 @@ export default function Canvas2D({
           if (!room) return null;
           return <TilingPattern key={t.id} t={t} room={room} />;
         })}
+
+        {/* ghost walls (perimetro stato di fatto) — visibili come riferimento in vista Demolizioni */}
+        {ghostWalls.map((w) => (
+          <g key={`ghost-${w.id}`} pointerEvents="none">
+            <line x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2} stroke="#A1A1AA" strokeWidth={(w.thickness || 10) * 0.8} strokeDasharray="3,4" opacity="0.55" strokeLinecap="round" />
+          </g>
+        ))}
 
         {/* walls */}
         {L.walls && walls.map((w) => {
@@ -864,6 +936,33 @@ export default function Canvas2D({
           );
         })}
 
+        {/* stairs (scale: chiocciola, muratura, legno) */}
+        {stairs.map((s) => {
+          const isSel = selected?.kind === "stairs" && selected.id === s.id;
+          return (
+            <g key={s.id} transform={`translate(${s.x},${s.y}) rotate(${s.rotation || 0})`}
+              onMouseDown={(ev) => {
+                if (isPlacementTool) return;
+                ev.stopPropagation();
+                handleElementClick("stairs", s.id);
+                if (selected?.kind === "stairs" && selected.id === s.id) {
+                  setDrag({ kind: "stairs-pos", id: s.id, start: snapPt(toWorld(ev)), orig: { x: s.x, y: s.y } });
+                }
+              }}
+              style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
+              data-testid={`stairs-${s.id}`}
+            ><StairSymbol s={s} isSel={isSel} /></g>
+          );
+        })}
+
+        {/* demolizione pavimento parziale: poligono area free-form */}
+        {(project.demolitions || []).filter((d) => d.kind === "pavimento" && d.polygon && d.polygon.length >= 3).map((d) => (
+          <g key={`demo-poly-${d.id}`} pointerEvents="none">
+            <polygon points={d.polygon.map((p) => `${p.x},${p.y}`).join(" ")} fill="url(#hatch-demo)" fillOpacity="0.55" stroke="#DC2626" strokeWidth="2" strokeDasharray="5,4" />
+            <text x={d.x} y={d.y} textAnchor="middle" fontSize="10" fontFamily="JetBrains Mono" fontWeight="700" fill="#DC2626">DEMO {fmtNum((polygonArea(d.polygon) / 10000), 2)} m²</text>
+          </g>
+        ))}
+
         {/* testi liberi sulla pianta */}
         {(project.texts || []).map((tx) => {
           const isSel = selected?.kind === "texts" && selected.id === tx.id;
@@ -913,6 +1012,16 @@ export default function Canvas2D({
           </g>
         )}
 
+        {/* demolizione pavimento area draft */}
+        {tool === "demolish-floor-partial" && demoAreaDraft.length > 0 && (
+          <g pointerEvents="none">
+            <polyline points={[...demoAreaDraft, cursor].map((p) => `${p.x},${p.y}`).join(" ")} fill="#DC2626" fillOpacity="0.18" stroke="#DC2626" strokeWidth="2" strokeDasharray="5,4" />
+            {demoAreaDraft.map((p, i) => (
+              <circle key={i} cx={p.x} cy={p.y} r="6" fill="#DC2626" stroke="white" strokeWidth="2" />
+            ))}
+          </g>
+        )}
+
         {/* crosshair */}
         {tool !== "select" && tool !== "delete" && (
           <g pointerEvents="none">
@@ -936,8 +1045,10 @@ export default function Canvas2D({
       {tool === "door" && <div className="absolute top-3 left-3 bg-blue-600 text-white px-3 py-1.5 text-xs mono">porta · click su parete</div>}
       {tool === "window" && <div className="absolute top-3 left-3 bg-blue-600 text-white px-3 py-1.5 text-xs mono">finestra · click su parete</div>}
       {tool === "demolish-wall" && <div className="absolute top-3 left-3 bg-rose-600 text-white px-3 py-1.5 text-xs mono">demolisci muro · click per marcare</div>}
-      {tool === "demolish-floor" && <div className="absolute top-3 left-3 bg-rose-600 text-white px-3 py-1.5 text-xs mono">demolisci pavimento · click in stanza</div>}
+      {tool === "demolish-floor" && <div className="absolute top-3 left-3 bg-rose-600 text-white px-3 py-1.5 text-xs mono">demolisci pavimento · click in stanza (totale)</div>}
+      {tool === "demolish-floor-partial" && <div className="absolute top-3 left-3 bg-rose-700 text-white px-3 py-1.5 text-xs mono">demolizione pavimento · disegna area · click vertici, doppio click chiude</div>}
       {tool === "demolish-rivestimento" && <div className="absolute top-3 left-3 bg-orange-500 text-white px-3 py-1.5 text-xs mono">demolisci rivestimenti · click in stanza</div>}
+      {tool === "stairs" && <div className="absolute top-3 left-3 bg-amber-700 text-white px-3 py-1.5 text-xs mono">scala · {stairsKind || "muratura"} · click per posizionare</div>}
       {tool === "controsoffitto" && <div className="absolute top-3 left-3 bg-teal-700 text-white px-3 py-1.5 text-xs mono">controsoffitto · click su stanza per attivare/disattivare</div>}
       {tool === "electrical" && <div className="absolute top-3 left-3 bg-purple-700 text-white px-3 py-1.5 text-xs mono">elettrico · {electricalKind || "presa"}</div>}
       {tool === "plumbing" && <div className="absolute top-3 left-3 bg-cyan-700 text-white px-3 py-1.5 text-xs mono">idraulico · {plumbingKind || "acqua-fredda"}</div>}
@@ -952,6 +1063,32 @@ function projectPointOnSegment(p, a, b) {
   const ab = { x: b.x - a.x, y: b.y - a.y };
   const t = ((p.x - a.x) * ab.x + (p.y - a.y) * ab.y) / (ab.x * ab.x + ab.y * ab.y || 1);
   return { t: Math.max(0, Math.min(1, t)) };
+}
+
+/**
+ * applyWallAddWithSplit: aggiunge il muro al progetto e, se attraversa una stanza esistente
+ * entrando ed uscendo dai bordi, divide la stanza in 2 nuove stanze (preservando le proprietà).
+ */
+function applyWallAddWithSplit(prj, newWall) {
+  const rooms = prj.rooms || [];
+  const W1 = { x: newWall.x1, y: newWall.y1 };
+  const W2 = { x: newWall.x2, y: newWall.y2 };
+  let splitRoomId = null;
+  let split = null;
+  for (const r of rooms) {
+    const res = splitRoomByWall(r.points, W1, W2);
+    if (res) { splitRoomId = r.id; split = res; break; }
+  }
+  if (!split) {
+    return { ...prj, walls: [...(prj.walls || []), newWall] };
+  }
+  const original = rooms.find((r) => r.id === splitRoomId);
+  const baseProps = { ...original };
+  delete baseProps.id; delete baseProps.points; delete baseProps.name;
+  const room1 = { ...baseProps, id: uid(), name: `${original.name} A`, points: split[0] };
+  const room2 = { ...baseProps, id: uid(), name: `${original.name} B`, points: split[1] };
+  const otherRooms = rooms.filter((r) => r.id !== splitRoomId);
+  return { ...prj, rooms: [...otherRooms, room1, room2], walls: [...(prj.walls || []), newWall] };
 }
 
 function defaultItemSize(m) {

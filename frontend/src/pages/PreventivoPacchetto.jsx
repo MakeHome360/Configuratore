@@ -332,6 +332,25 @@ export default function PreventivoPacchetto() {
             {step === 2 && (
               <div>
                 <h2 className="text-2xl font-semibold mb-2" style={{ fontFamily: "Outfit" }}>Lavorazioni incluse nel pacchetto</h2>
+                {pkg && prev.mq > 0 && (
+                  <div className="bg-emerald-50 border-2 border-emerald-300 p-5 mb-5 grid grid-cols-3 gap-4" data-testid="pacchetto-totale-mq">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-widest text-emerald-700">Pacchetto base</div>
+                      <div className="mono text-2xl font-bold text-emerald-900">{fmtEuro(pkg.price_per_m2 * prev.mq)}</div>
+                      <div className="text-[11px] mono text-emerald-700">{pkg.name} · {fmtNum(pkg.price_per_m2, 0)}€/m² × {prev.mq}m²</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-widest text-amber-700">+ Extra dal configuratore/infissi</div>
+                      <div className="mono text-2xl font-bold text-amber-900" data-testid="pacchetto-extras-tot">{fmtEuro(totals?.extra || 0)}</div>
+                      <div className="text-[11px] mono text-amber-700">solo le voci aggiuntive</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-widest text-zinc-700">Totale subtotale</div>
+                      <div className="mono text-2xl font-bold text-zinc-900">{fmtEuro((pkg.price_per_m2 * prev.mq) + (totals?.extra || 0) + (totals?.optional || 0))}</div>
+                      <div className="text-[11px] mono text-zinc-500">IVA esclusa, prima sconto</div>
+                    </div>
+                  </div>
+                )}
                 <p className="text-sm text-zinc-600 mb-4">Tutto questo è già <strong>incluso nel prezzo a m² del pacchetto {pkg?.name}</strong>. Se il cliente vuole una quantità superiore a quella inclusa, paga solo la differenza al prezzo del backoffice.</p>
                 <div className="flex justify-end mb-3">
                   <Button variant="outline" size="sm" className="rounded-sm" onClick={() => setInfissiModalOpen(true)} data-testid="add-infissi-btn">+ Aggiungi infissi (extra)</Button>

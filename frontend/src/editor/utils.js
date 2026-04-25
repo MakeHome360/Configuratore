@@ -275,8 +275,13 @@ export function estimateProjectV2(project, voci, packageRef) {
 
   // Demolizioni esplicite (sempre progetto)
   (data.demolitions || []).forEach((d) => {
-    if (d.kind === "pavimento") add("demolizione_pavimento", d.areaM2 || 0);
-    if (d.kind === "rivestimento") add("demolizione_rivestimento", d.areaM2 || 0);
+    let area = d.areaM2 || 0;
+    // Se è poligono area free-form, ricalcola area dal polygon
+    if (d.polygon && d.polygon.length >= 3) {
+      area = polygonArea(d.polygon) / 10000;
+    }
+    if (d.kind === "pavimento") add("demolizione_pavimento", area);
+    if (d.kind === "rivestimento") add("demolizione_rivestimento", area);
   });
 
   // Doors / Windows — solo nuovi (phase==="progetto")
@@ -484,12 +489,84 @@ export function emptyProjectData() {
     plumbing: [],       // {id, type:"acqua-fredda"|"acqua-calda"|"scarico", x, y}
     gas: [],            // {id, x, y}
     hvac: [],           // {id, type:"split"|"esterna"|"predisposizione", x, y, kind?:"dual"|"trial"}
-    demolitions: [],    // {id, kind:"pavimento", x, y, areaM2}
+    demolitions: [],    // {id, kind:"pavimento", x, y, areaM2, polygon?:[{x,y}]}
     tiling: [],         // {id, roomId, size:"60x60"|..., startPoint:{x,y}, angle, finish?}
+    stairs: [],         // {id, type:"chiocciola"|"muratura"|"legno", x, y, rotation, width, depth, phase}
+    texts: [],
     packageRef: null,   // {package_id, name, mq_inclusi, voci_incluse:[{key, qty_inclusa}]}
     roomHeight: 270,
     currency: "EUR",
   };
+}
+
+/**
+ * segmentIntersect: returns intersection point of segments AB and CD if exists, else null.
+ * Returns {x, y, t (on AB), u (on CD)}.
+ */
+export function segmentIntersect(A, B, C, D, eps = 1e-6) {
+  const dxAB = B.x - A.x, dyAB = B.y - A.y;
+  const dxCD = D.x - C.x, dyCD = D.y - C.y;
+  const denom = dxAB * dyCD - dyAB * dxCD;
+  if (Math.abs(denom) < eps) return null;
+  const t = ((C.x - A.x) * dyCD - (C.y - A.y) * dxCD) / denom;
+  const u = ((C.x - A.x) * dyAB - (C.y - A.y) * dxAB) / denom;
+  if (t < -eps || t > 1 + eps || u < -eps || u > 1 + eps) return null;
+  return { x: A.x + t * dxAB, y: A.y + t * dyAB, t: Math.max(0, Math.min(1, t)), u: Math.max(0, Math.min(1, u)) };
+}
+
+/**
+ * splitRoomByWall: given a room polygon (array of points) and a wall segment (W1..W2),
+ * if the wall fully crosses the polygon entering and exiting through two edges,
+ * return TWO polygons resulting from the split. Otherwise return null.
+ */
+export function splitRoomByWall(points, W1, W2) {
+  if (!points || points.length < 3) return null;
+  // Find intersections of the wall segment with each edge of the polygon
+  const hits = []; // {edgeIdx, x, y, u (on edge)}
+  for (let i = 0; i < points.length; i++) {
+    const A = points[i], B = points[(i + 1) % points.length];
+    const inter = segmentIntersect(W1, W2, A, B);
+    if (inter && inter.u > 1e-3 && inter.u < 1 - 1e-3) {
+      hits.push({ edgeIdx: i, x: inter.x, y: inter.y, u: inter.u, t: inter.t });
+    }
+  }
+  // Need exactly 2 hits with t inside [0,1] (full crossing)
+  const valid = hits.filter((h) => h.t > 1e-3 && h.t < 1 - 1e-3);
+  if (valid.length !== 2) return null;
+  // Sort by edge index then u
+  valid.sort((a, b) => a.t - b.t);
+  const [H1, H2] = valid;
+  // Build poly1: vertices from H1 to H2 going forward along polygon
+  // Insert H1 after edge H1.edgeIdx, H2 after edge H2.edgeIdx
+  const poly1 = [];
+  const poly2 = [];
+  // Walk vertices: include vertex i+1 between hits depending on edge index ordering
+  const i1 = H1.edgeIdx, i2 = H2.edgeIdx;
+  if (i1 === i2) return null; // hit same edge → no split
+  // poly1: H1 → vertices in (i1, i2] → H2 → close back to H1
+  poly1.push({ x: H1.x, y: H1.y });
+  let i = (i1 + 1) % points.length;
+  while (true) {
+    poly1.push({ x: points[i].x, y: points[i].y });
+    if (i === i2) break;
+    i = (i + 1) % points.length;
+    if (i === i1) return null; // safety
+  }
+  poly1.push({ x: H2.x, y: H2.y });
+  // poly2: H2 → vertices in (i2, i1] → H1
+  poly2.push({ x: H2.x, y: H2.y });
+  i = (i2 + 1) % points.length;
+  while (true) {
+    poly2.push({ x: points[i].x, y: points[i].y });
+    if (i === i1) break;
+    i = (i + 1) % points.length;
+    if (i === i2) return null;
+  }
+  poly2.push({ x: H1.x, y: H1.y });
+  if (poly1.length < 3 || poly2.length < 3) return null;
+  // Validate areas non-zero
+  if (polygonArea(poly1) < 100 || polygonArea(poly2) < 100) return null;
+  return [poly1, poly2];
 }
 
 export const uid = () => Math.random().toString(36).slice(2, 10);

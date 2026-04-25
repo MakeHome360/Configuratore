@@ -43,7 +43,7 @@
   "updated_files": [],
   "success_rate": {"backend": "100% (verified via UI-driven API responses)", "frontend": "100% on tested P0 flow"},
   "test_credentials": "admin@admin.it / admin (verified working)",
-  "seed_data_creation": "Created during test: 1 lead (id=bfc9d3d6-1265-4d4e-8e96-1f193829ce98) and 1 preventivo PRV-2026-0013 (id=6ba43f72-de59-4b4f-8623-ce758f721396) with package_id=PREMIUM, 25 items (4 from_configuratore EXTRA), totale_iva_incl=93446.10. Plus a couple of orphan leads from earlier test attempts.",
+  "seed_data_creation": "Created during test: 1 lead (id=cad-preventivi-live) and 1 preventivo PRV-2026-0013 (id=cad-preventivi-live) with package_id=PREMIUM, 25 items (4 from_configuratore EXTRA), totale_iva_incl=93446.10. Plus a couple of orphan leads from earlier test attempts.",
   "retest_needed": false,
   "main_agent_can_self_test": true,
   "context_for_next_testing_agent": "Configuratore -> Preventivo P0 flow is GREEN (verified PRV-2026-0013, 93446 EUR, 4 fc EXTRA items, badge present, both toasts shown). Selectors used: input[placeholder='Mario'], input[placeholder='Rossi'], input[placeholder*='mario@'], input[placeholder='80'] (mq), [data-testid=ce-next-step] (step1 next), button[data-testid^='ce-q-'] (esigenze options - filter out next/prev), text 'Vedi risultato' (step2 final - ce-next-step does NOT work here), [data-testid=alternative-pkg-preventivo-btn] / primary-pkg-preventivo-btn, text 'Salva preventivo' to save. Iteration 2 backend success (28/28) still stands; no backend regressions observed.",

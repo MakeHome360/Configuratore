@@ -30,6 +30,7 @@ const TOOL_GROUPS = [
     { id: "room", icon: Square, label: "Stanza" },
     { id: "door", icon: DoorClosed, label: "Porta" },
     { id: "window", icon: RectangleHorizontal, label: "Finestra" },
+    { id: "stairs", icon: Layers, label: "Scala" },
     { id: "item", icon: Sofa, label: "Arredo" },
     { id: "text", icon: Type, label: "Testo" },
     { id: "delete", icon: Trash2, label: "Elimina" },
@@ -94,6 +95,7 @@ export default function Editor() {
   const [electricalKind, setElectricalKind] = useState("presa");
   const [plumbingKind, setPlumbingKind] = useState("acqua-fredda");
   const [hvacKind, setHvacKind] = useState("split");
+  const [stairsKind, setStairsKind] = useState("muratura");
   const [tilingParams, setTilingParams] = useState({ size: "60x60", angle: 0 });
   const [activeGroup, setActiveGroup] = useState("base");
   const [editMode, setEditMode] = useState("fatto"); // "fatto" | "progetto"
@@ -232,16 +234,34 @@ export default function Editor() {
   const estimateV2 = useMemo(() => (project ? estimateProjectV2(project.data, voci, project.data?.packageRef) : null), [project, voci]);
 
   const generateAIRender = async () => {
-    if (!viewer3DRef.current) return;
+    // Forza la vista 3D se non attiva (necessaria per snapshot)
+    if (!show3D) {
+      setShow3D(true);
+      toast.info("Attivazione vista 3D...");
+      // Attendi il rendering del Canvas WebGL (frame iniziale)
+      await new Promise((res) => setTimeout(res, 800));
+    }
+    if (!viewer3DRef.current) {
+      toast.error("Vista 3D non disponibile. Riprova tra qualche secondo.");
+      return;
+    }
+    // Forza un render esplicito prima dello snapshot
+    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
     const snap = viewer3DRef.current.snapshot();
-    if (!snap) { toast.error("Attiva la vista 3D prima"); return; }
+    if (!snap || snap.length < 2000) {
+      toast.error("Snapshot 3D vuoto. Disegna almeno una stanza con dei muri prima.");
+      return;
+    }
     setAiLoading(true);
     setAiResult(null);
     try {
       const { data } = await api.post("/ai-render", { image_base64: snap, prompt: aiPrompt, style: "photorealistic interior architectural photography" });
       setAiResult(data.data_url);
       toast.success("Rendering generato");
-    } catch (e) { toast.error(e.response?.data?.detail || "Errore rendering AI"); }
+    } catch (e) {
+      console.error("[AI render]", e);
+      toast.error(e.response?.data?.detail || "Errore rendering AI: il modello potrebbe non essere disponibile.");
+    }
     setAiLoading(false);
   };
 
@@ -497,6 +517,13 @@ export default function Editor() {
               { v: "vmc", l: "VMC (ventil. meccanica)" },
             ]} testid="hvac-kind" />
           )}
+          {tool === "stairs" && (
+            <SubKindPicker label="Tipo scala" value={stairsKind} onChange={setStairsKind} options={[
+              { v: "chiocciola", l: "A chiocciola" },
+              { v: "muratura", l: "In muratura (rampa)" },
+              { v: "legno", l: "In legno (rampa)" },
+            ]} testid="stairs-kind" />
+          )}
           {tool === "tiling" && (
             <div className="mx-2 mt-2 space-y-2 px-2">
               <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Formato</Label>
@@ -537,7 +564,7 @@ export default function Editor() {
                 selected={selected} setSelected={setSelected}
                 selectedMaterial={selectedMaterial} catalog={catalog}
                 doorParams={doorParams} windowParams={windowParams}
-                electricalKind={electricalKind} plumbingKind={plumbingKind} hvacKind={hvacKind} tilingParams={tilingParams}
+                electricalKind={electricalKind} plumbingKind={plumbingKind} hvacKind={hvacKind} tilingParams={tilingParams} stairsKind={stairsKind}
                 viewMode={editMode}
               />
             </div>
@@ -883,6 +910,35 @@ function PropertiesPanel({ project, setProject, selected, catalog }) {
             </div>
           </div>
         )}
+      </div>
+    );
+  }
+  if (kind === "stairs") {
+    return (
+      <div className="space-y-3">
+        <div className="label-kicker">Scala</div>
+        <div>
+          <Label className="text-xs uppercase tracking-widest text-zinc-500">Tipo</Label>
+          <Select value={obj.type || "muratura"} onValueChange={(v) => updateObj({ type: v })}>
+            <SelectTrigger className="rounded-sm h-9 mt-1.5" data-testid="stairs-type-select"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="chiocciola">A chiocciola</SelectItem>
+              <SelectItem value="muratura">In muratura (rampa)</SelectItem>
+              <SelectItem value="legno">In legno (rampa)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div><Label className="text-[10px] uppercase tracking-widest text-zinc-500">L (cm)</Label><Input type="number" value={obj.width || 100} onChange={(e) => updateObj({ width: parseInt(e.target.value) || 100 })} className="rounded-sm h-9 mt-1 mono" /></div>
+          <div><Label className="text-[10px] uppercase tracking-widest text-zinc-500">{obj.type === "chiocciola" ? "Ø (cm)" : "P (cm)"}</Label><Input type="number" value={obj.depth || 200} onChange={(e) => updateObj({ depth: parseInt(e.target.value) || 200 })} className="rounded-sm h-9 mt-1 mono" /></div>
+        </div>
+        <div>
+          <Label className="text-xs uppercase tracking-widest text-zinc-500">Rotazione (°)</Label>
+          <Input type="number" step="15" value={obj.rotation || 0} onChange={(e) => updateObj({ rotation: parseInt(e.target.value) || 0 })} className="rounded-sm h-9 mt-1.5 mono" />
+          <div className="flex gap-1 mt-1.5">
+            {[0, 90, 180, 270].map((a) => <button key={a} onClick={() => updateObj({ rotation: a })} className="flex-1 text-[10px] mono py-1 border border-zinc-300 hover:bg-zinc-50">{a}°</button>)}
+          </div>
+        </div>
       </div>
     );
   }

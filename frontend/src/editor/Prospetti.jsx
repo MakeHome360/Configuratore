@@ -98,7 +98,7 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
   return (
     <svg
       ref={svgRef}
-      viewBox={`-${pad} -${pad} ${W + pad * 2} ${H + pad * 2}`}
+      viewBox={`-${pad} -${pad} ${W + pad * 2} ${H + pad * 2 + 60}`}
       width="100%"
       style={{ display: "block", background: "#FFF" }}
       data-testid={`prospetto-svg-${wall.id}`}
@@ -155,6 +155,8 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
         const h = heightOverrides?.[p.id] ?? stdH;
         const y = H - h;
         const color = COLORS[p.kind] || "#525252";
+        const dxFromLeft = Math.round(p.t * W);
+        const dxFromRight = Math.round((1 - p.t) * W);
         return (
           <g key={p.id} style={{ cursor: editable ? "move" : "default" }}
              onPointerDown={editable ? (e) => { e.preventDefault(); e.stopPropagation(); setDragging(p.id); } : undefined}
@@ -163,9 +165,11 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
             <line x1={x} y1={H} x2={x} y2={y} stroke={color} strokeWidth="1" strokeDasharray="3,3" opacity="0.5" />
             <circle cx={x} cy={y} r="14" fill="white" stroke={color} strokeWidth="2.5" />
             <text x={x} y={y + 5} textAnchor="middle" fontSize="13" fontWeight="800" fontFamily="JetBrains Mono" fill={color} pointerEvents="none">{symbolFor(p)}</text>
-            <text x={x + 18} y={y + 5} fontFamily="JetBrains Mono" fontSize="11" fontWeight="700" fill={color} pointerEvents="none">h={h}</text>
-            {/* dimension to wall start */}
-            {editable && <text x={x} y={H + 50} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="10" fill="#525252" pointerEvents="none">{Math.round(p.t * W)}cm</text>}
+            {/* Quota H altezza dal pavimento (a destra del punto) */}
+            <text x={x + 18} y={y + 5} fontFamily="JetBrains Mono" fontSize="11" fontWeight="700" fill={color} pointerEvents="none">h={h}cm</text>
+            {/* Quote orizzontali dx (verde) e sx (blu) sotto pavimento */}
+            <text x={x} y={H + 50} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="10" fontWeight="700" fill="#16A34A" pointerEvents="none">←{dxFromLeft}</text>
+            <text x={x} y={H + 64} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="10" fontWeight="700" fill="#2563EB" pointerEvents="none">{dxFromRight}→</text>
           </g>
         );
       })}

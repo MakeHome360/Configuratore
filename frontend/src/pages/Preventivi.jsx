@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { Page, PageHeader, fmtEur, statoPreventivoBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
-import { FilePlus2, Eye, Trash2 } from "lucide-react";
+import { FilePlus2, Eye, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 const PKG_NAMES = { "pkg-basic": "BASIC", "pkg-smart": "SMART", "pkg-premium": "PREMIUM", "pkg-elite": "ELITE" };
@@ -23,6 +23,20 @@ export default function Preventivi() {
     await api.delete(`/preventivi/${id}`);
     toast.success("Eliminato");
     load();
+  };
+
+  const openOrCreateProgetto = async (p) => {
+    try {
+      if (p.project_id) {
+        nav(`/editor/${p.project_id}`);
+      } else {
+        const { data } = await api.post(`/preventivi/${p.id}/create-project`);
+        toast.success("Progetto creato e collegato al preventivo");
+        nav(`/editor/${data.id}`);
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Errore creazione progetto");
+    }
   };
 
   const filtered = rows.filter((p) => {
@@ -80,8 +94,11 @@ export default function Preventivi() {
                   <td className="px-4 py-3 text-xs text-zinc-500">{new Date(p.created_at).toLocaleDateString("it-IT")}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="inline-flex gap-1">
-                      <button className="p-1.5 rounded hover:bg-zinc-100" onClick={() => nav(`${ROUTES[p.tipo] || "/preventivopacchetto"}/${p.id}`)} title="Apri" data-testid={`prev-open-${p.id}`}>
-                        <Eye className="h-4 w-4 text-zinc-600" />
+                      <button className="p-1.5 rounded hover:bg-zinc-100" onClick={() => nav(`${ROUTES[p.tipo] || "/preventivopacchetto"}/${p.id}`)} title="Modifica" data-testid={`prev-open-${p.id}`}>
+                        <Pencil className="h-4 w-4 text-zinc-600" />
+                      </button>
+                      <button className="p-1.5 rounded hover:bg-emerald-50" onClick={() => openOrCreateProgetto(p)} title={p.project_id ? "Apri progettazione collegata" : "Crea progettazione da questo preventivo"} data-testid={`prev-cad-${p.id}`}>
+                        <Eye className={`h-4 w-4 ${p.project_id ? "text-emerald-600" : "text-zinc-400"}`} />
                       </button>
                       <button className="p-1.5 rounded hover:bg-rose-50" onClick={() => del(p.id)} title="Elimina" data-testid={`prev-del-${p.id}`}>
                         <Trash2 className="h-4 w-4 text-rose-600" />

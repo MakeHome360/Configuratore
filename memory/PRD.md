@@ -85,7 +85,10 @@
   - Schema posa piastrelle: 30x60, 60x60, 60x120, 80x80, 22.5x90, 25x150 + angolo + punto di partenza (algoritmo poligono clipPath)
   - **Sincronizzazione live preventivo ↔ Voci Backoffice**: ogni elemento CAD aggiorna automaticamente il computo metrico (mq/ml/punto/pz). Mappa 25+ chiavi → voce backoffice via `VOCE_MAP`.
   - **Pacchetto attivo**: selettore in alto. Calcola "incluso" vs "extra" per ogni voce. UI: incluso in verde, extra in rosso.
-  - **Tavole di Progetto**: 8 tavole (Stato di Fatto, Stato di Progetto, Demolizioni/Costruzioni, Imp. Elettrico, Idraulico, Gas, Condizionamento, Schema Posa) con layer toggle. Anteprime grid + esporta PDF A3 multi-pagina + Conferma in Commessa (salvataggio flag su progetto)
+  - **Tavole di Progetto**: 8 piante (Stato di Fatto, Stato di Progetto, Demolizioni/Costruzioni, Imp. Elettrico, Idraulico, Gas, Condizionamento, Schema Posa) + **Prospetti pareti automatici** (vista frontale 2D delle pareti che hanno impianti/scarichi/split entro 80cm, con porte/finestre quotate e elementi a quote standard: presa 30cm, interruttore 110cm, luce 220cm, scarico 30cm, gas 40cm, split 220cm)
+  - **Editing prospetti**: toggle "Modifica altezze" → drag verticale dei punti per regolare altezza, "Salva altezze" persiste su `prospetti_heights`
+  - **Conferma in Commessa**: picker commessa nel modal Tavole. Click "Conferma" → push entries `tipo: tavola_progetto` su `commesse.documenti`, badge verde "CONFERMATE" nel tab Documenti di DettaglioCommessa
+  - Anteprime grid con tab Piante/Prospetti, **export PDF A3 multipagina** (piante + prospetti)
   - **AI Floorplan Import**: upload immagine pianta → POST `/api/ai/floorplan-import` → Gemini 2.5 Pro Vision estrae JSON stanze (cm) → progetto 2D/3D auto-generato modificabile
 - **Abaco Infissi visuale** in PreventivoInfissi: SVG schematico con telaio colorato, vetro, anta, maniglia, quote, materiale/vetro/colore/misura. Aggiunto campo Colore (bianco/antracite/grigio/marrone/noce/rovere)
 - Full base44 replica implemented in one session

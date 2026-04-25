@@ -350,16 +350,37 @@ function VociAcquistiTab({ c, save }) {
 
 function DocumentiTab({ c, save }) {
   const [items, setItems] = useState(c.documenti || []);
+  const tavole = items.filter((d) => d.tipo === "tavola_progetto");
+  const altri = items.filter((d) => d.tipo !== "tavola_progetto");
   return (
     <div>
+      {tavole.length > 0 && (
+        <div className="mb-5 p-3 border border-emerald-300 bg-emerald-50 rounded">
+          <div className="flex items-center gap-2 mb-2">
+            <FileText className="h-4 w-4 text-emerald-700" />
+            <span className="text-sm font-semibold text-emerald-800">Tavole di Progetto ({tavole.length})</span>
+            <span className="text-[10px] uppercase tracking-widest bg-emerald-700 text-white px-2 py-0.5 rounded" data-testid="tavole-flag">CONFERMATE</span>
+          </div>
+          <div className="space-y-1.5">
+            {tavole.map((d, i) => (
+              <div key={i} className="flex items-center gap-2 p-2 bg-white border border-emerald-200 rounded text-sm" data-testid={`tavola-item-${i}`}>
+                <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                <span className="flex-1">{d.nome}</span>
+                {d.url && <a href={d.url} target="_blank" rel="noreferrer" className="text-xs text-emerald-700 underline">apri</a>}
+                <button onClick={() => setItems(items.filter((x) => x !== d))}><Trash2 className="h-3.5 w-3.5 text-rose-600" /></button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex justify-end mb-3"><Button size="sm" onClick={() => setItems([...items, { nome: "", url: "", tipo: "PDF" }])}><Plus className="h-3 w-3 mr-1" />Aggiungi</Button></div>
       <div className="space-y-2">
-        {items.map((d, i) => (
+        {altri.map((d, i) => (
           <div key={i} className="flex items-center gap-2 p-3 border border-zinc-200 rounded">
             <FileText className="h-5 w-5 text-zinc-500" />
-            <Input className="flex-1" placeholder="Nome documento" value={d.nome} onChange={(e) => { const c2 = [...items]; c2[i].nome = e.target.value; setItems(c2); }} />
-            <Input className="flex-1" placeholder="URL" value={d.url} onChange={(e) => { const c2 = [...items]; c2[i].url = e.target.value; setItems(c2); }} />
-            <button onClick={() => setItems(items.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4 text-rose-600" /></button>
+            <Input className="flex-1" placeholder="Nome documento" value={d.nome} onChange={(e) => { const idx = items.indexOf(d); const c2 = [...items]; c2[idx] = { ...c2[idx], nome: e.target.value }; setItems(c2); }} />
+            <Input className="flex-1" placeholder="URL" value={d.url} onChange={(e) => { const idx = items.indexOf(d); const c2 = [...items]; c2[idx] = { ...c2[idx], url: e.target.value }; setItems(c2); }} />
+            <button onClick={() => setItems(items.filter((x) => x !== d))}><Trash2 className="h-4 w-4 text-rose-600" /></button>
           </div>
         ))}
       </div>

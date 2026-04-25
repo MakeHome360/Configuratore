@@ -19,6 +19,7 @@ import {
   Package, Upload, FileImage, FileText,
 } from "lucide-react";
 import { estimateProject, estimateProjectV2, fmtEuro, fmtEuro2, fmtNum, emptyProjectData, uid, polygonArea, polygonPerimeter } from "../editor/utils";
+import { ProspettoWall, computeInterestingWalls } from "../editor/Prospetti";
 import jsPDF from "jspdf";
 
 const TOOL_GROUPS = [
@@ -257,21 +258,21 @@ export default function Editor() {
     toast.success("Preventivo esportato");
   };
 
-  const exportTavole = async (selectedTavole) => {
+  const exportTavole = async (selectedTavole, prospettiInteresting, heightOverrides) => {
     if (!project) return;
     const doc = new jsPDF({ unit: "mm", format: "a3", orientation: "landscape" });
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
-    const captureSvg = async (svgEl) => {
+    const captureSvg = async (svgEl, w = 2200, h = 1400) => {
       const svgData = new XMLSerializer().serializeToString(svgEl);
       const svgBlob = new Blob([svgData], { type: "image/svg+xml" });
       const url = URL.createObjectURL(svgBlob);
       const img = new Image();
       await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
       const canvas = document.createElement("canvas");
-      canvas.width = 2200; canvas.height = 1400;
-      const ctx = canvas.getContext("2d"); ctx.fillStyle = "#FFFFFF"; ctx.fillRect(0, 0, 2200, 1400);
-      ctx.drawImage(img, 0, 0, 2200, 1400);
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext("2d"); ctx.fillStyle = "#FFFFFF"; ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
       URL.revokeObjectURL(url);
       return canvas.toDataURL("image/png");
     };
@@ -280,7 +281,7 @@ export default function Editor() {
       doc.setFont("helvetica", "bold"); doc.setFontSize(20);
       doc.text(title, 15, 15);
       doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-      doc.text(`Progetto: ${project.name}  ·  Data: ${new Date().toLocaleDateString("it-IT")}  ·  Scala: indicativa  ·  Misure in metri`, 15, 22);
+      doc.text(`Progetto: ${project.name}  ·  Data: ${new Date().toLocaleDateString("it-IT")}  ·  Misure in metri`, 15, 22);
       doc.addImage(png, "PNG", 15, 30, pageW - 30, pageH - 50);
       doc.setFontSize(8); doc.setTextColor(100);
       doc.text(`Tavola generata da CAD · ${title}`, 15, pageH - 8);
@@ -288,6 +289,7 @@ export default function Editor() {
     };
 
     let isFirst = true;
+    // First: piante
     for (const tav of selectedTavole) {
       if (!isFirst) doc.addPage("a3", "landscape");
       isFirst = false;
@@ -300,18 +302,44 @@ export default function Editor() {
         doc.text(`Tavola "${tav.title}" non disponibile`, 20, 30);
       }
     }
+    // Then: prospetti pareti
+    for (const ent of (prospettiInteresting || [])) {
+      const svgEl = document.querySelector(`[data-testid="prospetto-svg-${ent.wall.id}"]`);
+      if (svgEl) {
+        if (!isFirst) doc.addPage("a3", "landscape");
+        isFirst = false;
+        const png = await captureSvg(svgEl, 2400, 1100);
+        renderTavola(`Prospetto Parete · ${fmtNum(ent.length / 100, 2)}m`, png);
+      }
+    }
     doc.save(`${project.name.replace(/[^a-z0-9]+/gi, "-")}-tavole.pdf`);
     toast.success("Tavole esportate");
   };
 
-  const confirmaTavoleInCommessa = async (selectedTavole) => {
-    // Mark project as having confirmed tavole; downstream, commessa will read this
+  const confirmaTavoleInCommessa = async (selectedTavole, prospettiInteresting, commessaId) => {
     try {
       const tav_codes = selectedTavole.map((t) => t.id);
-      await api.put(`/projects/${project.id}`, { name: project.name, data: { ...project.data, tavole_confermate: tav_codes, tavole_confermate_at: new Date().toISOString() } });
-      setProjectData((p) => ({ ...p, tavole_confermate: tav_codes, tavole_confermate_at: new Date().toISOString() }));
-      toast.success("Tavole confermate e disponibili nei documenti commessa");
-    } catch { toast.error("Errore conferma tavole"); }
+      // Save flag on project
+      await api.put(`/projects/${project.id}`, {
+        name: project.name,
+        data: { ...project.data, tavole_confermate: tav_codes, tavole_confermate_at: new Date().toISOString(), commessa_id: commessaId || project.data?.commessa_id },
+      });
+      setProjectData((p) => ({ ...p, tavole_confermate: tav_codes, tavole_confermate_at: new Date().toISOString(), commessa_id: commessaId || p.commessa_id }));
+
+      // Push entries to commessa.documenti
+      if (commessaId) {
+        const { data: c } = await api.get(`/commesse/${commessaId}`);
+        const newDocs = [
+          ...(c.documenti || []),
+          ...selectedTavole.map((t) => ({ nome: `Tavola di Progetto: ${t.title}`, url: `/editor/${project.id}`, tipo: "tavola_progetto", flag: true, data: new Date().toISOString() })),
+          ...(prospettiInteresting || []).map((ent) => ({ nome: `Prospetto Parete (${fmtNum(ent.length / 100, 2)}m)`, url: `/editor/${project.id}`, tipo: "tavola_progetto", flag: true, data: new Date().toISOString() })),
+        ];
+        await api.put(`/commesse/${commessaId}`, { documenti: newDocs });
+        toast.success(`Tavole confermate e aggiunte ai documenti commessa (${selectedTavole.length + (prospettiInteresting || []).length})`);
+      } else {
+        toast.success("Tavole confermate sul progetto. Collega una commessa per aggiungerle ai documenti.");
+      }
+    } catch (e) { toast.error(e.response?.data?.detail || "Errore conferma tavole"); }
   };
 
   if (!project) return <div className="h-screen flex items-center justify-center mono text-zinc-500">caricamento editor…</div>;
@@ -834,34 +862,94 @@ const TAVOLE = [
 
 function TavoleModal({ open, setOpen, project, catalog, estimateV2, onExport, onConferma }) {
   const [selected, setSelected] = useState(TAVOLE.map((t) => t.id));
+  const [showProspetti, setShowProspetti] = useState(true);
+  const [editProspetti, setEditProspetti] = useState(false);
+  const [heightOverrides, setHeightOverrides] = useState(project.data?.prospetti_heights || {});
+  const [commessaList, setCommessaList] = useState([]);
+  const [selectedCommessa, setSelectedCommessa] = useState(project.data?.commessa_id || "");
+  const [tab, setTab] = useState("piante");
+
+  React.useEffect(() => {
+    api.get("/commesse").then((r) => setCommessaList(r.data || [])).catch(() => {});
+  }, []);
+
+  const interestingWalls = useMemo(() => computeInterestingWalls(project.data), [project.data]);
   const toggle = (id) => setSelected((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
   const sel = TAVOLE.filter((t) => selected.includes(t.id));
+  const updateHeight = (id, h) => setHeightOverrides((o) => ({ ...o, [id]: h }));
+  const saveHeights = async () => {
+    try {
+      await api.put(`/projects/${project.id}`, { name: project.name, data: { ...project.data, prospetti_heights: heightOverrides } });
+      toast.success("Altezze prospetti salvate");
+    } catch { toast.error("Errore salvataggio"); }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" data-testid="tavole-modal">
       <div className="bg-white w-full max-w-7xl max-h-[95vh] flex flex-col border border-zinc-300">
         <div className="h-12 px-4 flex items-center border-b border-zinc-200">
-          <FileImage size={16} className="mr-2 text-blue-600" /><span className="font-medium" style={{ fontFamily: "Outfit" }}>Tavole di Progetto</span>
+          <FileImage size={16} className="mr-2 text-blue-600" />
+          <span className="font-medium" style={{ fontFamily: "Outfit" }}>Tavole di Progetto</span>
           <button className="ml-auto" onClick={() => setOpen(false)} data-testid="close-tavole"><X size={18} /></button>
         </div>
         <div className="flex-1 flex min-h-0">
-          <div className="w-64 border-r border-zinc-200 p-4 overflow-auto">
-            <div className="label-kicker mb-3">Seleziona tavole</div>
+          <div className="w-72 border-r border-zinc-200 p-4 overflow-auto">
+            <div className="label-kicker mb-3">Tavole · piante</div>
             {TAVOLE.map((t) => (
               <label key={t.id} className="flex items-center gap-2 py-1.5 cursor-pointer text-sm" data-testid={`tavola-toggle-${t.id}`}>
                 <input type="checkbox" checked={selected.includes(t.id)} onChange={() => toggle(t.id)} />
                 <span>{t.title}</span>
               </label>
             ))}
+            <Separator className="my-3" />
+            <div className="label-kicker mb-2">Prospetti pareti</div>
+            <label className="flex items-center gap-2 py-1.5 text-sm">
+              <input type="checkbox" checked={showProspetti} onChange={(e) => setShowProspetti(e.target.checked)} data-testid="show-prospetti-toggle" />
+              <span>Includi {interestingWalls.length} prospetti</span>
+            </label>
+            <label className="flex items-center gap-2 py-1.5 text-sm">
+              <input type="checkbox" checked={editProspetti} onChange={(e) => setEditProspetti(e.target.checked)} data-testid="edit-prospetti-toggle" />
+              <span>Modifica altezze</span>
+            </label>
+            {editProspetti && <Button size="sm" variant="outline" className="rounded-sm w-full h-8 mt-2" onClick={saveHeights} data-testid="save-heights-btn">Salva altezze</Button>}
             <Separator className="my-4" />
-            <Button size="sm" className="rounded-sm w-full h-9 bg-zinc-900 hover:bg-zinc-800 mb-2" onClick={() => onExport(sel)} data-testid="export-tavole-btn"><Download size={14} className="mr-2" /> Esporta PDF</Button>
-            <Button size="sm" variant="outline" className="rounded-sm w-full h-9" onClick={() => onConferma(sel)} data-testid="conferma-tavole-btn"><FileText size={14} className="mr-2" /> Conferma in Commessa</Button>
+            <div className="label-kicker mb-2">Conferma in</div>
+            <Select value={selectedCommessa || "_none"} onValueChange={(v) => setSelectedCommessa(v === "_none" ? "" : v)}>
+              <SelectTrigger className="rounded-sm h-9" data-testid="commessa-picker"><SelectValue placeholder="Commessa…" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_none">Nessuna (solo progetto)</SelectItem>
+                {commessaList.map((c) => <SelectItem key={c.id} value={c.id}>{c.numero || c.id.slice(0, 6)} · {c.cliente?.nome || "—"}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Button size="sm" className="rounded-sm w-full h-9 bg-zinc-900 hover:bg-zinc-800 mt-3" onClick={() => onExport(sel, showProspetti ? interestingWalls : [], heightOverrides)} data-testid="export-tavole-btn"><Download size={14} className="mr-2" /> Esporta PDF</Button>
+            <Button size="sm" variant="outline" className="rounded-sm w-full h-9 mt-2" onClick={() => onConferma(sel, showProspetti ? interestingWalls : [], selectedCommessa)} data-testid="conferma-tavole-btn"><FileText size={14} className="mr-2" /> Conferma in Commessa</Button>
           </div>
           <div className="flex-1 overflow-auto p-4 bg-zinc-50">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {sel.map((t) => (
-                <TavolaPreview key={t.id} tavola={t} project={project} catalog={catalog} />
-              ))}
+            <div className="flex gap-2 mb-3">
+              <button onClick={() => setTab("piante")} className={`px-3 py-1.5 text-xs uppercase tracking-widest ${tab === "piante" ? "bg-zinc-900 text-white" : "bg-white border border-zinc-200"}`} data-testid="tab-piante">Piante ({sel.length})</button>
+              <button onClick={() => setTab("prospetti")} className={`px-3 py-1.5 text-xs uppercase tracking-widest ${tab === "prospetti" ? "bg-zinc-900 text-white" : "bg-white border border-zinc-200"}`} data-testid="tab-prospetti">Prospetti ({interestingWalls.length})</button>
             </div>
+            {tab === "piante" && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {sel.map((t) => <TavolaPreview key={t.id} tavola={t} project={project} catalog={catalog} />)}
+              </div>
+            )}
+            {tab === "prospetti" && (
+              <div className="space-y-4">
+                {interestingWalls.length === 0 && (
+                  <div className="text-sm text-zinc-500 p-6 bg-white border border-zinc-200 italic">Nessuna parete con elementi rilevanti (prese/scarichi/split) entro 80cm. Aggiungi impianti al progetto per generare i prospetti.</div>
+                )}
+                {interestingWalls.map((ent) => (
+                  <div key={ent.wall.id} className="bg-white border border-zinc-300 p-3" data-testid={`prospetto-card-${ent.wall.id}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="font-semibold text-sm" style={{ fontFamily: "Outfit" }}>Prospetto Parete · L={fmtNum(ent.length / 100, 2)}m</div>
+                      <div className="text-[10px] mono text-zinc-400">{ent.points.length} elementi · {ent.doors.length} porte · {ent.windows.length} finestre</div>
+                    </div>
+                    <ProspettoWall entry={ent} roomHeight={project.data?.roomHeight || 270} editable={editProspetti} heightOverrides={heightOverrides} onChangeHeight={updateHeight} />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

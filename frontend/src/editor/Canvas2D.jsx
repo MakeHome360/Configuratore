@@ -577,6 +577,8 @@ export default function Canvas2D({
           if (w.demolito) stroke = "#DC2626";
           else if (w.kind === "cartongesso") stroke = "#525252";
           else if (w.kind === "nuovo") stroke = "#EAB308";
+          // Partial demolition: a sub-section of the wall
+          const partial = w.demolito_partial;
           return (
             <g key={w.id}
               onMouseDown={(e) => { if (isPlacementTool) return; e.stopPropagation(); handleElementClick("walls", w.id); }}
@@ -588,15 +590,32 @@ export default function Canvas2D({
                 strokeDasharray={w.demolito ? "8,5" : (w.kind === "cartongesso" ? "12,4" : undefined)}
                 opacity={w.demolito ? 0.65 : 1}
               />
-              {/* corner cap (close angles between two walls) */}
+              {/* corner cap */}
               <circle cx={w.x1} cy={w.y1} r={(w.thickness || 10) / 2} fill={stroke} pointerEvents="none" />
               <circle cx={w.x2} cy={w.y2} r={(w.thickness || 10) / 2} fill={stroke} pointerEvents="none" />
-              {/* hatched overlay if "new" wall */}
+              {/* partial demolition overlay */}
+              {!w.demolito && partial && partial.to > partial.from && (
+                <line
+                  x1={w.x1 + partial.from * (w.x2 - w.x1)}
+                  y1={w.y1 + partial.from * (w.y2 - w.y1)}
+                  x2={w.x1 + partial.to * (w.x2 - w.x1)}
+                  y2={w.y1 + partial.to * (w.y2 - w.y1)}
+                  stroke="#DC2626" strokeWidth={(w.thickness || 10) + 2} strokeDasharray="6,4" strokeLinecap="butt" opacity="0.85"
+                />
+              )}
               {isNuovo && !w.demolito && (
                 <line x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2} stroke="url(#hatch-new)" strokeWidth={(w.thickness || 10) - 4} strokeLinecap="butt" opacity="0.6" />
               )}
               <line x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2} stroke="transparent" strokeWidth="20" />
               {L.dimensions && len > 30 && <Measurement x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2} big color={w.demolito ? "#DC2626" : "#16A34A"} />}
+              {!w.demolito && partial && partial.to > partial.from && L.dimensions && (
+                <text
+                  x={w.x1 + ((partial.from + partial.to) / 2) * (w.x2 - w.x1)}
+                  y={w.y1 + ((partial.from + partial.to) / 2) * (w.y2 - w.y1) - 16}
+                  fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill="#DC2626"
+                  pointerEvents="none"
+                >DEMO {Math.round((partial.to - partial.from) * len)}cm × h{partial.height || 270}cm</text>
+              )}
               {/* drag handles when selected */}
               {isSel && tool === "select" && (
                 <>

@@ -199,10 +199,11 @@ export default function ConfiguratoreEsigenze() {
 
   const goProgettazione = async (pkgChoice) => {
     const lead = await saveLead({ pacchetto_scelto: pkgChoice.id });
+    const seed = buildSeedData(esigenze, dati.mq || 80, pkgChoice);
     try {
       const { data } = await api.post("/projects", {
         name: `Progetto ${dati.nome} ${dati.cognome}`.trim(),
-        data: { roomHeight: 270, currency: "EUR", packageRef: { package_id: pkgChoice.id, name: pkgChoice.name, mq_inclusi: dati.mq } },
+        data: seed,
       });
       nav(`/editor/${data.id}`);
     } catch { toast.error("Errore creazione progetto"); }
@@ -405,3 +406,122 @@ function PkgCard({ tier, mq, dati, primary, onPreventivo, onProgettazione, testi
 }
 
 const F = ({ label, children }) => <div><Label className="text-xs text-zinc-600">{label}</Label><div className="mt-1">{children}</div></div>;
+
+// Seed CAD project_data based on esigenze (so preventivo live nasce già con elementi base)
+function uid8() { return Math.random().toString(36).slice(2, 10); }
+function buildSeedData(esigenze, mq, pkgChoice) {
+  // Geometry: square room of mq side. Approximate one big "ambiente" + bagno + cucina if requested
+  const side = Math.round(Math.sqrt(mq) * 100); // cm
+  // Living big room
+  const w = side, h = Math.round((mq * 10000) / w);
+  const corners = [
+    { x: 100, y: 100 }, { x: 100 + w, y: 100 },
+    { x: 100 + w, y: 100 + h }, { x: 100, y: 100 + h },
+  ];
+  const wallIds = [uid8(), uid8(), uid8(), uid8()];
+  const walls = [
+    { id: wallIds[0], x1: corners[0].x, y1: corners[0].y, x2: corners[1].x, y2: corners[1].y, thickness: 10, kind: "esistente" },
+    { id: wallIds[1], x1: corners[1].x, y1: corners[1].y, x2: corners[2].x, y2: corners[2].y, thickness: 10, kind: "esistente" },
+    { id: wallIds[2], x1: corners[2].x, y1: corners[2].y, x2: corners[3].x, y2: corners[3].y, thickness: 10, kind: "esistente" },
+    { id: wallIds[3], x1: corners[3].x, y1: corners[3].y, x2: corners[0].x, y2: corners[0].y, thickness: 10, kind: "esistente" },
+  ];
+  const cucinaWanted = esigenze.cucina && esigenze.cucina !== "No";
+  const numBagni = parseInt((esigenze.bagni || "1").replace("+", "")) || 1;
+  // Inner partition for bagno (if at least 1)
+  const rooms = [];
+  if (numBagni >= 1) {
+    const bw = 250, bh = 200; // bagno cm
+    const bagnoCorners = [
+      { x: 100 + w - bw, y: 100 + h - bh }, { x: 100 + w, y: 100 + h - bh },
+      { x: 100 + w, y: 100 + h }, { x: 100 + w - bw, y: 100 + h },
+    ];
+    rooms.push({
+      id: uid8(), name: "Bagno", points: bagnoCorners,
+      floorMaterial: "floor-ceramic", wallMaterial: "wall-tile", ceilingMaterial: "ceil-paint",
+      electrical: true, plumbing: true,
+    });
+    walls.push({ id: uid8(), x1: bagnoCorners[0].x, y1: bagnoCorners[0].y, x2: bagnoCorners[1].x, y2: bagnoCorners[1].y, thickness: 8, kind: "esistente" });
+    walls.push({ id: uid8(), x1: bagnoCorners[3].x, y1: bagnoCorners[3].y, x2: bagnoCorners[0].x, y2: bagnoCorners[0].y, thickness: 8, kind: "esistente" });
+  }
+  rooms.push({
+    id: uid8(), name: cucinaWanted ? "Living + Cucina" : "Living",
+    points: numBagni >= 1 ? [
+      corners[0], corners[1],
+      { x: 100 + w, y: 100 + h - 200 },
+      { x: 100 + w - 250, y: 100 + h - 200 },
+      { x: 100 + w - 250, y: 100 + h },
+      corners[3],
+    ] : corners,
+    floorMaterial: "floor-parquet", wallMaterial: "wall-paint", ceilingMaterial: "ceil-paint",
+    electrical: true, plumbing: cucinaWanted,
+  });
+  // Doors / windows on perimeter
+  const doors = [];
+  const windows = [];
+  // Entrance door (blindata if requested)
+  const isBlindata = esigenze.blindata === "Sì" || esigenze.blindata === "Standard";
+  doors.push({ id: uid8(), wallId: wallIds[3], t: 0.5, width: 90, height: 215, type: isBlindata ? "blindata" : "interna" });
+  // Internal doors based on # porte interne
+  const intDoors = parseInt((esigenze.porte_interne || "0").replace("+", "").split("-")[0]) || 0;
+  if (numBagni >= 1) doors.push({ id: uid8(), wallId: walls[walls.length - 1].id, t: 0.5, width: 70, height: 210, type: "interna" });
+  // Windows on long walls
+  const matInf = esigenze.infissi_materiale === "Legno" ? "legno" : esigenze.infissi_materiale === "Alluminio" ? "alluminio" : "pvc";
+  const numWindows = esigenze.infissi_esterni === "Tutti" ? 4 : esigenze.infissi_esterni === "Alcuni" ? 2 : 0;
+  for (let i = 0; i < numWindows; i++) {
+    windows.push({
+      id: uid8(),
+      wallId: i % 2 === 0 ? wallIds[0] : wallIds[2],
+      t: 0.25 + (i * 0.5) % 0.5,
+      width: 120, height: 140, sillHeight: 90, type: "finestra", material: matInf,
+    });
+  }
+  // Electrical
+  const electrical = [];
+  if (esigenze.elettrico === "Tutto nuovo") {
+    // 1 quadro + 4 prese in living + 2 in bagno
+    electrical.push({ id: uid8(), type: "quadro", x: 100 + 50, y: 100 + 50 });
+    for (let i = 0; i < 4; i++) {
+      electrical.push({ id: uid8(), type: "presa", x: 100 + (w / 5) * (i + 1), y: 100 + h - 30 });
+    }
+    if (numBagni >= 1) {
+      electrical.push({ id: uid8(), type: "presa", x: 100 + w - 100, y: 100 + h - 80 });
+      electrical.push({ id: uid8(), type: "luce", x: 100 + w - 125, y: 100 + h - 100 });
+    }
+  }
+  // Plumbing
+  const plumbing = [];
+  if (esigenze.idraulico === "Tutto nuovo" || esigenze.idraulico === "Solo bagni") {
+    if (numBagni >= 1) {
+      plumbing.push({ id: uid8(), type: "acqua-fredda", x: 100 + w - 50, y: 100 + h - 100 });
+      plumbing.push({ id: uid8(), type: "acqua-calda", x: 100 + w - 50, y: 100 + h - 80 });
+      plumbing.push({ id: uid8(), type: "scarico", x: 100 + w - 80, y: 100 + h - 30 });
+    }
+    if (cucinaWanted) {
+      plumbing.push({ id: uid8(), type: "acqua-fredda", x: 100 + 100, y: 100 + h - 30 });
+      plumbing.push({ id: uid8(), type: "scarico", x: 100 + 80, y: 100 + h - 30 });
+    }
+  }
+  // Gas + caldaia
+  const gas = [];
+  if (esigenze.gas === "Tutto nuovo" || esigenze.termico === "Solo caldaia" || esigenze.termico === "Radiatori" || esigenze.termico === "Pavimento") {
+    gas.push({ id: uid8(), x: 100 + 60, y: 100 + 100 });
+  }
+  // HVAC
+  const hvac = [];
+  if (esigenze.clima === "Sì installato") {
+    hvac.push({ id: uid8(), type: "split", x: 100 + w / 3, y: 100 + 30, kind: "dual" });
+    hvac.push({ id: uid8(), type: "split", x: 100 + 2 * w / 3, y: 100 + 30, kind: "dual" });
+    hvac.push({ id: uid8(), type: "esterna", x: 100 + w / 2, y: 100 - 80 });
+  } else if (esigenze.clima === "Predisposizione") {
+    hvac.push({ id: uid8(), type: "predisposizione", x: 100 + w / 2, y: 100 + 30 });
+  }
+
+  return {
+    walls, doors, windows, rooms,
+    items: [], electrical, plumbing, gas, hvac, demolitions: [], tiling: [],
+    packageRef: pkgChoice ? { package_id: pkgChoice.id, name: pkgChoice.name, mq_inclusi: mq } : null,
+    roomHeight: 270, currency: "EUR",
+    seeded_from_configurator: true,
+    esigenze_snapshot: esigenze,
+  };
+}

@@ -238,10 +238,14 @@ export function estimateProjectV2(project, voci, packageRef) {
     const aM2 = lenM * (height / 100);
     if (w.demolito) {
       add("demolizione_muro", aM2);
-    } else if (w.kind === "cartongesso") {
-      add("costruzione_muro_cartongesso", aM2);
-    } else if (w.kind === "mattone") {
-      add("costruzione_muro_mattone", aM2);
+    } else if (w.demolito_partial && w.demolito_partial.to > w.demolito_partial.from) {
+      const portionM = lenM * (w.demolito_partial.to - w.demolito_partial.from);
+      const hM = (w.demolito_partial.height || height) / 100;
+      add("demolizione_muro", portionM * hM);
+    }
+    if (!w.demolito) {
+      if (w.kind === "cartongesso") add("costruzione_muro_cartongesso", aM2);
+      else if (w.kind === "nuovo") add("costruzione_muro_mattone", aM2);
     }
   });
 

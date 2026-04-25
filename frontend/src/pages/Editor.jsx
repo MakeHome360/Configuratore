@@ -655,11 +655,34 @@ function PropertiesPanel({ project, setProject, selected, catalog }) {
         <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Tipo</Label>
           <Select value={obj.kind || "mattone"} onValueChange={(v) => updateObj({ kind: v })}>
             <SelectTrigger className="rounded-sm h-9 mt-1.5"><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="mattone">Mattone</SelectItem><SelectItem value="cartongesso">Cartongesso</SelectItem></SelectContent>
+            <SelectContent><SelectItem value="esistente">Esistente (mattone)</SelectItem><SelectItem value="nuovo">Nuovo (mattone)</SelectItem><SelectItem value="cartongesso">Cartongesso</SelectItem></SelectContent>
           </Select>
         </div>
         <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Spessore (cm)</Label><Input type="number" value={obj.thickness || 10} onChange={(e) => updateObj({ thickness: parseInt(e.target.value) || 10 })} className="rounded-sm h-9 mt-1.5 mono" /></div>
-        <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-zinc-500">Demolito</Label><Switch checked={!!obj.demolito} onCheckedChange={(v) => updateObj({ demolito: v })} data-testid="wall-demolito-switch" /></div>
+        <Separator />
+        <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-zinc-500">Demolisci tutto</Label><Switch checked={!!obj.demolito} onCheckedChange={(v) => updateObj({ demolito: v, demolito_partial: v ? null : obj.demolito_partial })} data-testid="wall-demolito-switch" /></div>
+        {!obj.demolito && (
+          <div className="bg-rose-50 border border-rose-200 p-2 space-y-2">
+            <Label className="text-xs uppercase tracking-widest text-rose-700">Demolizione parziale</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-[10px] text-zinc-500">Da (% lunghezza)</Label>
+                <Input type="number" min="0" max="100" step="5" value={Math.round(((obj.demolito_partial?.from) || 0) * 100)} onChange={(e) => updateObj({ demolito_partial: { ...(obj.demolito_partial || { to: 1, height: 270 }), from: Math.max(0, Math.min(1, (parseInt(e.target.value) || 0) / 100)) } })} className="rounded-sm h-9 mt-1 mono" data-testid="wall-partial-from" />
+              </div>
+              <div>
+                <Label className="text-[10px] text-zinc-500">A (% lunghezza)</Label>
+                <Input type="number" min="0" max="100" step="5" value={Math.round(((obj.demolito_partial?.to) || 0) * 100)} onChange={(e) => updateObj({ demolito_partial: { ...(obj.demolito_partial || { from: 0, height: 270 }), to: Math.max(0, Math.min(1, (parseInt(e.target.value) || 0) / 100)) } })} className="rounded-sm h-9 mt-1 mono" data-testid="wall-partial-to" />
+              </div>
+            </div>
+            <div>
+              <Label className="text-[10px] text-zinc-500">Altezza demolita (cm) — vuoto = tutta altezza</Label>
+              <Input type="number" min="0" max="400" step="10" value={obj.demolito_partial?.height || 270} onChange={(e) => updateObj({ demolito_partial: { ...(obj.demolito_partial || { from: 0, to: 0.5 }), height: parseInt(e.target.value) || 270 } })} className="rounded-sm h-9 mt-1 mono" data-testid="wall-partial-height" />
+            </div>
+            {obj.demolito_partial && obj.demolito_partial.to > obj.demolito_partial.from && (
+              <button onClick={() => updateObj({ demolito_partial: null })} className="text-xs text-rose-700 underline">Rimuovi demolizione parziale</button>
+            )}
+          </div>
+        )}
       </div>
     );
   }

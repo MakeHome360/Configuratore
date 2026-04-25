@@ -68,6 +68,11 @@
 - **negozi / subappaltatori / impostazioni / dati_azienda**
 - **materials / projects** (CAD)
 
+## Changelog (Feb 2026 — round 7 finalizzazione)
+- **Tool SCALA implementato**: `tool-stairs` in toolbar Base; sub-kind picker `stairs-kind` (chiocciola/muratura/legno); rendering SVG StairSymbol (chiocciola = cerchio con raggi, rampa = rettangolo con gradini + freccia salita); pannello proprietà completo con type/L/P/rotazione; tracciato in `voci_backoffice` (scala_chiocciola 1200€, scala_muratura 2500€, scala_legno 1800€); phase corretta applicata.
+- **Demolizione Pavimento area FREE-FORM**: tool-demolish-floor-partial NON usa più `window.prompt` per la percentuale. Ora disegna un poligono libero (click vertici, doppio click chiude); `polygon[]` salvato nella demolition; `estimateProjectV2` ricalcola `areaM2` dal poligono se presente; rendering live del poligono draft + label "DEMO X.XX m²" sul canvas.
+- **Tavola Demolizioni con muri perimetrali GHOST**: in `Canvas2D.jsx` quando `viewMode==='demolizioni'`, il perimetro stato di fatto (muri non demoliti, phase=fatto) viene renderizzato come linea grigia tratteggiata sottile come riferimento. I muri demoliti restano evidenziati in rosso.
+- **Split automatico stanza con muro divisorio**: `splitRoomByWall` in `utils.js` calcola intersezioni del muro con i lati del poligono stanza tramite `segmentIntersect`. Se trova esattamente 2 intersezioni full-crossing, divide il poligono in 2 nuove stanze (`{Nome} A` e `{Nome} B`) preservando proprietà (floorMaterial, electrical, plumbing, controsoffitto, phase). Verifica unit test passata: horiz/vert/diag full-cross OK, no-cross/external/endpoint NO SPLIT.
 ## Changelog (Feb 2026 — round 6 bug fixing)
 - **FIX CRITICO: Stato di Fatto NON fattura più nel preventivo**:
   - `isProgetto` ora ESATTAMENTE filtra solo `phase === "progetto"` (era anche `!phase`, troppo permissivo)

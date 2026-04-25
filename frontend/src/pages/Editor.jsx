@@ -18,7 +18,7 @@ import {
   ChevronRight, ChevronLeft, Hammer, Layers, Zap, Droplet, Flame, Wind, Grid3x3,
   Package, Upload, FileImage, FileText, Type, RotateCcw, RotateCw,
 } from "lucide-react";
-import { estimateProject, estimateProjectV2, fmtEuro, fmtEuro2, fmtNum, emptyProjectData, uid, polygonArea, polygonPerimeter } from "../editor/utils";
+import { estimateProject, estimateProjectV2, fmtEuro, fmtEuro2, fmtNum, emptyProjectData, uid, polygonArea, polygonPerimeter, splitRoomByWall } from "../editor/utils";
 import { ProspettoWall, ProspettoInputs, computeInterestingWalls } from "../editor/Prospetti";
 import jsPDF from "jspdf";
 
@@ -122,6 +122,35 @@ export default function Editor() {
     if (undoStackRef.current.length > 50) undoStackRef.current.shift();
     redoStackRef.current = []; // qualsiasi nuova azione invalida il redo
     lastSnapshotJsonRef.current = json;
+  }, [project]);
+
+  // Espone helpers per test E2E e debug (preview/dev mode)
+  useEffect(() => {
+    if (!project) return;
+    window.__editorTest = {
+      getProject: () => project,
+      setProjectData: (data) => setProject((p) => ({ ...p, data: typeof data === "function" ? data(p.data) : data })),
+      addWallProgetto: (x1, y1, x2, y2) => {
+        const id = Math.random().toString(36).slice(2, 10);
+        setProject((p) => {
+          const newWall = { id, x1, y1, x2, y2, thickness: 10, kind: "nuovo", phase: "progetto" };
+          const rooms = p.data?.rooms || [];
+          for (const r of rooms) {
+            const split = splitRoomByWall(r.points, { x: x1, y: y1 }, { x: x2, y: y2 });
+            if (split) {
+              const baseProps = { ...r };
+              delete baseProps.id; delete baseProps.points; delete baseProps.name;
+              const r1 = { ...baseProps, id: id + "_a", name: `${r.name} A`, points: split[0] };
+              const r2 = { ...baseProps, id: id + "_b", name: `${r.name} B`, points: split[1] };
+              const otherRooms = rooms.filter((x) => x.id !== r.id);
+              return { ...p, data: { ...p.data, rooms: [...otherRooms, r1, r2], walls: [...(p.data.walls || []), newWall] } };
+            }
+          }
+          return { ...p, data: { ...p.data, walls: [...(p.data.walls || []), newWall] } };
+        });
+      },
+    };
+    return () => { delete window.__editorTest; };
   }, [project]);
 
   const undo = () => {

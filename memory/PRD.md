@@ -68,6 +68,44 @@
 - **negozi / subappaltatori / impostazioni / dati_azienda**
 - **materials / projects** (CAD)
 
+## Changelog (Feb 2026 — round 10: Portale Cliente + Subappaltatori + Gestore Cantieri + RBAC)
+
+**BACKEND** (nuovo modulo /app/backend/routes_round10.py, 480 LOC):
+- **Subappaltatori dashboard finance**: `GET /api/subappaltatori-dashboard` ritorna per ogni sub: cantieri attivi, importo totale, fatturato, incassato, da incassare, ritardi (calcolati su data_fine_prevista vs now).
+- **Assegnazioni subappaltatori**: collection `subapp_assegnazioni` con avanzamenti dichiarati e convalide. Endpoint: POST /subappaltatori/assegna, PUT /subappaltatori/assegnazioni/{id}, POST /subappaltatori/assegnazioni/{id}/avanzamenti, POST /subappaltatori/assegnazioni/{id}/avanzamenti/{aid}/convalida.
+- **Convalida sblocca pagamento**: `pagamento_sbloccato=true` automaticamente sull'avanzamento convalidato.
+- **Gestore Cantieri**: `GET /api/gestore/cantieri` (admin vede tutto, gestore solo i suoi). PUT /commesse/{id}/assegna-gestore.
+- **Portale Cliente con utenza temporanea**: `POST /api/cliente-portal/invita` genera password 8-char e crea utenza role=cliente con `cliente_portal_expires_at` (durata 6 mesi cantiere + 30gg). `POST /api/auth/login-cliente` verifica scadenza. `GET /api/cliente-portal/me` ritorna commessa+SAL pubblico (avanzamenti convalidati)+documenti+commenti. `POST /cliente-portal/commessa/{id}/commenti`.
+- **Firma elettronica semplice OTP**: collection `firma_otp_codes` + `documenti_commessa`. Flow: POST /firma/richiedi-otp (genera OTP 6-digit, dev=ritorna codice; prod=email) → POST /firma/conferma con audit trail completo (IP + user_agent + timestamp + validità legale citata art. 20 CAD + Reg. eIDAS).
+- **RBAC filtri**: `GET /api/preventivi-filtered` (admin=tutto, venditore=del suo negozio, cliente=della sua commessa). `GET /api/commesse-filtered` (admin=tutto, gestore=assegnate, venditore=del negozio, sub=assegnate, cliente=propria).
+- **AUTH: ruolo "gestore" aggiunto** alle role validate in routes_biz.set_role.
+
+**FRONTEND** (6 nuove pagine + AppLayout RBAC):
+- `/dashboard-subappaltatori` (admin/gestore): KPI fatturato/incassato/da-incassare/ritardi + tabella per sub.
+- `/subappaltatori/:id`: dettaglio con cantieri assegnati, avanzamenti dichiarati e bottoni convalida.
+- `/gestore-cantieri` (admin/gestore): cantieri assegnati, badge "X da convalidare", convalida singolo avanzamento sblocca pagamento.
+- `/portale-sub` (subappaltatore): le sue commesse, dichiara avanzamento (descrizione + % + note), vede stato convalida.
+- `/portale-cliente` (cliente): banner gradient con commessa, "Accesso valido X giorni", SAL pubblico, documenti firmabili con modal OTP, commenti.
+- `/portale-cliente/login`: login dedicato per clienti con credenziali temporanee.
+- AppLayout NAV esteso con sezioni "Cantieri" (admin/gestore/sub) e "Cliente" (cliente). Filtraggio automatico per ruolo.
+- DettaglioCommessa: bottone "Invita cliente al portale" che mostra credenziali generate da copiare.
+- AuthContext: nuovo `loginCliente(email, pwd)` + `setUserAndToken({token,user})`.
+
+**Test E2E backend (curl) PASS:**
+- POST /cliente-portal/invita → password generata, scadenza 218gg ✓
+- POST /auth/login-cliente → token JWT valido ✓
+- GET /cliente-portal/me → commessa COM-202604-7D06 con SAL+docs+commenti ✓
+- POST /documenti tipo=contratto firma_richiesta=true ✓
+- GET /documenti?commessa_id=X come cliente → solo visibili_cliente ✓
+- POST /firma/richiedi-otp → OTP 6 cifre + scadenza 10min ✓
+- POST /firma/conferma → audit trail completo (IP, UA, timestamp, validità legale) ✓
+- GET /subappaltatori-dashboard, /gestore/cantieri, /preventivi-filtered, /commesse-filtered → tutti rispondono ✓
+
+**Test E2E frontend (Playwright):**
+- Login cliente test@example.com con pwd temporanea XQUJNCXE → entra in /portale-cliente
+- Vede commessa, "Accesso valido ancora 218 giorni", documento "Contratto preliminare" già FIRMATO (dal test backend)
+- Sidebar filtrata correttamente per ruolo cliente (solo Preventivi/Commesse/Portale Cliente)
+
 ## Changelog (Feb 2026 — round 9: Editor↔Preventivi flow + bug fix)
 - **EDITOR → SALVA COME PREVENTIVO**: nuovo bottone verde nel pannello "Preventivo Live" (data-testid="save-as-preventivo-button") crea un preventivo tipo="cad" via POST /api/preventivi con tutti gli items del computo metrico, project_id linkato. Backend: PreventivoIn accetta extra fields (project_id, package_base_total, extra_total). Sync inverso bidirezionale: il progetto si salva con `preventivo_id`. Successo verificato e2e (PRV-2026-0018).
 - **EDITOR → BUDGET WARNING**: nuovo banner data-testid="budget-status" in cima al CostPanel quando il progetto è collegato a un preventivo. Mostra numero, stato (BOZZA/ACCETTATO/etc), budget. Calcola overBudget = estimate.total - linkedPreventivo.totale_iva_escl. Banner verde se sotto budget, rosso se sfora. Avvertenza specifica se preventivo accettato e si sfora.

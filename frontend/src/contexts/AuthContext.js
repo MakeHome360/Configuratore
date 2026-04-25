@@ -34,6 +34,22 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const loginCliente = async (email, password) => {
+    try {
+      const { data } = await api.post("/auth/login-cliente", { email, password });
+      if (data.access_token) setToken(data.access_token);
+      setUser(data.user);
+      return { ok: true, user: data.user };
+    } catch (e) {
+      return { ok: false, error: formatApiErrorDetail(e.response?.data?.detail) };
+    }
+  };
+
+  const setUserAndToken = ({ token, user: u }) => {
+    if (token) setToken(token);
+    if (u) setUser(u);
+  };
+
   const register = async (name, email, password) => {
     try {
       const { data } = await api.post("/auth/register", { name, email, password });
@@ -52,7 +68,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, loginCliente, register, logout, setUserAndToken }}>
       {children}
     </AuthContext.Provider>
   );

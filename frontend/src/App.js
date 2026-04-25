@@ -39,6 +39,12 @@ import AdminTemplateEmail from "@/pages/admin/AdminTemplateEmail";
 import AdminUtenti from "@/pages/admin/AdminUtenti";
 import AdminDatiAzienda from "@/pages/admin/AdminDatiAzienda";
 import AdminImpostazioni from "@/pages/admin/AdminImpostazioni";
+import DashboardSubappaltatori from "@/pages/DashboardSubappaltatori";
+import SubappaltatoreDettaglio from "@/pages/SubappaltatoreDettaglio";
+import GestoreCantieri from "@/pages/GestoreCantieri";
+import PortaleCliente from "@/pages/PortaleCliente";
+import PortaleClienteLogin from "@/pages/PortaleClienteLogin";
+import PortaleSub from "@/pages/PortaleSub";
 
 function RootRedirect() {
   const { user, loading } = useAuth();
@@ -102,6 +108,13 @@ function App() {
             <Route path="/adminutenti" element={P(AdminUtenti)} />
             <Route path="/admindatiazienda" element={P(AdminDatiAzienda)} />
             <Route path="/adminimpostazioni" element={P(AdminImpostazioni)} />
+            {/* Round 10: Cantieri / Subappaltatori / Portale Cliente */}
+            <Route path="/dashboard-subappaltatori" element={P(DashboardSubappaltatori)} />
+            <Route path="/subappaltatori/:id" element={P(SubappaltatoreDettaglio)} />
+            <Route path="/gestore-cantieri" element={P(GestoreCantieri)} />
+            <Route path="/portale-sub" element={P(PortaleSub)} />
+            <Route path="/portale-cliente" element={P(PortaleCliente)} />
+            <Route path="/portale-cliente/login" element={<PortaleClienteLogin />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>

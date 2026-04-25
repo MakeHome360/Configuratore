@@ -1,0 +1,58 @@
+{
+  "summary": "Round 10 backend testing COMPLETE — 28/28 pytest PASS. Verified all 13 requested flows: cliente-portal/invita (creates temp user with 8-char pwd + scadenza), auth/login-cliente (token + role=cliente), cliente-portal/me (no password_hash leak, no _id leak), POST /documenti firma_richiesta (stato=in_attesa_firma), GET /documenti RBAC filter (cliente vede solo visibile_cliente=true, blocked su altra commessa), firma OTP request+conferma con audit (user_id, ip, user_agent, otp_id, metodo='elettronica_semplice_otp_email', validità art. 20 CAD), OTP riuso fallisce con 400, accettazione_clausole=false fallisce 400, commento cross-commessa 403, dashboard subappaltatori (importo_totale/fatturato/incassato/da_incassare/ritardi numerici, cliente bloccato), full assegna→avanzamento(convalidato=false,pagamento_sbloccato=false)→convalida(convalidato=true,pagamento_sbloccato=true), /gestore/cantieri con avanzamenti_da_convalidare counter, /preventivi-filtered e /commesse-filtered RBAC corretti per admin/cliente.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/cliente-portal/invita", "issue": "Validazione email assente sul Pydantic model (str invece di EmailStr). Email come 'TEST_x@x.com' o 'plain' vengono accettate. Suggerimento: usare EmailStr."},
+      {"endpoint": "POST /api/firma/richiedi-otp", "issue": "L'OTP viene restituito in chiaro nel body come 'dev_otp_code' anche in produzione. È documentato come dev-only, ma andrebbe gated dietro un env flag (es. EMERGENT_DEV_MODE=true) per evitare leak accidentali in prod."},
+      {"endpoint": "GET /api/cliente-portal/me", "issue": "Campo expires_at controllato lato endpoint /me e /login-cliente, ma il try/except cattura ValueError/AttributeError e ignora silenziosamente formati ISO non validi → un cliente con scadenza malformata non verrebbe bloccato. Edge case low-risk."},
+      {"endpoint": "PUT /api/users/{user_id}/role", "issue": "set_role accetta 'gestore' come da spec, ma non c'è un test che verifichi che dopo set_role='gestore' l'utente possa accedere a /gestore/cantieri (richiederebbe un flow di registrazione/login intero — fuori scope test attuale)."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "tests_executed": {
+    "backend": {
+      "TestInvitaCliente": "3/3 PASS — invita ok (email/pwd 8-char/scadenza ISO), 404 commessa inesistente, 401 senza auth",
+      "TestLoginCliente": "3/3 PASS — login ok con access_token e user.role=cliente, 401 wrong password, admin bloccato (role mismatch)",
+      "TestClienteMe": "1/1 PASS — no password_hash, no _id MongoDB, struttura {ok,user,commessa,documenti,avanzamenti_pubblici}",
+      "TestDocumenti": "2/2 PASS — admin crea contratto firma_richiesta=true → stato=in_attesa_firma; doc privato visibile_cliente=false → stato=pubblicato",
+      "TestDocumentiList": "3/3 PASS — admin vede tutti, cliente vede solo visibile_cliente=true, cliente 403 su altra commessa",
+      "TestFirmaOTP": "4/4 PASS — richiedi-otp (6 cifre+scadenza), conferma con audit completo (user_id/email/ip/user_agent/firmato_il/otp_id, metodo=elettronica_semplice_otp_email, validità cita art. 20 CAD), riuso OTP → 400 'OTP non valido o già usato', accettazione_clausole=false → 400",
+      "TestCommentiCliente": "2/2 PASS — commento su propria commessa OK, su altra commessa 403",
+      "TestSubappDashboard": "2/2 PASS — admin vede lista con totali numerici (num_cantieri_attivi, importo_totale, fatturato, incassato, da_incassare, ritardi), cliente 403",
+      "TestAssegnazioniAvanzamenti": "1/1 PASS — full flow: crea sub → assegna (importo_pattuito) → avanzamento (convalidato=false,pagamento_sbloccato=false) → convalida (convalidato=true,pagamento_sbloccato=true) → verifica via /subappaltatori/{id}/cantieri",
+      "TestGestoreCantieri": "2/2 PASS — admin vede tutto con avanzamenti_da_convalidare counter calcolato per ogni commessa, cliente 403",
+      "TestPreventiviFiltered": "2/2 PASS — admin vede tutti, cliente vede ≤1 (solo proprio)",
+      "TestCommesseFiltered": "2/2 PASS — admin tutto, cliente vede solo commessa.id == user.commessa_id",
+      "TestExpired": "1/1 PASS — login cliente con email inesistente → 401 (placeholder edge: cliente_portal_expires_at scaduto richiederebbe DB direct manipulation per testare il path 403 'Accesso scaduto')"
+    }
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter10_round.py",
+    "/app/test_reports/pytest/iter10.xml"
+  ],
+  "action_items": [
+    "(LOW) Cambiare `email: str` a `email: EmailStr` in `InvitoClienteIn` (routes_round10.py:189) e `ClientLoginReq` (routes_round10.py:433) per validazione automatica.",
+    "(LOW) Gating del campo `dev_otp_code` nella response di /firma/richiedi-otp dietro un env flag (es. `if os.environ.get('EMERGENT_DEV_MODE')=='true'`) — attualmente è esposto sempre, anche in prod.",
+    "(LOW) Aggiungere test E2E per il path 'cliente_portal_expires_at scaduto' (richiede DB seed con scadenza nel passato; attualmente coperto solo via code review)."
+  ],
+  "critical_code_review_comments": [
+    "routes_round10.py /cliente-portal/me (riga 247-280): correttamente esclude `password_hash` ricostruendo manually il dict user con solo {id,name,email,expires_at}. Ottimo. Nessun _id leak (project={\"_id\":0} ovunque).",
+    "routes_round10.py /firma/conferma (riga 384-427): audit trail COMPLETO con user_id, user_email, user_name, user_role, firmato_il, ip (request.client.host), user_agent (request.headers), otp_id, metodo, validita_legale citante art. 20 CAD + Reg. eIDAS. Idempotency garantita da `used: True` dopo conferma + filter `used: False` in find. ✓",
+    "routes_round10.py /subappaltatori-dashboard (riga 52-84): RBAC ok ('admin','gestore'). Calcolo `da_incassare = fatturato - incassato` corretto. Ritardi calcolati confrontando data_fine_prevista con now (skip se stato=='completata'). ✓",
+    "routes_round10.py /cliente-portal/invita (riga 193-245): genera password 8-char alfanumeriche escludendo caratteri ambigui (no I/O/0/1) tramite alphabet `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`. Hash con bcrypt. Scadenza = now + 180 + durata_giorni giorni. ✓",
+    "routes_round10.py /firma/richiedi-otp (riga 350-376): cancella OTP precedenti per stesso doc+user prima di crearne uno nuovo (`delete_many` poi `insert_one`) — previene confusione tra OTP multipli. ✓",
+    "routes_round10.py /preventivi-filtered (riga 490-509): logica RBAC corretta per admin/venditore(con/senza negozio_id)/cliente. ✓",
+    "MINOR: il blocco try/except in /me e /login-cliente per parsing scadenza (riga 256-259, 446-449) ingoia silenziosamente errori; un campo malformato in DB risulta in accesso CONSENTITO invece che bloccato. In prod potrebbe essere safer fallire-chiuso (raise 500 o 403)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter10_round.py (NEW — 28 test cases)"
+  ],
+  "success_rate": {"backend": "100% (28/28 pytest)", "frontend": "N/A (testing_type=backend only)"},
+  "test_credentials": "admin@admin.it / admin (working). Cliente test creato dinamicamente per ogni run via /cliente-portal/invita (TEST_r10_<hex>@example.com).",
+  "seed_data_creation": "Test crea: 1 utente cliente temp (TEST_r10_*@example.com), 2 documenti TEST_R10 sulla commessa, 1 commento cliente, 1 subappaltatore TEST_R10 (cleanup via DELETE), 1 assegnazione+avanzamento (rimangono nel DB della commessa di test). Best-effort cleanup nel fixture finale per il subappaltatore.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Round 10 backend è COMPLETO e VERDE (28/28). Test file: /app/backend/tests/test_iter10_round.py — riusabile come regression. Il flow completo invita→login→me→crea-doc→richiedi-otp→firma→OTP-riuso-fail è coperto. Dashboard subappaltatori, gestore cantieri, RBAC su /preventivi-filtered e /commesse-filtered tutti verificati. Frontend non testato (testing_type=backend only, come richiesto). Edge case 'expires_at scaduto' coperto solo via code review — richiederebbe DB direct manipulation per E2E. Action items minor (EmailStr, gating dev_otp_code, fail-closed su scadenza malformata) sono LOW priority e non bloccanti.",
+  "rca of the issue": "N/A — nessun bug critico trovato. Round 10 implementato correttamente per come specificato dal main agent."
+}

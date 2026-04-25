@@ -33,6 +33,19 @@ export default function DettaglioCommessa() {
 
   const setStato = async (s) => { await api.patch(`/commesse/${id}/stato`, { stato: s }); const r = await api.get(`/commesse/${id}`); setC(r.data); toast.success("Stato aggiornato"); };
 
+  const invitaCliente = async () => {
+    if (!c) return;
+    const email = window.prompt("Email del cliente per il Portale (riceverà la password temporanea):", c.cliente?.email || "");
+    if (!email) return;
+    const nome = c.cliente?.nome || c.cliente?.cognome || "Cliente";
+    try {
+      const r = await api.post("/cliente-portal/invita", { commessa_id: id, email, nome, durata_giorni: 30 });
+      const { password_temporanea, scadenza } = r.data;
+      window.prompt(`COMUNICA AL CLIENTE QUESTE CREDENZIALI:\n\nURL: ${window.location.origin}/portale-cliente/login\nEmail: ${email}\nPassword: ${password_temporanea}\nScadenza accesso: ${scadenza?.slice(0,10)}\n\n(copia questi dati ora, non saranno più mostrati)`, password_temporanea);
+      toast.success("Invito creato, comunica al cliente le credenziali");
+    } catch (e) { toast.error(e?.response?.data?.detail || "Errore"); }
+  };
+
   if (!c) return <Page><div className="text-zinc-500">Caricamento...</div></Page>;
 
   const margine = (c.fatturato || 0) - (c.costi_effettivi || 0);
@@ -50,6 +63,7 @@ export default function DettaglioCommessa() {
               <option value="completata">Completata</option>
               <option value="sospesa">Sospesa</option>
             </select>
+            <Button onClick={invitaCliente} variant="outline" data-testid="invita-cliente-btn" className="border-emerald-500 text-emerald-700"><FileText className="h-4 w-4 mr-2" />Invita cliente al portale</Button>
             <Button onClick={() => save({})} data-testid="com-save" style={{ background: "var(--brand)", color: "white" }}><Save className="h-4 w-4 mr-2" />Salva</Button>
           </div>
         }

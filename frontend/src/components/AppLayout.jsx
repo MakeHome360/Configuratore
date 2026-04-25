@@ -11,16 +11,24 @@ import {
 
 const NAV = [
   { section: "Principale", items: [
-    { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin","venditore","user"] },
+    { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin","venditore","user","gestore"] },
     { to: "/nuovopreventivo", label: "Nuovo Preventivo", icon: FilePlus2, roles: ["admin","venditore","user"] },
-    { to: "/preventivi", label: "Preventivi", icon: Files, roles: ["admin","venditore","user"] },
-    { to: "/commesse", label: "Commesse", icon: Briefcase, roles: ["admin","venditore","user","subappaltatore"] },
+    { to: "/preventivi", label: "Preventivi", icon: Files, roles: ["admin","venditore","user","cliente"] },
+    { to: "/commesse", label: "Commesse", icon: Briefcase, roles: ["admin","venditore","user","subappaltatore","gestore","cliente"] },
     { to: "/crm", label: "CRM Lead", icon: Target, roles: ["admin","venditore"] },
     { to: "/configuratoreesigenze", label: "Configuratore Esigenze", icon: Sparkles, roles: ["admin","venditore","user"] },
   ]},
   { section: "Progettazione", items: [
     { to: "/progetti", label: "Progetti CAD", icon: Pencil, roles: ["admin","venditore","user"] },
     { to: "/materials", label: "Materiali", icon: Package, roles: ["admin","venditore","user"] },
+  ]},
+  { section: "Cantieri", items: [
+    { to: "/gestore-cantieri", label: "Gestione Cantieri", icon: Hammer, roles: ["admin","gestore"] },
+    { to: "/dashboard-subappaltatori", label: "Dashboard Sub.", icon: BarChart3, roles: ["admin","gestore"] },
+    { to: "/portale-sub", label: "I miei cantieri", icon: Briefcase, roles: ["subappaltatore"] },
+  ]},
+  { section: "Cliente", items: [
+    { to: "/portale-cliente", label: "Portale Cliente", icon: UserCircle2, roles: ["cliente"] },
   ]},
   { section: "Analisi", items: [
     { to: "/centrocosto", label: "Centro di Costo", icon: BarChart3, roles: ["admin"] },

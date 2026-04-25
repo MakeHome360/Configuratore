@@ -444,7 +444,7 @@ def build_biz_router(db, get_current_user):
     async def set_role(user_id: str, body: UserRoleUpdate, user=Depends(get_current_user)):
         if user.get("role") != "admin":
             raise HTTPException(403, "Solo admin")
-        if body.role not in ("admin", "venditore", "cliente", "subappaltatore", "user"):
+        if body.role not in ("admin", "venditore", "gestore", "cliente", "subappaltatore", "user"):
             raise HTTPException(400, "Ruolo non valido")
         await db.users.update_one({"id": user_id}, {"$set": {"role": body.role}})
         return {"ok": True}

@@ -204,8 +204,9 @@ export function estimateProjectV2(project, voci, packageRef) {
   const data = project || {};
   const height = data.roomHeight || 270;
   // FIX CRITICO: fatturare SOLO elementi del Progetto (phase==="progetto") oppure NUOVI/cartongesso/demolizioni.
-  // Le geometrie/items con phase==="fatto" rappresentano lo stato esistente del cliente e NON devono finire nel preventivo.
-  const isProgetto = (el) => !el?.phase || el.phase === "progetto";
+  // Le geometrie/items con phase==="fatto" o senza phase (legacy) rappresentano lo stato esistente del cliente
+  // e NON devono finire nel preventivo. Cartongesso e demolizioni hanno il loro filtro specifico più sotto.
+  const isProgetto = (el) => el?.phase === "progetto";
   const rooms = (data.rooms || []).filter(isProgetto);
 
   // Aggregate quantities

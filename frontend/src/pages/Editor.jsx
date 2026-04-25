@@ -607,7 +607,7 @@ function ToolParamsPanel({ tool, doorParams, setDoorParams, windowParams, setWin
           <div>
             <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Tipo</Label>
             <Select value={windowParams.type} onValueChange={(v) => {
-              const presets = { finestra: { width: 120, height: 140, sillHeight: 90 }, "porta-finestra": { width: 120, height: 230, sillHeight: 0 }, scorrevole: { width: 180, height: 230, sillHeight: 0 } };
+              const presets = { finestra: { width: 120, height: 140, sillHeight: 90 }, "porta-finestra": { width: 120, height: 230, sillHeight: 0 }, scorrevole: { width: 180, height: 230, sillHeight: 0 }, vasistas: { width: 60, height: 60, sillHeight: 160 } };
               setWindowParams((p) => ({ ...p, type: v, ...(presets[v] || {}) }));
             }}>
               <SelectTrigger className="rounded-sm h-8 mt-1" data-testid="window-type-select"><SelectValue /></SelectTrigger>
@@ -615,6 +615,7 @@ function ToolParamsPanel({ tool, doorParams, setDoorParams, windowParams, setWin
                 <SelectItem value="finestra">Finestra</SelectItem>
                 <SelectItem value="porta-finestra">Porta finestra</SelectItem>
                 <SelectItem value="scorrevole">Scorrevole</SelectItem>
+                <SelectItem value="vasistas">Vasistas</SelectItem>
               </SelectContent>
             </Select>
           </div>

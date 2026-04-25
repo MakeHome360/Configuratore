@@ -69,7 +69,25 @@
 - **materials / projects** (CAD)
 
 ## Changelog (Feb 2026 current session)
-- **Lotto A — Preventivo Infissi (Feb 2026)**:
+- **Lotto F-G-H-I — Bug critici CAD + UI infissi + nuove feature progettazione**:
+  - **FIX CRITICO Phase-aware estimate**: aggiunto campo `phase: "fatto"|"progetto"` su muri/porte/finestre/items/electrical/plumbing/gas/hvac/text/rooms in Canvas2D. estimateProjectV2 ora fattura SOLO elementi con `phase==='progetto'` (più demolizioni e muri cartongesso/nuovo). Lo "Stato di Fatto" non contagia più il preventivo.
+  - Cartongesso visibile in stato fatto (filtro basato su phase, non più su kind)
+  - Tool "Demolisci pavimento %": prompt per percentuale 1-100% area
+  - Tool "Demolisci pavimento totale": ora è toggle (secondo click rimuove)
+  - Tool "Testo": annotazioni libere sulle piante (drag, edit testo)
+  - Porte blindate Classe 3 / Classe 4 (rimosso "premium")
+  - Direzionalità (Cardine + Apertura) ora ANCHE per porte interne e finestre (esclusi scorrevole/vasistas)
+  - Aggiunto tipo finestra "Vasistas" sia in drawing toolbar che in pannello selezionato
+  - HVAC sub-kind picker arricchito: Caldaia condensazione, Caldaia ibrida, Canalizzato Unità interna, Canalizzato Canale (auto plenum), VMC
+  - Nuove voci pricing: porta_blindata_cl3, porta_blindata_cl4, caldaia_condensazione, canalizzato_unita_interna, canalizzato_canale_ml
+- **UI configuratore infissi (PreventivoInfissi + InfissoQuickConfigurator)**:
+  - Layout grid ora responsive sm/md/lg (era fisso col-span-1 troppo stretto)
+  - Input misure h-10 + font-mono font-bold + text-base, box colore non più tagliato
+  - Box dimensioni nello SVG con riquadri bianchi font 14px ad alto contrasto
+- **Workflow Commessa Infissi (P1)**:
+  - POST /api/commesse/from-preventivo: se il preventivo ha infissi (tipo='infissi' o items.from_infissi=true o infissi_extras non vuoto), aggiunge automaticamente nella checklist la voce "Conferma rilievo misure infissi" con campo `rilievo_misure` popolato (L_originale, H_originale, L_definitiva=null, H_definitiva=null, tolleranza_pct=null, stato='da_rilevare'). Posizione: prima di 'produzione'/'ordine'.
+
+## Changelog (precedente)
   - Misure leggibili: dimensioni in riquadri bianchi font 14px ad alto contrasto
   - Scelta libera ante 1/2/3/4 (rimosso il blocco automatico per misure piccole)
   - Mini-configuratore tapparelle (colore, motorizzazione +60%) e zanzariere (avvolgibile/plissettata/fissa) per ogni infisso

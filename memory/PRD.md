@@ -69,6 +69,30 @@
 - **materials / projects** (CAD)
 
 ## Changelog (Feb 2026 current session)
+- **Lotto A — Preventivo Infissi (Feb 2026)**:
+  - Misure leggibili: dimensioni in riquadri bianchi font 14px ad alto contrasto
+  - Scelta libera ante 1/2/3/4 (rimosso il blocco automatico per misure piccole)
+  - Mini-configuratore tapparelle (colore, motorizzazione +60%) e zanzariere (avvolgibile/plissettata/fissa) per ogni infisso
+  - Pricing aggiornato: tapparella 120€/m² × motore 1.6, zanzariera 80€/m², maggiorazione 5% per anta extra
+- **Lotto B — Voci Backoffice migliorate**:
+  - Formato prezzi uniforme: `€ X,XX / unità` (acquisto, rivendita) ovunque (admin tabella, modal nuova/edit)
+  - Nuovi flag: `modificabile_dal_venditore` (bool) + `soglia_inclusa` (€ per unit) — sopra soglia il prezzo diventa extra
+  - Migrato DB: voce-tapparelle, voce-zanzariere, voce-infissi-pvc/alluminio/legno passati da `pz`/`forfait` a `m²` con prezzi al mq corretti (PVC 280, AL 460, LEGNO 620, tapp 120, zanz 80)
+- **Lotto C — Configuratore infissi nei pacchetti/composite**:
+  - Nuovo componente riusabile `/components/InfissoQuickConfigurator.jsx` (Dialog modal full-feature)
+  - PreventivoPacchetto step 2: bottone "+ Aggiungi infissi (extra)" → infissi vengono inseriti come categoria EXTRA
+  - PreventivoComposite: sezione "Infissi (configuratore)" nella sidebar che apre il modal e gestisce subtotale separato
+- **Lotto D — Direzionalità porte CAD**: già esistente — verificato pannello proprietà con Cardine (Sx/Dx) + Apertura (Interno/Esterno) e rendering arc swing nello SVG
+- **Lotto E — Materiali con AI**:
+  - Nuovo endpoint `POST /api/materials/ai-generate` con Gemini text (gemini-2.5-flash) + Nano Banana (gemini-3.1-flash-image-preview)
+  - Genera nome, descrizione, categoria, unità, prezzo realistico, colore, foto prodotto
+  - Resilience: se Nano Banana fallisce, ritorna comunque material text valido (image_data_url=null)
+  - UI: bottone violetto "✨ Genera con AI" con dialog inline preview + edit prima del save
+  - Endpoint POST /api/materials per creazione singola (gestisce ObjectId stripping)
+  - Tabella materiali ora mostra thumbnail dell'immagine se presente
+- **Bug fix testing iteration 4**: POST /api/materials ObjectId leak → 500. Fix 1-riga (escludere `_id` insieme a `user_id`).
+
+## Changelog (precedente)
 - **Fix bug critico Configuratore → Preventivo (Feb 2026)**:
   - Risolto: extras del Configuratore Esigenze NON venivano iniettati nel preventivo
   - Causa root: React StrictMode (dev) provoca double-mount + double-invocation dei functional updaters di setState. Il primo mount cancellava `sessionStorage`, il secondo non trovava più i dati. Inoltre l'updater mutava `prefillRef.current.applied` rendendolo impuro.

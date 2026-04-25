@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState, useCallback } from "react";
+import React, { useMemo, useRef, useState, useCallback, useEffect } from "react";
 import { PX_PER_CM, snap, uid, polygonArea, polygonPerimeter, fmtNum } from "./utils";
 
 /**
@@ -6,8 +6,8 @@ import { PX_PER_CM, snap, uid, polygonArea, polygonPerimeter, fmtNum } from "./u
  * Tools:
  *  - select  : click to select walls / rooms / items
  *  - wall    : click-click to draw walls (double click to stop)
- *  - room    : polygon click to close
- *  - door    : click on a wall
+ *  - room    : polygon click to close (delayed to avoid double-click stray point)
+ *  - door    : click on a wall (snaps to nearest wall)
  *  - window  : click on a wall
  *  - item    : places last selected catalog item on canvas
  *  - delete  : click to delete
@@ -17,13 +17,12 @@ import { PX_PER_CM, snap, uid, polygonArea, polygonPerimeter, fmtNum } from "./u
 const WORLD_W = 1600; // cm
 const WORLD_H = 1200;
 const GRID = 10;      // 10cm grid
-const INITIAL_VIEW = { x: -300, y: -200, w: WORLD_W + 600, h: WORLD_H + 400 }; // zoomed out a bit
+const INITIAL_VIEW = { x: -300, y: -200, w: WORLD_W + 600, h: WORLD_H + 400 };
 
-function Measurement({ x1, y1, x2, y2, big = false }) {
+function Measurement({ x1, y1, x2, y2, big = false, color = "#16A34A" }) {
   const dx = x2 - x1, dy = y2 - y1;
   const len = Math.hypot(dx, dy);
   const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
-  // perpendicular offset so label sits ABOVE the line
   const nx = -dy / (len || 1), ny = dx / (len || 1);
   const off = big ? 38 : 24;
   const lx = mx + nx * off, ly = my + ny * off;
@@ -33,22 +32,34 @@ function Measurement({ x1, y1, x2, y2, big = false }) {
   const txt = `${(len / 100).toFixed(2)} m`;
   return (
     <g pointerEvents="none">
-      <line x1={mx} y1={my} x2={lx} y2={ly} stroke={big ? "#16A34A" : "#2563EB"} strokeWidth={big ? 1.5 : 1} strokeDasharray="3,3" opacity="0.6" />
-      <rect x={lx - padX} y={ly - padY} width={padX * 2} height={padY * 2} rx={6} fill="white" stroke={big ? "#16A34A" : "#2563EB"} strokeWidth={big ? 2.5 : 1.5} opacity={0.97} />
-      <text x={lx} y={ly + 6} textAnchor="middle" fontSize={fs} fontFamily="JetBrains Mono" fontWeight="800" fill={big ? "#16A34A" : "#2563EB"}>{txt}</text>
+      <line x1={mx} y1={my} x2={lx} y2={ly} stroke={color} strokeWidth={big ? 1.5 : 1} strokeDasharray="3,3" opacity="0.6" />
+      <rect x={lx - padX} y={ly - padY} width={padX * 2} height={padY * 2} rx={6} fill="white" stroke={color} strokeWidth={big ? 2.5 : 1.5} opacity={0.97} />
+      <text x={lx} y={ly + 6} textAnchor="middle" fontSize={fs} fontFamily="JetBrains Mono" fontWeight="800" fill={color}>{txt}</text>
     </g>
   );
 }
 
-export default function Canvas2D({ project, setProject, tool, setTool, selected, setSelected, selectedMaterial, catalog }) {
+export default function Canvas2D({
+  project, setProject, tool, setTool, selected, setSelected,
+  selectedMaterial, catalog,
+  doorParams, windowParams,
+}) {
   const svgRef = useRef(null);
-  const [wallDraft, setWallDraft] = useState(null); // {x1,y1}
-  const [roomDraft, setRoomDraft] = useState([]);   // [{x,y}]
+  const [wallDraft, setWallDraft] = useState(null);
+  const [roomDraft, setRoomDraft] = useState([]);
   const [cursor, setCursor] = useState({ x: 0, y: 0 });
   const [viewBox, setViewBox] = useState(INITIAL_VIEW);
   const [pan, setPan] = useState(null);
+  const pendingRoomClickRef = useRef(null);
+  const pendingWallClickRef = useRef(null);
 
   const catalogById = useMemo(() => Object.fromEntries((catalog || []).map((m) => [m.id, m])), [catalog]);
+
+  // Cleanup on unmount
+  useEffect(() => () => {
+    if (pendingRoomClickRef.current) clearTimeout(pendingRoomClickRef.current);
+    if (pendingWallClickRef.current) clearTimeout(pendingWallClickRef.current);
+  }, []);
 
   const toWorld = useCallback((evt) => {
     const svg = svgRef.current; if (!svg) return { x: 0, y: 0 };
@@ -72,6 +83,29 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
     }
   };
 
+  const placeDoorOrWindow = (p) => {
+    const walls = project.walls || [];
+    let best = null; let bestD = 1e9;
+    walls.forEach((w) => {
+      const t = projectPointOnSegment(p, { x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 });
+      const cx = w.x1 + t.t * (w.x2 - w.x1);
+      const cy = w.y1 + t.t * (w.y2 - w.y1);
+      const d = Math.hypot(cx - p.x, cy - p.y);
+      if (d < bestD) { bestD = d; best = { w, t: t.t }; }
+    });
+    if (best && bestD < 80) {
+      if (tool === "door") {
+        const dp = doorParams || { width: 80, height: 210, type: "interna" };
+        const op = { id: uid(), wallId: best.w.id, t: best.t, width: dp.width || 80, height: dp.height || 210, type: dp.type || "interna" };
+        setProject((prj) => ({ ...prj, doors: [...(prj.doors || []), op] }));
+      } else {
+        const wp = windowParams || { width: 120, height: 140, sillHeight: 90, type: "finestra" };
+        const op = { id: uid(), wallId: best.w.id, t: best.t, width: wp.width || 120, height: wp.height || 140, sillHeight: wp.sillHeight || 90, type: wp.type || "finestra" };
+        setProject((prj) => ({ ...prj, windows: [...(prj.windows || []), op] }));
+      }
+    }
+  };
+
   const onMouseDown = (e) => {
     if (e.button === 1 || (e.button === 0 && e.altKey)) {
       setPan({ sx: e.clientX, sy: e.clientY, vb: { ...viewBox } });
@@ -80,41 +114,34 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
     const p = snapPt(toWorld(e));
 
     if (tool === "wall") {
-      // Use timeout so doubleclick can cancel: when dblclick fires, we clear the timer & don't add wall.
-      if (e.detail >= 2) return; // ignore the 2nd click of a dblclick — onDblClick will handle stop
-      if (!wallDraft) { setWallDraft(p); return; }
-      // detect zero-length / closing click (same point) → stop
-      if (Math.hypot(p.x - wallDraft.x, p.y - wallDraft.y) < 8) { setWallDraft(null); return; }
-      const newWall = { id: uid(), x1: wallDraft.x, y1: wallDraft.y, x2: p.x, y2: p.y, thickness: 10 };
-      setProject((prj) => ({ ...prj, walls: [...(prj.walls || []), newWall] }));
-      setWallDraft(p); // chain
+      if (e.detail >= 2) return;
+      if (pendingWallClickRef.current) clearTimeout(pendingWallClickRef.current);
+      pendingWallClickRef.current = setTimeout(() => {
+        pendingWallClickRef.current = null;
+        if (!wallDraft) { setWallDraft(p); return; }
+        if (Math.hypot(p.x - wallDraft.x, p.y - wallDraft.y) < 8) { setWallDraft(null); return; }
+        const newWall = { id: uid(), x1: wallDraft.x, y1: wallDraft.y, x2: p.x, y2: p.y, thickness: 10 };
+        setProject((prj) => ({ ...prj, walls: [...(prj.walls || []), newWall] }));
+        setWallDraft(p);
+      }, 230);
       return;
     }
     if (tool === "room") {
-      if (e.detail >= 2) return; // dblclick handler will close the polygon
-      setRoomDraft((arr) => [...arr, p]);
+      if (e.detail >= 2) return;
+      // Use timeout so that a double-click cancels the pending point add
+      if (pendingRoomClickRef.current) clearTimeout(pendingRoomClickRef.current);
+      pendingRoomClickRef.current = setTimeout(() => {
+        pendingRoomClickRef.current = null;
+        setRoomDraft((arr) => {
+          const last = arr[arr.length - 1];
+          if (last && Math.hypot(p.x - last.x, p.y - last.y) < 8) return arr;
+          return [...arr, p];
+        });
+      }, 230);
       return;
     }
     if (tool === "door" || tool === "window") {
-      // find closest wall
-      const walls = project.walls || [];
-      let best = null; let bestD = 1e9;
-      walls.forEach((w) => {
-        const t = projectPointOnSegment(p, { x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 });
-        const cx = w.x1 + t.t * (w.x2 - w.x1);
-        const cy = w.y1 + t.t * (w.y2 - w.y1);
-        const d = Math.hypot(cx - p.x, cy - p.y);
-        if (d < bestD) { bestD = d; best = { w, t: t.t }; }
-      });
-      if (best && bestD < 30) {
-        const op = tool === "door"
-          ? { id: uid(), wallId: best.w.id, t: best.t, width: 80, height: 210 }
-          : { id: uid(), wallId: best.w.id, t: best.t, width: 120, height: 140, sillHeight: 90 };
-        setProject((prj) => ({
-          ...prj,
-          [tool === "door" ? "doors" : "windows"]: [...(prj[tool === "door" ? "doors" : "windows"] || []), op],
-        }));
-      }
+      placeDoorOrWindow(p);
       return;
     }
     if (tool === "item" && selectedMaterial) {
@@ -134,26 +161,37 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
     if (tool === "select") {
       setSelected(null);
     }
-    if (tool === "delete") {
-      // handled per-element in their handlers
-    }
   };
 
   const onDblClick = () => {
-    if (tool === "wall") { setWallDraft(null); }
-    if (tool === "room" && roomDraft.length >= 3) {
-      const newRoom = {
-        id: uid(),
-        name: `Stanza ${(project.rooms || []).length + 1}`,
-        points: roomDraft,
-        floorMaterial: "floor-ceramic",
-        wallMaterial: "wall-paint",
-        ceilingMaterial: "ceil-paint",
-        electrical: true,
-        plumbing: false,
-      };
-      setProject((prj) => ({ ...prj, rooms: [...(prj.rooms || []), newRoom] }));
-      setRoomDraft([]);
+    if (tool === "wall") {
+      if (pendingWallClickRef.current) { clearTimeout(pendingWallClickRef.current); pendingWallClickRef.current = null; }
+      setWallDraft(null);
+    }
+    if (tool === "room") {
+      if (pendingRoomClickRef.current) { clearTimeout(pendingRoomClickRef.current); pendingRoomClickRef.current = null; }
+      if (roomDraft.length >= 3) {
+        const newWalls = roomDraft.map((pt, i) => {
+          const next = roomDraft[(i + 1) % roomDraft.length];
+          return { id: uid(), x1: pt.x, y1: pt.y, x2: next.x, y2: next.y, thickness: 10 };
+        });
+        const newRoom = {
+          id: uid(),
+          name: `Stanza ${(project.rooms || []).length + 1}`,
+          points: roomDraft,
+          floorMaterial: "floor-ceramic",
+          wallMaterial: "wall-paint",
+          ceilingMaterial: "ceil-paint",
+          electrical: true,
+          plumbing: false,
+        };
+        setProject((prj) => ({
+          ...prj,
+          rooms: [...(prj.rooms || []), newRoom],
+          walls: [...(prj.walls || []), ...newWalls],
+        }));
+        setRoomDraft([]);
+      }
     }
   };
 
@@ -175,6 +213,9 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
     }
     setSelected({ kind, id });
   };
+
+  // Tools that should be able to "click through" walls/rooms (so the canvas handler runs)
+  const isPlacementTool = tool === "door" || tool === "window" || tool === "wall" || tool === "room" || tool === "item";
 
   const walls = project.walls || [];
   const doors = project.doors || [];
@@ -206,7 +247,7 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
             <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#D4D4D8" strokeWidth="0.6" />
           </pattern>
         </defs>
-        <rect x={viewBox.x} y={viewBox.y} width={viewBox.w} height={viewBox.h} fill="url(#grid-big)" />
+        <rect x={viewBox.x} y={viewBox.y} width={viewBox.w} height={viewBox.h} fill="url(#grid-big)" pointerEvents="none" />
 
         {/* rooms (fills) */}
         {rooms.map((r) => {
@@ -218,29 +259,33 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
           const areaM2 = polygonArea(r.points) / 10000;
           return (
             <g key={r.id}
-              onMouseDown={(e) => { e.stopPropagation(); handleElementClick("rooms", r.id); }}
+              onMouseDown={(e) => {
+                if (isPlacementTool) return; // let canvas place
+                e.stopPropagation();
+                handleElementClick("rooms", r.id);
+              }}
               onDoubleClick={(e) => {
+                if (isPlacementTool) return;
                 e.stopPropagation();
                 const newName = window.prompt("Nome stanza:", r.name || "");
                 if (newName !== null) {
                   setProject((prj) => ({ ...prj, rooms: (prj.rooms || []).map((x) => x.id === r.id ? { ...x, name: newName } : x) }));
                 }
               }}
-              style={{ cursor: "pointer" }}
+              style={{ cursor: isPlacementTool ? "crosshair" : "pointer" }}
               data-testid={`room-${r.id}`}
             >
               <polygon
                 points={pts}
                 fill={mat?.color || "#F4F4F5"}
-                fillOpacity={isSel ? 0.6 : 0.35}
-                stroke={isSel ? "#2563EB" : "#A1A1AA"}
-                strokeWidth={isSel ? 2 : 0.6}
-                strokeDasharray="4 3"
+                fillOpacity={isSel ? 0.5 : 0.25}
+                stroke={isSel ? "#2563EB" : "transparent"}
+                strokeWidth={isSel ? 2 : 0}
               />
-              <text x={cx} y={cy - 6} fontSize="14" textAnchor="middle" fontFamily="Outfit" fill="#0A0A0A" fontWeight="600">
+              <text x={cx} y={cy - 6} fontSize="14" textAnchor="middle" fontFamily="Outfit" fill="#0A0A0A" fontWeight="600" pointerEvents="none">
                 {r.name}
               </text>
-              <text x={cx} y={cy + 12} fontSize="11" textAnchor="middle" fontFamily="JetBrains Mono" fill="#71717A">
+              <text x={cx} y={cy + 12} fontSize="11" textAnchor="middle" fontFamily="JetBrains Mono" fill="#71717A" pointerEvents="none">
                 {fmtNum(areaM2, 2)} m²
               </text>
             </g>
@@ -252,7 +297,15 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
           const isSel = selected?.kind === "walls" && selected.id === w.id;
           const len = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
           return (
-            <g key={w.id} onMouseDown={(e) => { e.stopPropagation(); handleElementClick("walls", w.id); }} style={{ cursor: "pointer" }}>
+            <g key={w.id}
+              onMouseDown={(e) => {
+                if (isPlacementTool) return; // let canvas handle (door/window/etc)
+                e.stopPropagation();
+                handleElementClick("walls", w.id);
+              }}
+              style={{ cursor: isPlacementTool ? "crosshair" : "pointer" }}
+              data-testid={`wall-${w.id}`}
+            >
               <line
                 x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2}
                 stroke={isSel ? "#2563EB" : "#0A0A0A"}
@@ -264,7 +317,6 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
                 x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2}
                 stroke="transparent" strokeWidth="20"
               />
-              {/* always show measurement */}
               {len > 30 && <Measurement x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2} big />}
             </g>
           );
@@ -277,11 +329,35 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
           const cy = w.y1 + d.t * (w.y2 - w.y1);
           const angle = Math.atan2(w.y2 - w.y1, w.x2 - w.x1) * 180 / Math.PI;
           const isSel = selected?.kind === "doors" && selected.id === d.id;
+          const isBlindata = d.type === "blindata";
+          const isScorrevole = d.type === "scorrevole";
+          const stroke = isSel ? "#2563EB" : (isBlindata ? "#7C2D12" : "#2563EB");
           return (
-            <g key={d.id} transform={`translate(${cx},${cy}) rotate(${angle})`} onMouseDown={(e) => { e.stopPropagation(); handleElementClick("doors", d.id); }} style={{ cursor: "pointer" }}>
-              <rect x={-d.width / 2} y={-6} width={d.width} height={12} fill="#FAFAFA" stroke="none" />
-              <path d={`M ${-d.width / 2} 0 A ${d.width} ${d.width} 0 0 1 ${d.width / 2} 0`} fill="none" stroke={isSel ? "#2563EB" : "#2563EB"} strokeWidth="1" strokeDasharray="3,3" opacity="0.7" />
-              <line x1={-d.width / 2} y1={0} x2={d.width / 2} y2={0} stroke={isSel ? "#2563EB" : "#71717A"} strokeWidth="1.5" />
+            <g key={d.id} transform={`translate(${cx},${cy}) rotate(${angle})`}
+              onMouseDown={(e) => {
+                if (isPlacementTool) return;
+                e.stopPropagation();
+                handleElementClick("doors", d.id);
+              }}
+              style={{ cursor: isPlacementTool ? "crosshair" : "pointer" }}
+              data-testid={`door-${d.id}`}
+            >
+              <rect x={-d.width / 2} y={-7} width={d.width} height={14} fill="#FAFAFA" stroke="none" />
+              {!isScorrevole && (
+                <>
+                  <path d={`M ${-d.width / 2} 0 A ${d.width} ${d.width} 0 0 1 ${d.width / 2} 0`} fill="none" stroke={stroke} strokeWidth="1.2" strokeDasharray="3,3" opacity="0.7" />
+                  <line x1={-d.width / 2} y1={0} x2={d.width / 2} y2={0} stroke={stroke} strokeWidth={isBlindata ? 3 : 1.8} />
+                </>
+              )}
+              {isScorrevole && (
+                <>
+                  <line x1={-d.width / 2} y1={-3} x2={d.width / 2} y2={-3} stroke={stroke} strokeWidth="1.5" />
+                  <line x1={-d.width / 2} y1={3} x2={d.width / 2} y2={3} stroke={stroke} strokeWidth="1.5" />
+                </>
+              )}
+              <text x={0} y={-12} fontSize="12" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke} pointerEvents="none">
+                {d.width}
+              </text>
             </g>
           );
         })}
@@ -293,11 +369,23 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
           const cy = w.y1 + wn.t * (w.y2 - w.y1);
           const angle = Math.atan2(w.y2 - w.y1, w.x2 - w.x1) * 180 / Math.PI;
           const isSel = selected?.kind === "windows" && selected.id === wn.id;
+          const stroke = isSel ? "#2563EB" : "#0A0A0A";
           return (
-            <g key={wn.id} transform={`translate(${cx},${cy}) rotate(${angle})`} onMouseDown={(e) => { e.stopPropagation(); handleElementClick("windows", wn.id); }} style={{ cursor: "pointer" }}>
-              <rect x={-wn.width / 2} y={-6} width={wn.width} height={12} fill="#FAFAFA" />
-              <rect x={-wn.width / 2} y={-3} width={wn.width} height={6} fill="none" stroke={isSel ? "#2563EB" : "#0A0A0A"} strokeWidth="1" />
-              <line x1={-wn.width / 2} y1={0} x2={wn.width / 2} y2={0} stroke={isSel ? "#2563EB" : "#0A0A0A"} strokeWidth="1" />
+            <g key={wn.id} transform={`translate(${cx},${cy}) rotate(${angle})`}
+              onMouseDown={(e) => {
+                if (isPlacementTool) return;
+                e.stopPropagation();
+                handleElementClick("windows", wn.id);
+              }}
+              style={{ cursor: isPlacementTool ? "crosshair" : "pointer" }}
+              data-testid={`window-${wn.id}`}
+            >
+              <rect x={-wn.width / 2} y={-7} width={wn.width} height={14} fill="#FAFAFA" />
+              <rect x={-wn.width / 2} y={-3} width={wn.width} height={6} fill="none" stroke={stroke} strokeWidth="1" />
+              <line x1={-wn.width / 2} y1={0} x2={wn.width / 2} y2={0} stroke={stroke} strokeWidth="1" />
+              <text x={0} y={-12} fontSize="12" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke} pointerEvents="none">
+                {wn.width}
+              </text>
             </g>
           );
         })}
@@ -309,9 +397,17 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
           const isSel = selected?.kind === "items" && selected.id === it.id;
           const w = it.width || 60, d = it.depth || 60;
           return (
-            <g key={it.id} transform={`translate(${it.x},${it.y}) rotate(${it.rotation || 0})`} onMouseDown={(e) => { e.stopPropagation(); handleElementClick("items", it.id); }} style={{ cursor: "pointer" }}>
+            <g key={it.id} transform={`translate(${it.x},${it.y}) rotate(${it.rotation || 0})`}
+              onMouseDown={(e) => {
+                if (isPlacementTool) return;
+                e.stopPropagation();
+                handleElementClick("items", it.id);
+              }}
+              style={{ cursor: isPlacementTool ? "crosshair" : "pointer" }}
+              data-testid={`item-${it.id}`}
+            >
               <rect x={-w / 2} y={-d / 2} width={w} height={d} fill={color} fillOpacity="0.85" stroke={isSel ? "#2563EB" : "#3F3F46"} strokeWidth={isSel ? 1.5 : 0.6} />
-              <text x={0} y={4} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#0A0A0A">
+              <text x={0} y={4} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#0A0A0A" pointerEvents="none">
                 {(m?.name || "item").slice(0, 12)}
               </text>
             </g>
@@ -328,14 +424,23 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
           </g>
         )}
 
-        {/* room draft preview */}
+        {/* room draft preview with measurements */}
         {tool === "room" && roomDraft.length > 0 && (
           <g pointerEvents="none">
             <polyline
               points={[...roomDraft, cursor].map((p) => `${p.x},${p.y}`).join(" ")}
-              fill="#2563EB" fillOpacity="0.08" stroke="#2563EB" strokeWidth="1" strokeDasharray="4 3"
+              fill="#2563EB" fillOpacity="0.08" stroke="#2563EB" strokeWidth="2" strokeDasharray="4 3"
             />
-            {roomDraft.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="4" fill="#2563EB" />)}
+            {roomDraft.map((p, i) => {
+              const next = i < roomDraft.length - 1 ? roomDraft[i + 1] : cursor;
+              const segLen = Math.hypot(next.x - p.x, next.y - p.y);
+              return (
+                <g key={i}>
+                  <circle cx={p.x} cy={p.y} r="6" fill="#2563EB" stroke="white" strokeWidth="2" />
+                  {segLen > 30 && <Measurement x1={p.x} y1={p.y} x2={next.x} y2={next.y} color="#2563EB" />}
+                </g>
+              );
+            })}
           </g>
         )}
 
@@ -360,13 +465,23 @@ export default function Canvas2D({ project, setProject, tool, setTool, selected,
       </div>
 
       {tool === "wall" && (
-        <div className="absolute top-3 left-3 bg-zinc-900 text-white px-3 py-1.5 text-xs mono">
+        <div className="absolute top-3 left-3 bg-zinc-900 text-white px-3 py-1.5 text-xs mono" data-testid="hint-wall">
           click per punti · doppio click per terminare
         </div>
       )}
       {tool === "room" && (
-        <div className="absolute top-3 left-3 bg-zinc-900 text-white px-3 py-1.5 text-xs mono">
+        <div className="absolute top-3 left-3 bg-zinc-900 text-white px-3 py-1.5 text-xs mono" data-testid="hint-room">
           click per vertici · doppio click per chiudere poligono
+        </div>
+      )}
+      {tool === "door" && (
+        <div className="absolute top-3 left-3 bg-blue-600 text-white px-3 py-1.5 text-xs mono" data-testid="hint-door">
+          click su una parete per inserire la porta
+        </div>
+      )}
+      {tool === "window" && (
+        <div className="absolute top-3 left-3 bg-blue-600 text-white px-3 py-1.5 text-xs mono" data-testid="hint-window">
+          click su una parete per inserire la finestra
         </div>
       )}
     </div>
@@ -380,7 +495,6 @@ function projectPointOnSegment(p, a, b) {
 }
 
 function defaultItemSize(m) {
-  // cm
   switch (m.id) {
     case "furn-sofa": return { width: 220, depth: 90, height: 85 };
     case "furn-bed": return { width: 160, depth: 200, height: 55 };

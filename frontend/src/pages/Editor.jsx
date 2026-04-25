@@ -17,7 +17,7 @@ import { Textarea } from "../components/ui/textarea";
 import {
   MousePointer2, Minus, Square, DoorClosed, RectangleHorizontal, Sofa, Trash2,
   Save, Download, Sparkles, Eye, EyeOff, Box, Ruler, X, Home, Bath, ChefHat, Bed,
-  Plus,
+  Plus, ChevronRight, ChevronLeft,
 } from "lucide-react";
 import { estimateProject, fmtEuro, fmtNum, emptyProjectData, uid } from "../editor/utils";
 import jsPDF from "jspdf";
@@ -60,6 +60,9 @@ export default function Editor() {
   const [aiPrompt, setAiPrompt] = useState("Pavimento in rovere, pareti bianche opache, luce naturale calda dalle finestre, mobili moderni.");
   const [aiResult, setAiResult] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [doorParams, setDoorParams] = useState({ width: 80, height: 210, type: "interna" });
+  const [windowParams, setWindowParams] = useState({ width: 120, height: 140, sillHeight: 90, type: "finestra" });
   const viewer3DRef = useRef(null);
 
   useEffect(() => {
@@ -342,6 +345,70 @@ export default function Editor() {
               <span className="ml-auto mono text-xs text-zinc-500">{TOOLS.find(t => t.id === tool)?.label}</span>
             </div>
             <div className="relative" style={{ height: "calc(100% - 2rem)" }}>
+              {(tool === "door" || tool === "window") && (
+                <div className="absolute top-3 right-3 z-10 bg-white border border-zinc-300 shadow-md p-3 w-56" data-testid={`${tool}-params-panel`}>
+                  <div className="label-kicker mb-2">{tool === "door" ? "Porta" : "Finestra"} — Parametri</div>
+                  {tool === "door" ? (
+                    <div className="space-y-2">
+                      <div>
+                        <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Tipo</Label>
+                        <Select value={doorParams.type} onValueChange={(v) => {
+                          const presets = { interna: { width: 80, height: 210 }, blindata: { width: 90, height: 215 }, scorrevole: { width: 90, height: 210 } };
+                          setDoorParams((p) => ({ ...p, type: v, ...(presets[v] || {}) }));
+                        }}>
+                          <SelectTrigger className="rounded-sm h-8 mt-1" data-testid="door-type-select"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="interna">Porta interna</SelectItem>
+                            <SelectItem value="blindata">Porta blindata</SelectItem>
+                            <SelectItem value="scorrevole">Porta scorrevole</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Largh. (cm)</Label>
+                          <Input type="number" value={doorParams.width} onChange={(e) => setDoorParams((p) => ({ ...p, width: parseInt(e.target.value) || 80 }))} className="rounded-sm h-8 mt-1 mono" data-testid="door-width-input" />
+                        </div>
+                        <div>
+                          <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Alt. (cm)</Label>
+                          <Input type="number" value={doorParams.height} onChange={(e) => setDoorParams((p) => ({ ...p, height: parseInt(e.target.value) || 210 }))} className="rounded-sm h-8 mt-1 mono" data-testid="door-height-input" />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div>
+                        <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Tipo</Label>
+                        <Select value={windowParams.type} onValueChange={(v) => {
+                          const presets = { finestra: { width: 120, height: 140, sillHeight: 90 }, "porta-finestra": { width: 120, height: 230, sillHeight: 0 }, scorrevole: { width: 180, height: 230, sillHeight: 0 } };
+                          setWindowParams((p) => ({ ...p, type: v, ...(presets[v] || {}) }));
+                        }}>
+                          <SelectTrigger className="rounded-sm h-8 mt-1" data-testid="window-type-select"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="finestra">Finestra</SelectItem>
+                            <SelectItem value="porta-finestra">Porta finestra</SelectItem>
+                            <SelectItem value="scorrevole">Scorrevole</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Largh. (cm)</Label>
+                          <Input type="number" value={windowParams.width} onChange={(e) => setWindowParams((p) => ({ ...p, width: parseInt(e.target.value) || 120 }))} className="rounded-sm h-8 mt-1 mono" data-testid="window-width-input" />
+                        </div>
+                        <div>
+                          <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Alt. (cm)</Label>
+                          <Input type="number" value={windowParams.height} onChange={(e) => setWindowParams((p) => ({ ...p, height: parseInt(e.target.value) || 140 }))} className="rounded-sm h-8 mt-1 mono" data-testid="window-height-input" />
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Parapetto (cm)</Label>
+                        <Input type="number" value={windowParams.sillHeight} onChange={(e) => setWindowParams((p) => ({ ...p, sillHeight: parseInt(e.target.value) || 0 }))} className="rounded-sm h-8 mt-1 mono" data-testid="window-sill-input" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               <Canvas2D
                 project={project.data}
                 setProject={setProjectData}
@@ -351,6 +418,8 @@ export default function Editor() {
                 setSelected={setSelected}
                 selectedMaterial={selectedMaterial}
                 catalog={catalog}
+                doorParams={doorParams}
+                windowParams={windowParams}
               />
             </div>
           </div>
@@ -368,32 +437,54 @@ export default function Editor() {
           )}
         </main>
 
-        {/* Right panel */}
-        <aside className="w-80 border-l border-zinc-200 bg-white flex flex-col min-h-0">
-          <Tabs defaultValue="properties" className="flex-1 flex flex-col">
-            <TabsList className="rounded-none h-10 border-b border-zinc-200 bg-white justify-start px-2">
-              <TabsTrigger value="properties" className="rounded-none text-xs uppercase tracking-widest" data-testid="tab-properties">Proprietà</TabsTrigger>
-              <TabsTrigger value="catalog" className="rounded-none text-xs uppercase tracking-widest" data-testid="tab-catalog">Catalogo</TabsTrigger>
-              <TabsTrigger value="cost" className="rounded-none text-xs uppercase tracking-widest" data-testid="tab-cost">Costi</TabsTrigger>
-            </TabsList>
+        {/* Right panel collapsible */}
+        {sidebarOpen ? (
+          <aside className="w-80 border-l border-zinc-200 bg-white flex flex-col min-h-0 relative" data-testid="right-sidebar">
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="absolute -left-3 top-3 z-10 w-6 h-6 bg-white border border-zinc-300 flex items-center justify-center hover:bg-zinc-50 shadow-sm"
+              title="Riduci pannello"
+              data-testid="sidebar-collapse-btn"
+            >
+              <ChevronRight size={14} />
+            </button>
+            <Tabs defaultValue="properties" className="flex-1 flex flex-col">
+              <TabsList className="rounded-none h-10 border-b border-zinc-200 bg-white justify-start px-2">
+                <TabsTrigger value="properties" className="rounded-none text-xs uppercase tracking-widest" data-testid="tab-properties">Proprietà</TabsTrigger>
+                <TabsTrigger value="catalog" className="rounded-none text-xs uppercase tracking-widest" data-testid="tab-catalog">Catalogo</TabsTrigger>
+                <TabsTrigger value="cost" className="rounded-none text-xs uppercase tracking-widest" data-testid="tab-cost">Costi</TabsTrigger>
+              </TabsList>
 
-            <TabsContent value="properties" className="p-4 overflow-auto flex-1 mt-0">
-              <PropertiesPanel project={project.data} setProject={setProjectData} selected={selected} catalog={catalog} />
-            </TabsContent>
+              <TabsContent value="properties" className="p-4 overflow-auto flex-1 mt-0">
+                <PropertiesPanel project={project.data} setProject={setProjectData} selected={selected} catalog={catalog} />
+              </TabsContent>
 
-            <TabsContent value="catalog" className="p-0 overflow-auto flex-1 mt-0">
-              <CatalogPanel
-                catalog={catalog}
-                selectedMaterial={selectedMaterial}
-                setSelectedMaterial={(id) => { setSelectedMaterial(id); setTool("item"); }}
-              />
-            </TabsContent>
+              <TabsContent value="catalog" className="p-0 overflow-auto flex-1 mt-0">
+                <CatalogPanel
+                  catalog={catalog}
+                  selectedMaterial={selectedMaterial}
+                  setSelectedMaterial={(id) => { setSelectedMaterial(id); setTool("item"); }}
+                />
+              </TabsContent>
 
-            <TabsContent value="cost" className="p-0 overflow-auto flex-1 mt-0">
-              <CostPanel estimate={estimate} />
-            </TabsContent>
-          </Tabs>
-        </aside>
+              <TabsContent value="cost" className="p-0 overflow-auto flex-1 mt-0">
+                <CostPanel estimate={estimate} />
+              </TabsContent>
+            </Tabs>
+          </aside>
+        ) : (
+          <aside className="w-8 border-l border-zinc-200 bg-white flex flex-col items-center pt-3" data-testid="right-sidebar-collapsed">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="w-6 h-6 bg-white border border-zinc-300 flex items-center justify-center hover:bg-zinc-50 shadow-sm mb-3"
+              title="Espandi pannello"
+              data-testid="sidebar-expand-btn"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <div className="text-[10px] mono text-zinc-500 [writing-mode:vertical-rl] mt-2">PANNELLO</div>
+          </aside>
+        )}
       </div>
 
       {/* AI Render modal */}
@@ -545,9 +636,31 @@ function PropertiesPanel({ project, setProject, selected, catalog }) {
   }
 
   if (kind === "doors" || kind === "windows") {
+    const isDoor = kind === "doors";
     return (
       <div className="space-y-4">
-        <div className="label-kicker">{kind === "doors" ? "Porta" : "Finestra"}</div>
+        <div className="label-kicker">{isDoor ? "Porta" : "Finestra"}</div>
+        <div>
+          <Label className="text-xs uppercase tracking-widest text-zinc-500">Tipo</Label>
+          <Select value={obj.type || (isDoor ? "interna" : "finestra")} onValueChange={(v) => updateObj({ type: v })}>
+            <SelectTrigger className="rounded-sm h-9 mt-1.5" data-testid={`${isDoor ? "door" : "window"}-type-prop`}><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {isDoor ? (
+                <>
+                  <SelectItem value="interna">Porta interna</SelectItem>
+                  <SelectItem value="blindata">Porta blindata</SelectItem>
+                  <SelectItem value="scorrevole">Porta scorrevole</SelectItem>
+                </>
+              ) : (
+                <>
+                  <SelectItem value="finestra">Finestra</SelectItem>
+                  <SelectItem value="porta-finestra">Porta finestra</SelectItem>
+                  <SelectItem value="scorrevole">Scorrevole</SelectItem>
+                </>
+              )}
+            </SelectContent>
+          </Select>
+        </div>
         <div>
           <Label className="text-xs uppercase tracking-widest text-zinc-500">Larghezza (cm)</Label>
           <Input type="number" value={obj.width} onChange={(e) => updateObj({ width: parseInt(e.target.value) || 80 })} className="rounded-sm h-9 mt-1.5 mono" />
@@ -556,7 +669,7 @@ function PropertiesPanel({ project, setProject, selected, catalog }) {
           <Label className="text-xs uppercase tracking-widest text-zinc-500">Altezza (cm)</Label>
           <Input type="number" value={obj.height} onChange={(e) => updateObj({ height: parseInt(e.target.value) || 210 })} className="rounded-sm h-9 mt-1.5 mono" />
         </div>
-        {kind === "windows" && (
+        {!isDoor && (
           <div>
             <Label className="text-xs uppercase tracking-widest text-zinc-500">Altezza parapetto (cm)</Label>
             <Input type="number" value={obj.sillHeight || 90} onChange={(e) => updateObj({ sillHeight: parseInt(e.target.value) || 90 })} className="rounded-sm h-9 mt-1.5 mono" />

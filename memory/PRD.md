@@ -69,6 +69,13 @@
 - **materials / projects** (CAD)
 
 ## Changelog (Feb 2026 current session)
+- **CAD UX fixes (current session)**:
+  - Fix bug doppio-click chiusura stanza (timeout-based per evitare punto vagante)
+  - Pareti automatiche e quotate sui bordi della stanza al doppio click
+  - Sidebar destra collassabile (toggle ChevronLeft/Right)
+  - Fix inserimento porte/finestre: i muri/stanze non bloccano più il click in modalità door/window
+  - Pannello parametri porta/finestra (tipo: interna/blindata/scorrevole · finestra/porta-finestra/scorrevole + larghezza/altezza/parapetto)
+  - Tooltip etichette su porte/finestre con larghezza
 - Full base44 replica implemented in one session
 - Sidebar teal persistente con 4 sezioni + ruoli-based nav
 - 4 wizard preventivi completi con calcoli live
@@ -79,15 +86,22 @@
 - Rinomina pacchetti: SOFT/EASY/PLUS/TOP → BASIC/SMART/PREMIUM/ELITE
 - Fix bug: /api/commesse/{id}/stato 404 handling, role-gating su POST commesse
 
-## Backlog (P1/P2)
+## Backlog (P0/P1/P2)
+- **P0 (next, big features)**:
+  - Quotazione dinamica CAD ↔ Voci Backoffice (live update preventivo mentre disegni / demolisci muri / aggiungi impianti). Gestione "extra" rispetto al pacchetto scelto.
+  - Export Tavole di Progetto: Stato di Fatto, Stato di Progetto (con sanitari/ingombri quotati), Demolizioni/Costruzioni, Impianto Elettrico, Impianto Idraulico, Impianto Gas, Impianto Condizionamento, Prospetti pareti con impianti (cucine/bagni/split) — modificabili e poi flaggati nei documenti commessa.
+  - Import AI planimetria 2D → 2D/3D CAD (upload immagine + Gemini parsing)
+- **P1**:
+  - Abaco infissi visuale in PreventivoInfissi (anteprima grafica per finestra / porta-finestra / colore / vetro / dimensioni)
+  - Schema posa piastrelle: 30x60, 60x60, 60x120, 80x80 (effetto marmo/cemento), 22.5x90, 25x150 (effetto legno) + scelta punto di partenza e direzione/angolo
+  - Impianti dettagliati in CAD: quadro elettrico, scatole derivazione, prese, idrici, gas, split condizionamento
 - **P1** Drag-and-drop riordino fasi in AdminFasiCommessa
-- **P1** Aggiungere chart reale (Recharts) al posto delle barre CSS
-- **P1** Invio email effettivo (SendGrid/Resend) dai template
-- **P2** Sub-contractor assignment sulle voci commessa
-- **P2** Upload logo aziendale via object storage
-- **P2** PDF export commesse (già presente per preventivi pacchetto)
-- **P2** Numerazione preventivi idempotente (counter collection)
-- **P2** CAD: fix R3F x-line-number bug, drag-to-move, undo/redo
+- **P1** Chart reale (Recharts)
+- **P1** Invio email SendGrid/Resend
+- **P2** Sub-contractor assignment voci commessa
+- **P2** Upload logo via object storage
+- **P2** PDF export commesse
+- **P2** CAD: undo/redo, drag-to-move
 
 ## Testing
 - Backend: 43 pytest totali PASS (28 biz + 15 core). Endpoints: auth, preventivi 4-types, commesse+checklist, leads, voci-backoffice, fasi, template-email, negozi, subappaltatori, dati-azienda, impostazioni, composite/infissi/bagno config, stats/dashboard.

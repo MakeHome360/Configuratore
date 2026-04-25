@@ -85,6 +85,7 @@ export function estimateProject(project, catalog) {
 export const VOCE_MAP = {
   demolizione_muro: "Demolizione e smaltimento",
   demolizione_pavimento: "Demolizione e smaltimento",
+  demolizione_rivestimento: "Demolizione e smaltimento",
   costruzione_muro_mattone: "Muro mattone",
   costruzione_muro_cartongesso: "Muro cartongesso",
   controsoffitto: "Controparete / controsoffitto",
@@ -113,6 +114,74 @@ export const VOCE_MAP = {
   box_doccia: "Box doccia",
   mobile_bagno: "Mobile bagno",
 };
+
+// Ordine lavorazioni basato su listinoMh.pdf:
+// 1. Modulistica/Cantiere → 2. Demolizioni/Muratura → 3-4. Impianti idraulici/elettrici
+// → 5. Intonaci/rasatura/decorazioni → 6. Serramenti → 7. Collaudo/Pulizia
+export const ORDINE_LAVORAZIONI = {
+  // 1. Modulistica/Sicurezza cantiere
+  "Sicurezza cantiere": 10,
+  "Pratiche edilizie": 11,
+  "Allestimento cantiere": 12,
+  // 2. Demolizioni
+  "Demolizione e smaltimento": 20,
+  "Autolivellante": 21,
+  // 3. Muratura/costruzioni
+  "Muro mattone": 30,
+  "Muro cartongesso": 31,
+  "Controparete / controsoffitto": 32,
+  // 4. Impianti
+  "Impianto idraulico completo": 40,
+  "Punto acqua": 41,
+  "Impianto riscaldamento radiatori": 42,
+  "Impianto riscaldamento a pavimento": 43,
+  "Caldaia a condensazione": 44,
+  "Predisposizione climatizzatore": 45,
+  "Climatizzatore dual split": 46,
+  "Climatizzatore trial split": 47,
+  "Impianto elettrico completo": 50,
+  "Punto luce LED": 51,
+  // 5. Intonaci/rivestimenti/pittura
+  "Intonaco": 60,
+  "Rasatura": 61,
+  "Piastrelle rivestimento": 62,
+  "Piastrelle pavimento": 63,
+  "Parquet": 64,
+  "Pavimento PVC/laminato": 65,
+  "Pittura prima mano": 70,
+  "Posa Battiscopa": 71,
+  // 6. Serramenti / Infissi
+  "Infissi PVC bianchi": 80,
+  "Infissi alluminio taglio termico": 81,
+  "Infissi legno/alluminio": 82,
+  "Porte interne serie standard": 83,
+  "Pannello porta blindata": 84,
+  // 7. Sanitari & arredo
+  "Sanitari bagno (WC+bidet+lavabo)": 90,
+  "Box doccia": 91,
+  "Mobile bagno": 92,
+  // 8. Collaudo e pulizia finale
+  "Collaudo": 99,
+  "Pulizia finale": 100,
+};
+
+export function ordineFor(voceName) {
+  if (!voceName) return 999;
+  if (ORDINE_LAVORAZIONI[voceName] !== undefined) return ORDINE_LAVORAZIONI[voceName];
+  // fallback by category keyword
+  const n = voceName.toLowerCase();
+  if (n.includes("demoliz")) return 20;
+  if (n.includes("muro")) return 30;
+  if (n.includes("idraul") || n.includes("acqua") || n.includes("scarico")) return 40;
+  if (n.includes("riscald") || n.includes("caldaia") || n.includes("clima")) return 45;
+  if (n.includes("elettric") || n.includes("luce") || n.includes("presa")) return 50;
+  if (n.includes("intonac") || n.includes("rasatur") || n.includes("pittur")) return 65;
+  if (n.includes("piastrell") || n.includes("parquet") || n.includes("pavim")) return 63;
+  if (n.includes("battiscop")) return 71;
+  if (n.includes("infiss") || n.includes("finestr") || n.includes("porta")) return 80;
+  if (n.includes("sanitar") || n.includes("doccia") || n.includes("bagno")) return 90;
+  return 500;
+}
 
 function findVoce(voci, name) {
   if (!voci) return null;
@@ -176,9 +245,10 @@ export function estimateProjectV2(project, voci, packageRef) {
     }
   });
 
-  // Demolizioni esplicite (pavimento/altro)
+  // Demolizioni esplicite (pavimento/altro/rivestimento)
   (data.demolitions || []).forEach((d) => {
     if (d.kind === "pavimento") add("demolizione_pavimento", d.areaM2 || 0);
+    if (d.kind === "rivestimento") add("demolizione_rivestimento", d.areaM2 || 0);
   });
 
   // Doors / Windows
@@ -247,8 +317,12 @@ export function estimateProjectV2(project, voci, packageRef) {
     byCat[voce.category] = (byCat[voce.category] || 0) + totalRow;
   });
 
-  // Sort by category, then name
-  items.sort((a, b) => (a.category || "").localeCompare(b.category || "") || a.name.localeCompare(b.name));
+  // Sort by ordine_lavorazione (PDF order), poi categoria, poi nome
+  items.sort((a, b) => {
+    const da = ordineFor(a.name), db = ordineFor(b.name);
+    if (da !== db) return da - db;
+    return (a.category || "").localeCompare(b.category || "") || a.name.localeCompare(b.name);
+  });
 
   return {
     items,

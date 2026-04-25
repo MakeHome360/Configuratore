@@ -19,7 +19,7 @@ import {
   Package, Upload, FileImage, FileText,
 } from "lucide-react";
 import { estimateProject, estimateProjectV2, fmtEuro, fmtEuro2, fmtNum, emptyProjectData, uid, polygonArea, polygonPerimeter } from "../editor/utils";
-import { ProspettoWall, computeInterestingWalls } from "../editor/Prospetti";
+import { ProspettoWall, ProspettoInputs, computeInterestingWalls } from "../editor/Prospetti";
 import jsPDF from "jspdf";
 
 const TOOL_GROUPS = [
@@ -36,6 +36,7 @@ const TOOL_GROUPS = [
   { id: "demo", label: "Demolizioni / Costruzioni", tools: [
     { id: "demolish-wall", icon: Hammer, label: "Demolisci muro" },
     { id: "demolish-floor", icon: Hammer, label: "Demolisci pavimento" },
+    { id: "demolish-rivestimento", icon: Hammer, label: "Demolisci rivestim." },
     { id: "controsoffitto", icon: Layers, label: "Controsoffitto" },
   ]},
   { id: "impianti", label: "Impianti", tools: [
@@ -988,6 +989,7 @@ function TavoleModal({ open, setOpen, project, catalog, estimateV2, onExport, on
                       <div className="text-[10px] mono text-zinc-400">{ent.points.length} elementi · {ent.doors.length} porte · {ent.windows.length} finestre</div>
                     </div>
                     <ProspettoWall entry={ent} roomHeight={project.data?.roomHeight || 270} editable={editProspetti} heightOverrides={heightOverrides} onChangeHeight={updateHeight} />
+                    {editProspetti && <ProspettoInputs entry={ent} heightOverrides={heightOverrides} onChangeHeight={updateHeight} />}
                   </div>
                 ))}
               </div>
@@ -1006,7 +1008,7 @@ function TavolaPreview({ tavola, project, catalog }) {
         <div className="font-semibold text-sm" style={{ fontFamily: "Outfit" }}>{tavola.title}</div>
         <div className="text-[10px] mono text-zinc-400">{project.name}</div>
       </div>
-      <div className="aspect-video bg-zinc-50 border border-zinc-200">
+      <div className="aspect-video bg-zinc-50 border border-zinc-200 relative">
         <Canvas2D
           project={project.data} setProject={() => {}} tool="select"
           selected={null} setSelected={() => {}} selectedMaterial="" catalog={catalog}
@@ -1014,7 +1016,73 @@ function TavolaPreview({ tavola, project, catalog }) {
           electricalKind="presa" plumbingKind="acqua-fredda" hvacKind="split" tilingParams={{ size: "60x60", angle: 0 }}
           layers={tavola.layers} viewMode={tavola.viewMode}
         />
+        <Legenda tavolaId={tavola.id} />
       </div>
+    </div>
+  );
+}
+
+const LEGENDE = {
+  "stato-fatto": [
+    { color: "#0A0A0A", label: "Muratura esistente" },
+    { color: "#F5E9D8", label: "Pavimento esistente", swatch: true },
+  ],
+  "stato-progetto": [
+    { color: "#0A0A0A", label: "Muratura esistente" },
+    { color: "#EAB308", label: "Nuova muratura" },
+    { color: "#F5E9D8", label: "Pavimento", swatch: true },
+  ],
+  demolizioni: [
+    { color: "#DC2626", label: "Muratura da demolire", dashed: true },
+    { color: "#DC2626", label: "Pavimento da demolire", hatch: "demo" },
+  ],
+  costruzioni: [
+    { color: "#EAB308", label: "Nuova muratura (mattone)", hatch: "new" },
+    { color: "#525252", label: "Nuova muratura (cartongesso)", dashed: true },
+  ],
+  elettrico: [
+    { color: "#7C3AED", label: "Q · Quadro elettrico" },
+    { color: "#7C3AED", label: "Scatola derivazione" },
+    { color: "#7C3AED", label: "Presa / Interruttore / Luce" },
+  ],
+  idraulico: [
+    { color: "#0EA5E9", label: "F · Acqua fredda" },
+    { color: "#DC2626", label: "C · Acqua calda" },
+    { color: "#0891B2", label: "S · Scarico" },
+  ],
+  gas: [{ color: "#EAB308", label: "G · Punto gas" }],
+  condizionamento: [
+    { color: "#0F766E", label: "Split / Unità interna" },
+    { color: "#0F766E", label: "UE · Unità esterna" },
+  ],
+  "schema-posa": [
+    { color: "#16A34A", label: "Punto di partenza piastrelle" },
+    { color: "#71717A", label: "Trama piastrelle" },
+  ],
+};
+
+function Legenda({ tavolaId }) {
+  const items = LEGENDE[tavolaId];
+  if (!items) return null;
+  return (
+    <div className="absolute bottom-1 right-1 bg-white/95 border border-zinc-300 px-2 py-1.5 text-[9px] mono space-y-0.5 max-w-[55%]" data-testid={`legenda-${tavolaId}`}>
+      <div className="text-[8px] uppercase tracking-widest text-zinc-500 font-bold mb-1">Legenda</div>
+      {items.map((it, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          {it.hatch === "demo" ? (
+            <div className="w-3 h-3" style={{ backgroundImage: `repeating-linear-gradient(45deg, ${it.color}, ${it.color} 1.5px, transparent 1.5px, transparent 4px)` }} />
+          ) : it.hatch === "new" ? (
+            <div className="w-3 h-3" style={{ backgroundImage: `repeating-linear-gradient(-45deg, ${it.color}, ${it.color} 1px, transparent 1px, transparent 3px)` }} />
+          ) : it.swatch ? (
+            <div className="w-3 h-3 border border-zinc-400" style={{ background: it.color }} />
+          ) : it.dashed ? (
+            <div className="w-3 h-0.5" style={{ background: `repeating-linear-gradient(to right, ${it.color}, ${it.color} 2px, transparent 2px, transparent 4px)` }} />
+          ) : (
+            <div className="w-3 h-0.5" style={{ background: it.color }} />
+          )}
+          <span className="text-zinc-700">{it.label}</span>
+        </div>
+      ))}
     </div>
   );
 }

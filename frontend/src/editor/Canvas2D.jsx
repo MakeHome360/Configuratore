@@ -307,6 +307,18 @@ export default function Canvas2D({
       }
       return;
     }
+    if (tool === "demolish-rivestimento") {
+      const r = findRoomAt(p);
+      if (r) {
+        const perimM = polygonPerimeter(r.points) / 100;
+        const areaM2 = perimM * 1.5; // up to 150cm height typical
+        setProject((prj) => ({
+          ...prj,
+          demolitions: [...(prj.demolitions || []), { id: uid(), kind: "rivestimento", x: p.x, y: p.y, roomId: r.id, areaM2 }],
+        }));
+      }
+      return;
+    }
     if (tool === "controsoffitto") {
       const r = findRoomAt(p);
       if (r) {
@@ -414,7 +426,7 @@ export default function Canvas2D({
   };
 
   const isPlacementTool = ["door", "window", "wall", "wall-cartongesso", "room", "item",
-    "demolish-wall", "demolish-floor", "controsoffitto",
+    "demolish-wall", "demolish-floor", "demolish-rivestimento", "controsoffitto",
     "electrical", "plumbing", "gas", "hvac", "tiling"].includes(tool);
 
   const allWalls = project.walls || [];
@@ -465,6 +477,9 @@ export default function Canvas2D({
           <pattern id="hatch-demo" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
             <line x1={0} y1={0} x2={0} y2={14} stroke="#DC2626" strokeWidth="2.5" />
           </pattern>
+          <pattern id="hatch-rivest" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(135)">
+            <line x1={0} y1={0} x2={0} y2={14} stroke="#F97316" strokeWidth="2" />
+          </pattern>
           <pattern id="hatch-controsoff" width="12" height="12" patternUnits="userSpaceOnUse">
             <circle cx={6} cy={6} r="1.5" fill="#0F766E" />
           </pattern>
@@ -483,6 +498,7 @@ export default function Canvas2D({
           const cy = r.points.reduce((s, p) => s + p.y, 0) / r.points.length;
           const areaM2 = polygonArea(r.points) / 10000;
           const isFloorDemolito = demolitions.some((d) => d.kind === "pavimento" && d.roomId === r.id);
+          const isRivestDemolito = demolitions.some((d) => d.kind === "rivestimento" && d.roomId === r.id);
           const showFloor = L.floors !== false && !isFloorDemolito;
           return (
             <g key={r.id}
@@ -505,6 +521,10 @@ export default function Canvas2D({
                   <polygon points={pts} fill="none" stroke="#DC2626" strokeWidth="2" strokeDasharray="6,4" />
                 </>
               )}
+              {/* demolizione rivestimento overlay (perimetro arancione tratteggiato) */}
+              {isRivestDemolito && (
+                <polygon points={pts} fill="none" stroke="#F97316" strokeWidth="6" strokeDasharray="3,3" opacity="0.85" />
+              )}
               {/* controsoffitto overlay */}
               {r.controsoffitto && (
                 <polygon points={pts} fill="url(#hatch-controsoff)" fillOpacity="0.4" />
@@ -513,10 +533,30 @@ export default function Canvas2D({
               <text x={cx} y={cy + 12} fontSize="11" textAnchor="middle" fontFamily="JetBrains Mono" fill="#71717A" pointerEvents="none">{fmtNum(areaM2, 2)} m²</text>
               {r.controsoffitto && <text x={cx} y={cy + 28} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#0F766E" fontWeight="700" pointerEvents="none">CTRSF</text>}
               {isFloorDemolito && <text x={cx} y={cy + 28} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#DC2626" fontWeight="700" pointerEvents="none">DEMO PAV.</text>}
-              {/* corner dots */}
-              {r.points.map((pt, i) => (
-                <circle key={i} cx={pt.x} cy={pt.y} r="3" fill="#0A0A0A" pointerEvents="none" />
-              ))}
+              {isRivestDemolito && <text x={cx} y={cy + 42} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#F97316" fontWeight="700" pointerEvents="none">DEMO RIV.</text>}
+              {/* corner dots + angle labels (fuori-quadro detection) */}
+              {r.points.map((pt, i) => {
+                const prev = r.points[(i - 1 + r.points.length) % r.points.length];
+                const next = r.points[(i + 1) % r.points.length];
+                const v1x = prev.x - pt.x, v1y = prev.y - pt.y;
+                const v2x = next.x - pt.x, v2y = next.y - pt.y;
+                const dot = v1x * v2x + v1y * v2y;
+                const m1 = Math.hypot(v1x, v1y), m2 = Math.hypot(v2x, v2y);
+                const ang = Math.acos(Math.max(-1, Math.min(1, dot / (m1 * m2 || 1)))) * 180 / Math.PI;
+                const fuoriQuadro = Math.abs(ang - 90) > 3;
+                const colorAng = fuoriQuadro ? "#DC2626" : "#16A34A";
+                return (
+                  <g key={i} pointerEvents="none">
+                    <circle cx={pt.x} cy={pt.y} r="3" fill="#0A0A0A" />
+                    {L.dimensions && (
+                      <>
+                        <rect x={pt.x - 16} y={pt.y - 28} width={32} height={14} rx={3} fill="white" stroke={colorAng} strokeWidth="1" />
+                        <text x={pt.x} y={pt.y - 18} textAnchor="middle" fontSize="9" fontFamily="JetBrains Mono" fontWeight="700" fill={colorAng}>{ang.toFixed(0)}°</text>
+                      </>
+                    )}
+                  </g>
+                );
+              })}
             </g>
           );
         })}
@@ -819,6 +859,7 @@ export default function Canvas2D({
       {tool === "window" && <div className="absolute top-3 left-3 bg-blue-600 text-white px-3 py-1.5 text-xs mono">finestra · click su parete</div>}
       {tool === "demolish-wall" && <div className="absolute top-3 left-3 bg-rose-600 text-white px-3 py-1.5 text-xs mono">demolisci muro · click per marcare</div>}
       {tool === "demolish-floor" && <div className="absolute top-3 left-3 bg-rose-600 text-white px-3 py-1.5 text-xs mono">demolisci pavimento · click in stanza</div>}
+      {tool === "demolish-rivestimento" && <div className="absolute top-3 left-3 bg-orange-500 text-white px-3 py-1.5 text-xs mono">demolisci rivestimenti · click in stanza</div>}
       {tool === "controsoffitto" && <div className="absolute top-3 left-3 bg-teal-700 text-white px-3 py-1.5 text-xs mono">controsoffitto · click su stanza per attivare/disattivare</div>}
       {tool === "electrical" && <div className="absolute top-3 left-3 bg-purple-700 text-white px-3 py-1.5 text-xs mono">elettrico · {electricalKind || "presa"}</div>}
       {tool === "plumbing" && <div className="absolute top-3 left-3 bg-cyan-700 text-white px-3 py-1.5 text-xs mono">idraulico · {plumbingKind || "acqua-fredda"}</div>}

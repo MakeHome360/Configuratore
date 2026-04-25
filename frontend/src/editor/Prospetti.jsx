@@ -167,8 +167,40 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
 
       {/* legend at bottom */}
       <text x={0} y={H + 60} fontFamily="Outfit" fontSize="13" fontWeight="700" fill="#0A0A0A">Parete · L={fmtNum(W / 100, 2)}m · H={fmtNum(H / 100, 2)}m</text>
-      {editable && <text x={W} y={H + 60} textAnchor="end" fontFamily="JetBrains Mono" fontSize="10" fill="#16A34A">trascina i punti per regolare l'altezza</text>}
+      {editable && <text x={W} y={H + 60} textAnchor="end" fontFamily="JetBrains Mono" fontSize="10" fill="#16A34A">trascina i punti per regolare l'altezza · oppure usa gli input qui sotto</text>}
     </svg>
+  );
+}
+
+// Inline numeric inputs for prospetto heights (precise editing alternative to drag)
+export function ProspettoInputs({ entry, heightOverrides, onChangeHeight }) {
+  if (!entry.points.length) return null;
+  return (
+    <div className="bg-zinc-50 border-t border-zinc-200 p-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2" data-testid={`prospetto-inputs-${entry.wall.id}`}>
+      {entry.points.map((p) => {
+        const stdKey = p.type || p.kind;
+        const stdH = STD_HEIGHTS[stdKey] ?? 110;
+        const h = heightOverrides?.[p.id] ?? stdH;
+        const color = COLORS[p.kind] || "#525252";
+        return (
+          <div key={p.id} className="flex items-center gap-2 bg-white border border-zinc-200 px-2 py-1.5">
+            <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ background: "white", border: `2px solid ${color}`, color }}>{symbolFor(p)}</div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[10px] uppercase tracking-widest text-zinc-500">{p.type || p.kind}</div>
+              <input
+                type="number"
+                value={h}
+                onChange={(e) => onChangeHeight(p.id, parseInt(e.target.value) || 0)}
+                className="w-full text-sm font-mono border-0 bg-transparent p-0 focus:outline-none"
+                step={5}
+                data-testid={`prospetto-input-${p.id}`}
+              />
+            </div>
+            <span className="text-[10px] mono text-zinc-400">cm</span>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

@@ -138,6 +138,8 @@ export default function Editor() {
     window.__editorTest = {
       getProject: () => project,
       setProjectData: (data) => setProject((p) => ({ ...p, data: typeof data === "function" ? data(p.data) : data })),
+      setSelected: (sel) => setSelected(sel),
+      getSelected: () => selected,
       addWallProgetto: (x1, y1, x2, y2) => {
         const id = Math.random().toString(36).slice(2, 10);
         setProject((p) => {

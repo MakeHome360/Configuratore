@@ -1,5 +1,15 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 15 — Feb 2026)
+- ✅ X delete (cestino) per ogni voce del Preventivo Live + box "Voci rimosse · Ripristina tutte" (data-testid `computo-delete-{key}`, `restore-excluded-all`)
+- ✅ Punti Gas BEN VISIBILI sulla Tavola del Gas (cerchio r=16 con etichetta "GAS")
+- ✅ Quote dimensionali abilitate su tutte le tavole impianti (dimensions: true)
+- ✅ Wall Decoration UX: voce catalogo (decorazione/laminato/parquet/pittura) per parete singola + bottone "Applica a tutta la casa" + colore (`wall-decor-voce-select`, `wall-apply-house`)
+- ✅ Tile "Applica a TUTTE le stanze" ora copre anche stanze di "Stato di Fatto" senza progetto overrides
+- ✅ Impianto elettrico/idraulico/gas/hvac contati nel preventivo anche con phase "fatto" (rimosso filtro isProgetto)
+- ✅ Symbols enlarged: ElectricalSymbol/PlumbingSymbol/GasSymbol con etichette di tipo per leggibilità su tavole
+- ✅ window.__editorTest.setSelected esposto per testing E2E
+
 ## Original Problem Statement
 > "puoi costruire un programma di progettezione tipo cad che faccia anche rendering del risultato per preventivare e progettare ristrutturazioni?"
 > User explicitly requested a 1:1 functional replica of configuratore.base44.app with CAD as a plus feature.

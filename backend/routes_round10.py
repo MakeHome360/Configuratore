@@ -466,13 +466,15 @@ def build_round10_router(db, get_current_user, jwt_create_access):
     # ============================================================
     @r.get("/gestore/cantieri")
     async def gestore_cantieri(user=Depends(get_current_user)):
-        """Cantieri assegnati al gestore corrente."""
-        if user.get("role") not in ("admin", "gestore"):
-            raise HTTPException(403, "Solo admin/gestore")
-        # admin vede tutto; gestore solo i propri
-        q = {} if user.get("role") == "admin" else {"gestore_id": user["id"]}
+        """Cantieri visibili: admin/venditore/user vedono tutto, gestore solo i suoi."""
+        role = user.get("role")
+        if role in ("admin", "venditore", "user"):
+            q = {}
+        elif role == "gestore":
+            q = {"gestore_id": user["id"]}
+        else:
+            raise HTTPException(403, "Non autorizzato")
         comms = await db.commesse.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
-        # arricchisci con assegnazioni e avanzamenti pendenti
         for c in comms:
             ass = await db.subapp_assegnazioni.find({"commessa_id": c["id"]}, {"_id": 0}).to_list(100)
             c["assegnazioni"] = ass

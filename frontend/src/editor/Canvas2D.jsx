@@ -265,7 +265,8 @@ export default function Canvas2D({
       setViewBox({ ...pan.vb, x: pan.vb.x - dx, y: pan.vb.y - dy });
     }
     if (drag) {
-      const dx = p.x - drag.start.x, dy = p.y - drag.start.y;
+      const startPt = drag.start || p;
+      const dx = p.x - startPt.x, dy = p.y - startPt.y;
       if (drag.kind === "wall-end") {
         // drag wall endpoint p1 or p2
         setProject((prj) => ({
@@ -434,7 +435,7 @@ export default function Canvas2D({
         const W = best.w;
         setProject((prj) => ({ ...prj, walls: (prj.walls || []).map((x) => x.id === W.id ? { ...x, demolito_partial: { from: best.tHit, to: best.tHit, height: prj.roomHeight || 270 } } : x) }));
         setSelected({ kind: "walls", id: W.id });
-        setDrag({ kind: "demo-partial-drag", id: W.id, startT: best.tHit });
+        setDrag({ kind: "demo-partial-drag", id: W.id, startT: best.tHit, start: p });
       }
       return;
     }
@@ -465,8 +466,18 @@ export default function Canvas2D({
       });
       return;
     }
+    if (tool === "package-area") {
+      // Disegna l'area su cui calcolare il pacchetto: poligono libero, doppio click chiude.
+      if (e.detail >= 2) return;
+      setDemoAreaDraft((arr) => {
+        const last = arr[arr.length - 1];
+        if (last && Math.hypot(p.x - last.x, p.y - last.y) < 8) return arr;
+        return [...arr, p];
+      });
+      return;
+    }
     if (tool === "demolish-rivestimento") {
-      // Click vicino al muro più prossimo: demolisce SOLO il rivestimento di quella parete (h=parapetto)
+      // Click vicino al muro più prossimo: crea una demolizione rivestimento ZONA da ridefinire nel pannello proprietà.
       const walls = project.walls || [];
       let best = null, bestD = 1e9;
       walls.forEach((w) => {
@@ -474,17 +485,30 @@ export default function Canvas2D({
         const cx = w.x1 + t.t * (w.x2 - w.x1);
         const cy = w.y1 + t.t * (w.y2 - w.y1);
         const d = Math.hypot(cx - p.x, cy - p.y);
-        if (d < bestD) { bestD = d; best = w; }
+        if (d < bestD) { bestD = d; best = { w, tHit: t.t }; }
       });
       if (best && bestD < 50) {
-        const lenM = Math.hypot(best.x2 - best.x1, best.y2 - best.y1) / 100;
-        const heightStr = window.prompt(`Demolizione rivestimento - parete L=${lenM.toFixed(2)}m\nInserisci altezza demolizione in cm (default 200cm):`, "200");
-        const hCm = Math.max(20, Math.min(400, parseFloat(heightStr) || 200));
-        const areaM2 = lenM * (hCm / 100);
+        const w = best.w;
+        const lenCm = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
+        // default: demolizione sull'intera larghezza, dal pavimento (h_from=0) per 200cm
+        const xFromCm = 0;
+        const xToCm = Math.round(lenCm);
+        const hFromCm = 0;
+        const hToCm = 200;
+        const areaM2 = ((xToCm - xFromCm) / 100) * ((hToCm - hFromCm) / 100);
+        const newId = uid();
         setProject((prj) => ({
           ...prj,
-          demolitions: [...(prj.demolitions || []), { id: uid(), kind: "rivestimento", x: p.x, y: p.y, wallId: best.id, areaM2, heightCm: hCm, phase: "progetto" }],
+          demolitions: [...(prj.demolitions || []), {
+            id: newId, kind: "rivestimento", x: p.x, y: p.y,
+            wallId: w.id, areaM2,
+            xFromCm, xToCm, hFromCm, hToCm,
+            heightCm: hToCm - hFromCm,
+            phase: "progetto",
+          }],
         }));
+        setSelected({ kind: "demolitions", id: newId });
+        if (typeof window !== "undefined" && window.console) console.info("Demolizione rivestimento creata: regola posizione e dimensioni nel pannello a destra");
       }
       return;
     }
@@ -619,6 +643,15 @@ export default function Canvas2D({
       setDemoAreaDraft([]);
       return;
     }
+    if (tool === "package-area") {
+      if (demoAreaDraft.length >= 3) {
+        const poly = demoAreaDraft.slice();
+        setProject((prj) => ({ ...prj, packageArea: { polygon: poly } }));
+      }
+      setDemoAreaDraft([]);
+      setTool("select");
+      return;
+    }
     if (tool === "room") {
       if (pendingRoomClickRef.current) { clearTimeout(pendingRoomClickRef.current); pendingRoomClickRef.current = null; }
       if (roomDraft.length >= 3) {
@@ -668,7 +701,7 @@ export default function Canvas2D({
 
   const isPlacementTool = ["door", "window", "wall", "wall-cartongesso", "room", "item", "text", "stairs",
     "demolish-wall", "demolish-wall-partial", "demolish-floor", "demolish-floor-partial", "demolish-rivestimento", "controsoffitto",
-    "electrical", "plumbing", "gas", "hvac", "tiling"].includes(tool);
+    "electrical", "plumbing", "gas", "hvac", "tiling", "package-area"].includes(tool);
 
   const allWalls = project.walls || [];
   // Walls visibili sul canvas (filtrati per VM)
@@ -1130,14 +1163,29 @@ export default function Canvas2D({
           );
         })}
 
-        {/* demolizione rivestimento per parete singola: linea arancione tratteggiata sul muro */}
+        {/* demolizione rivestimento per parete singola: rettangolo arancione tratteggiato (zona precisa) */}
         {(project.demolitions || []).filter((d) => d.kind === "rivestimento" && d.wallId).map((d) => {
           const w = (project.walls || []).find((wx) => wx.id === d.wallId);
           if (!w) return null;
+          const lenCm = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
+          const xFrom = d.xFromCm != null ? d.xFromCm : 0;
+          const xTo = d.xToCm != null ? d.xToCm : Math.round(lenCm);
+          const tFrom = Math.max(0, Math.min(1, lenCm > 0 ? xFrom / lenCm : 0));
+          const tTo = Math.max(0, Math.min(1, lenCm > 0 ? xTo / lenCm : 1));
+          const dx = w.x2 - w.x1, dy = w.y2 - w.y1;
+          const x1 = w.x1 + tFrom * dx, y1 = w.y1 + tFrom * dy;
+          const x2 = w.x1 + tTo * dx, y2 = w.y1 + tTo * dy;
+          const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
+          const isSel = selected?.kind === "demolitions" && selected.id === d.id;
           return (
-            <g key={`demo-riv-wall-${d.id}`} pointerEvents="none">
-              <line x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2} stroke="#F97316" strokeWidth={(w.thickness || 10) + 6} strokeDasharray="3,3" opacity="0.7" strokeLinecap="butt" />
-              <text x={(w.x1 + w.x2) / 2} y={(w.y1 + w.y2) / 2 - 14} textAnchor="middle" fontSize="9" fontFamily="JetBrains Mono" fontWeight="700" fill="#F97316">DEMO RIV. h={d.heightCm || 200}cm</text>
+            <g key={`demo-riv-wall-${d.id}`}
+              onMouseDown={(ev) => { if (isPlacementTool) return; ev.stopPropagation(); handleElementClick("demolitions", d.id); }}
+              style={{ cursor: isPlacementTool ? "crosshair" : "pointer" }}
+              data-testid={`demolition-rivestimento-${d.id}`}>
+              <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#F97316" strokeWidth={(w.thickness || 10) + 6} strokeDasharray="3,3" opacity={isSel ? 0.95 : 0.7} strokeLinecap="butt" />
+              <text x={cx} y={cy - 14} textAnchor="middle" fontSize="9" fontFamily="JetBrains Mono" fontWeight="700" fill="#F97316">
+                DEMO RIV. {Math.round(xTo - xFrom)}×{Math.round((d.hToCm != null ? d.hToCm : (d.heightCm || 200)) - (d.hFromCm || 0))}cm @ h{d.hFromCm || 0}cm
+              </text>
             </g>
           );
         })}
@@ -1209,6 +1257,29 @@ export default function Canvas2D({
           </g>
         )}
 
+        {/* package area draft */}
+        {tool === "package-area" && demoAreaDraft.length > 0 && (
+          <g pointerEvents="none">
+            <polyline points={[...demoAreaDraft, cursor].map((p) => `${p.x},${p.y}`).join(" ")} fill="#10B981" fillOpacity="0.10" stroke="#10B981" strokeWidth="2" strokeDasharray="5,4" />
+            {demoAreaDraft.map((p, i) => (
+              <circle key={i} cx={p.x} cy={p.y} r="6" fill="#10B981" stroke="white" strokeWidth="2" />
+            ))}
+          </g>
+        )}
+
+        {/* package area persistente */}
+        {project.packageArea?.polygon && project.packageArea.polygon.length >= 3 && (
+          <g pointerEvents="none">
+            <polygon points={project.packageArea.polygon.map((p) => `${p.x},${p.y}`).join(" ")} fill="#10B981" fillOpacity="0.06" stroke="#10B981" strokeWidth="1.5" strokeDasharray="6,4" />
+            {(() => {
+              const a = polygonArea(project.packageArea.polygon) / 10000;
+              const cx = project.packageArea.polygon.reduce((s, p) => s + p.x, 0) / project.packageArea.polygon.length;
+              const cy = project.packageArea.polygon.reduce((s, p) => s + p.y, 0) / project.packageArea.polygon.length;
+              return <text x={cx} y={cy} fontSize="11" fontFamily="JetBrains Mono" fontWeight="700" fill="#047857" textAnchor="middle">AREA PACCHETTO {a.toFixed(2)} m²</text>;
+            })()}
+          </g>
+        )}
+
         {/* crosshair */}
         {tool !== "select" && tool !== "delete" && (
           <g pointerEvents="none">
@@ -1236,7 +1307,8 @@ export default function Canvas2D({
       {tool === "demolish-wall-partial" && <div className="absolute top-3 left-3 bg-rose-700 text-white px-3 py-1.5 text-xs mono">demoliz. muro parziale · click sul muro · poi modifica Da/A/Altezza nel pannello</div>}
       {tool === "demolish-floor" && <div className="absolute top-3 left-3 bg-rose-600 text-white px-3 py-1.5 text-xs mono">demolisci pavimento · click in stanza (totale)</div>}
       {tool === "demolish-floor-partial" && <div className="absolute top-3 left-3 bg-rose-700 text-white px-3 py-1.5 text-xs mono">demoliz. pavimento area · click vertici, doppio click chiude</div>}
-      {tool === "demolish-rivestimento" && <div className="absolute top-3 left-3 bg-orange-500 text-white px-3 py-1.5 text-xs mono">demoliz. rivestimento parete · click sul muro</div>}
+      {tool === "demolish-rivestimento" && <div className="absolute top-3 left-3 bg-orange-500 text-white px-3 py-1.5 text-xs mono">demoliz. rivestimento · click sul muro · poi regola sx/dx/h-da-terra/altezza nel pannello</div>}
+      {tool === "package-area" && <div className="absolute top-3 left-3 bg-emerald-700 text-white px-3 py-1.5 text-xs mono">area pacchetto · click vertici, doppio click chiude · ricalcola mq automatico</div>}
       {tool === "stairs" && <div className="absolute top-3 left-3 bg-amber-700 text-white px-3 py-1.5 text-xs mono">scala · {stairsKind || "muratura"} · click per posizionare</div>}
       {tool === "controsoffitto" && <div className="absolute top-3 left-3 bg-teal-700 text-white px-3 py-1.5 text-xs mono">controsoffitto · click su stanza per attivare/disattivare</div>}
       {tool === "electrical" && <div className="absolute top-3 left-3 bg-purple-700 text-white px-3 py-1.5 text-xs mono">elettrico · {electricalKind || "presa"}</div>}

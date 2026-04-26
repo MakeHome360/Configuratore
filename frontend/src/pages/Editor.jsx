@@ -18,7 +18,7 @@ import {
   ChevronRight, ChevronLeft, Hammer, Layers, Zap, Droplet, Flame, Wind, Grid3x3,
   Package, Upload, FileImage, FileText, Type, RotateCcw, RotateCw, Receipt,
 } from "lucide-react";
-import { estimateProject, estimateProjectV2, fmtEuro, fmtEuro2, fmtNum, emptyProjectData, uid, polygonArea, polygonPerimeter, splitRoomByWall } from "../editor/utils";
+import { estimateProject, estimateProjectV2, fmtEuro, fmtEuro2, fmtNum, emptyProjectData, uid, polygonArea, polygonPerimeter, splitRoomByWall, buildPackageRef } from "../editor/utils";
 import { ProspettoWall, ProspettoInputs, computeInterestingWalls } from "../editor/Prospetti";
 import jsPDF from "jspdf";
 
@@ -41,6 +41,9 @@ const TOOL_GROUPS = [
     { id: "demolish-floor", icon: Hammer, label: "Pavimento totale" },
     { id: "demolish-floor-partial", icon: Hammer, label: "Pavimento area" },
     { id: "demolish-rivestimento", icon: Hammer, label: "Rivestim. parete" },
+  ]},
+  { id: "pacchetto", label: "Pacchetto", tools: [
+    { id: "package-area", icon: Square, label: "Area pacchetto" },
   ]},
   { id: "costruzioni", label: "Costruzioni", tools: [
     { id: "controsoffitto", icon: Layers, label: "Controsoffitto" },
@@ -280,6 +283,20 @@ export default function Editor() {
   const estimate = useMemo(() => (project ? estimateProject(project.data, catalog) : null), [project, catalog]);
   const estimateV2 = useMemo(() => (project ? estimateProjectV2(project.data, voci, project.data?.packageRef) : null), [project, voci]);
 
+  // Auto-ricalcola packageRef quando cambiano stanze, packageArea o pacchetto: mq_inclusi e voci_incluse devono restare sincronizzate
+  useEffect(() => {
+    if (!project?.data?.packageRef) return;
+    const pkg = packages.find((p) => p.id === project.data.packageRef.package_id);
+    if (!pkg) return;
+    const fresh = buildPackageRef(pkg, project.data);
+    if (!fresh) return;
+    const cur = project.data.packageRef;
+    if (Math.abs((cur.mq_inclusi || 0) - fresh.mq_inclusi) > 0.01 || Math.abs((cur.package_base_total || 0) - fresh.package_base_total) > 0.01) {
+      setProjectData((p) => ({ ...p, packageRef: fresh }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.data?.rooms, project?.data?.packageArea, project?.data?.packageRef?.package_id, packages]);
+
   // Carica preventivo collegato (se esiste) per mostrare il confronto budget
   const [linkedPreventivo, setLinkedPreventivo] = useState(null);
   useEffect(() => {
@@ -299,19 +316,23 @@ export default function Editor() {
     const totale = estimateV2.total;
     const iva = totale * 0.10;
     const cliente_default = project?.cliente || { nome: project?.name || "Cliente CAD" };
+    const pkgRef = project.data?.packageRef;
     const body = {
       tipo: "cad",
       cliente: cliente_default,
-      package_id: project.data?.packageRef?.package_id || null,
-      mq: project.data?.packageRef?.mq_inclusi || 0,
+      package_id: pkgRef?.package_id || null,
+      mq: pkgRef?.mq_inclusi || estimateV2.mq_progetto || 0,
       items, optional: [],
       note: `Preventivo generato dal CAD · Progetto: ${project.name}`,
       sconto_pct: 0, sconto_eur: 0, iva_pct: 10,
       totale_iva_escl: Math.round(totale * 100) / 100,
       totale_iva_incl: Math.round((totale + iva) * 100) / 100,
       project_id: project.id,
-      package_base_total: project.data?.packageRef?.package_base_total || 0,
+      package_base_total: pkgRef?.package_base_total || 0,
+      package_price_per_m2: pkgRef?.price_per_m2 || 0,
+      package_name: pkgRef?.name || null,
       extra_total: estimateV2.extra_total,
+      included_total: estimateV2.included_total,
     };
     try {
       let saved;
@@ -582,7 +603,7 @@ export default function Editor() {
           <div className="grid grid-cols-2 border-b border-zinc-200 sticky top-0 bg-white z-10">
             {TOOL_GROUPS.map((g) => (
               <button key={g.id} onClick={() => setActiveGroup(g.id)} className={`text-[10px] uppercase tracking-wider py-2 ${activeGroup === g.id ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-50 border-b border-transparent"}`} data-testid={`tool-group-${g.id}`}>
-                {g.id === "base" ? "Base" : g.id === "demo" ? "Demoliz." : g.id === "impianti" ? "Impianti" : "Finiture"}
+                {g.label}
               </button>
             ))}
           </div>
@@ -763,28 +784,20 @@ function PackagePicker({ project, setProjectData, packages, voci }) {
     }
     const pkg = packages.find((p) => p.id === pkgId);
     if (!pkg) return;
-    // Estimate quantità incluse based on pkg.mq_inclusi (default 80) and standard ratios
-    const mq = pkg.mq_inclusi || 80;
-    const voci_incluse = [
-      { key: "pavimento_piastrelle", qty_inclusa: mq * 0.6 },
-      { key: "pavimento_parquet", qty_inclusa: mq * 0.4 },
-      { key: "pittura_pareti", qty_inclusa: mq * 2.5 },
-      { key: "battiscopa", qty_inclusa: mq * 0.6 },
-      { key: "impianto_elettrico_mq", qty_inclusa: mq },
-      { key: "impianto_idraulico_mq", qty_inclusa: 8 },
-      { key: "porta_interna", qty_inclusa: 4 },
-      { key: "finestre_pvc", qty_inclusa: 3 },
-      { key: "demolizione_muro", qty_inclusa: 10 },
-      { key: "rivestimento_piastrelle", qty_inclusa: 18 },
-    ];
-    setProjectData((p) => ({ ...p, packageRef: { package_id: pkg.id, name: pkg.name, mq_inclusi: mq, price_per_m2: pkg.price_per_m2 || 0, package_base_total: Math.round((pkg.price_per_m2 || 0) * mq * 100) / 100, voci_incluse } }));
+    const newRef = buildPackageRef(pkg, project.data);
+    if (!newRef || newRef.mq_inclusi <= 0) {
+      toast.error("Disegna prima le stanze di progetto (o l'area pacchetto) per calcolare i mq");
+      return;
+    }
+    setProjectData((p) => ({ ...p, packageRef: newRef }));
+    toast.success(`${pkg.name}: ${newRef.mq_inclusi.toFixed(2)} mq × ${newRef.price_per_m2}€/mq = ${newRef.package_base_total.toFixed(2)}€`);
   };
   return (
     <Select value={ref?.package_id || "_none"} onValueChange={handleSelect}>
       <SelectTrigger className="rounded-sm h-8 w-44" data-testid="package-picker"><SelectValue placeholder="Pacchetto…" /></SelectTrigger>
       <SelectContent>
         <SelectItem value="_none">Senza pacchetto</SelectItem>
-        {packages.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}{p.mq_inclusi ? ` · ${p.mq_inclusi}mq` : ""}</SelectItem>)}
+        {packages.map((p) => <SelectItem key={p.id} value={p.id}>{p.name} · {p.price_per_m2}€/mq</SelectItem>)}
       </SelectContent>
     </Select>
   );
@@ -1091,6 +1104,69 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode }) {
             {[0, 90, 180, 270].map((a) => <button key={a} onClick={() => updateObj({ rotation: a })} className="flex-1 text-[10px] mono py-1 border border-zinc-300 hover:bg-zinc-50">{a}°</button>)}
           </div>
         </div>
+      </div>
+    );
+  }
+  if (kind === "demolitions") {
+    if (obj.kind !== "rivestimento") {
+      return (
+        <div className="space-y-3">
+          <div className="label-kicker">Demolizione · {obj.kind}</div>
+          <div className="text-xs mono text-zinc-500">Area: {fmtNum(obj.areaM2 || 0, 2)} m²</div>
+          <button onClick={() => setProject((p) => ({ ...p, demolitions: (p.demolitions || []).filter((x) => x.id !== selected.id) }))} className="text-xs text-rose-600 underline" data-testid="demo-delete">Rimuovi demolizione</button>
+        </div>
+      );
+    }
+    const wall = (project.walls || []).find((w) => w.id === obj.wallId);
+    const lenCm = wall ? Math.round(Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1)) : 0;
+    const xFrom = obj.xFromCm != null ? obj.xFromCm : 0;
+    const xTo = obj.xToCm != null ? obj.xToCm : lenCm;
+    const hFrom = obj.hFromCm || 0;
+    const hTo = obj.hToCm != null ? obj.hToCm : (obj.heightCm || 200);
+    const recompute = (patch) => {
+      const merged = { xFromCm: xFrom, xToCm: xTo, hFromCm: hFrom, hToCm: hTo, ...patch };
+      const xfC = Math.max(0, Math.min(lenCm, merged.xFromCm));
+      const xtC = Math.max(xfC, Math.min(lenCm, merged.xToCm));
+      const hfC = Math.max(0, Math.min(400, merged.hFromCm));
+      const htC = Math.max(hfC, Math.min(400, merged.hToCm));
+      const area = ((xtC - xfC) / 100) * ((htC - hfC) / 100);
+      updateObj({ xFromCm: xfC, xToCm: xtC, hFromCm: hfC, hToCm: htC, areaM2: area, heightCm: htC - hfC });
+    };
+    return (
+      <div className="space-y-4">
+        <div className="label-kicker text-orange-700">Demolizione rivestimento (zona)</div>
+        <div className="bg-orange-50 border border-orange-200 p-2 text-xs text-orange-900">
+          Definisci la zona di rivestimento da demolire sulla parete (es. cucina a 100cm da terra).
+          Lunghezza parete: <b>{lenCm} cm</b>.
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label className="text-[10px] text-zinc-500">Da sx (cm)</Label>
+            <Input type="number" min="0" max={lenCm} value={xFrom} onChange={(e) => recompute({ xFromCm: parseInt(e.target.value) || 0 })} className="rounded-sm h-9 mt-1 mono" data-testid="demo-riv-xfrom" />
+          </div>
+          <div>
+            <Label className="text-[10px] text-zinc-500">A (cm da sx)</Label>
+            <Input type="number" min="0" max={lenCm} value={xTo} onChange={(e) => recompute({ xToCm: parseInt(e.target.value) || 0 })} className="rounded-sm h-9 mt-1 mono" data-testid="demo-riv-xto" />
+          </div>
+        </div>
+        <div className="text-[10px] mono text-zinc-500">Larghezza demolizione: <b>{Math.max(0, xTo - xFrom)} cm</b> · da dx: <b>{Math.max(0, lenCm - xTo)} cm</b></div>
+        <Separator />
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label className="text-[10px] text-zinc-500">H da terra (cm)</Label>
+            <Input type="number" min="0" max="400" value={hFrom} onChange={(e) => recompute({ hFromCm: parseInt(e.target.value) || 0 })} className="rounded-sm h-9 mt-1 mono" data-testid="demo-riv-hfrom" />
+          </div>
+          <div>
+            <Label className="text-[10px] text-zinc-500">Fino a (cm da terra)</Label>
+            <Input type="number" min="0" max="400" value={hTo} onChange={(e) => recompute({ hToCm: parseInt(e.target.value) || 0 })} className="rounded-sm h-9 mt-1 mono" data-testid="demo-riv-hto" />
+          </div>
+        </div>
+        <div className="text-[10px] mono text-zinc-500">Altezza demolizione: <b>{Math.max(0, hTo - hFrom)} cm</b></div>
+        <Separator />
+        <div className="bg-orange-100 border border-orange-300 p-2 text-xs">
+          <span className="mono">Area demolita: <b>{fmtNum(((Math.max(0, xTo - xFrom)) * (Math.max(0, hTo - hFrom))) / 10000, 2)} m²</b></span>
+        </div>
+        <button onClick={() => setProject((p) => ({ ...p, demolitions: (p.demolitions || []).filter((x) => x.id !== selected.id) }))} className="text-xs text-rose-600 underline" data-testid="demo-riv-delete">Rimuovi demolizione</button>
       </div>
     );
   }

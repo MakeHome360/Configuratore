@@ -68,6 +68,44 @@
 - **negozi / subappaltatori / impostazioni / dati_azienda**
 - **materials / projects** (CAD)
 
+## Changelog (Feb 2026 — round 11: pacchetti dinamici + fix critici Editor)
+
+**FRONTEND (Editor.jsx + Canvas2D.jsx + utils.js):**
+- **FIX CRITICO crash demolizione muro parziale**: `setDrag({kind:"demo-partial-drag", ...})` non passava `start: p`. `onMouseMove` accedeva `drag.start.x` → undefined → crash. Aggiunto `start: p` + fallback difensivo `drag.start || p`.
+- **FIX label menu CAD**: TOOL_GROUPS rendering controllava `g.id === "demo"` mentre l'id reale è `demolizioni`/`costruzioni`/`elettrico`/`termo`. Tutte le label apparivano come "Finiture". Sostituito con `g.label`. Ora visualizza: Base / Demolizioni / Pacchetto / Costruzioni / Imp.Elettrico / Imp.Termo-Idraulico.
+- **NUOVA logica pacchetti V2 (richiesta utente)**: 
+  - Eliminato hardcoded `mq=80` e `voci_incluse` inventate. 
+  - Nuovo `buildPackageRef(pkg, projectData)` in utils.js: calcola `mq_progetto` come somma stanze in stato di progetto (o area del nuovo `packageArea` polygon se settato). 
+  - `package_base_total = price_per_m2 × mq_progetto` (es. BASIC 380€/m² × 28m² = 10.640€).
+  - `voci_incluse` derivate da `package.items[]` con `qty_inclusa` calcolata in base a `qty_mode`: `mq` → ratio×mq, `fissa`/`pz` → qty_value (es. 1 caldaia inclusa).
+  - `extra_total` = quantità eccedenti `qty_inclusa` + voci NON incluse nel pacchetto (al 100% prezzo voci_backoffice).
+  - Inverse map `NAME_TO_CAD_KEY` per matchare voce backoffice → CAD key.
+- **NUOVO tool "Area pacchetto"** (gruppo dedicato): l'utente disegna un poligono libero per delimitare l'area su cui calcolare il pacchetto (es. casa 200m² ma ristrutturazione solo 100m²). Render verde tratteggiato con label "AREA PACCHETTO X m²". Click → click → doppio click chiude.
+- **Auto-recompute packageRef** via useEffect quando cambiano `rooms`, `packageArea` o `package_id`: mq e forfait restano sempre sincronizzati.
+- **Demolizione rivestimento ZONA precisa**: era full-wall × altezza prompt. Ora click sul muro crea una demolizione default che si modifica nel pannello proprietà con: posizione orizzontale (cm sx, cm dx) + altezza da terra (cm) + altezza demolizione (cm). Render rettangolo arancione tratteggiato con label `DEMO RIV. WxH @ h-da-terra`. Calcolo area precisa.
+- **PropertiesPanel kind="demolitions"** aggiunto: editor zone rivestimento con 4 input numerici e calcolo area live.
+- **Preventivi.jsx CAD-aware**: nuova label "CAD" per `tipo=cad`, bottone modifica reindirizza al CAD editor del progetto collegato (non più ai wizard pacchetto).
+
+**FRONTEND (AppLayout):**
+- **Rimosso "Commesse"** dalla sidebar (era ridondante con Gestione Cantieri, su richiesta utente). Resta solo "Gestione Cantieri" in sezione Cantieri.
+- **Estesi ruoli Gestione Cantieri** ad admin/gestore/venditore/user: tutti vedono i cantieri pertinenti.
+- **GestoreCantieri unificato**: KPI (totali/in corso/fatturato/incassato/da convalidare), filtri stato, lista cantieri con badge da convalidare e link al dettaglio. Sostituisce funzionalmente la pagina Commesse.
+
+**BACKEND (routes_round10.py):**
+- `/gestore/cantieri` ora accessibile anche a venditore/user (con filtri appropriati): admin/venditore/user vedono tutto, gestore solo i propri.
+
+**BUSINESS LOGIC: PACCHETTO**
+- Trial-split già correttamente raggruppato (1 climatizzatore_trial per gruppo, NON 3× monosplit + 1 UE) — verificato in `estimateProjectV2` linee 344-368.
+- PreventivoIn (model_config extra=allow) accetta `package_base_total`, `extra_total`, `package_name`, `package_price_per_m2` → preservati al riapertura del preventivo CAD (totale_iva_incl include forfait + extras correttamente).
+
+**Tests:**
+- Curl test verificato: POST /preventivi tipo=cad con package_base_total=10640, extra_total=13057 → totale_iva_escl=23697 salvato e riletto correttamente.
+- Browser test verificato: BASIC su 28m² → forfait 10.640€ + extras 13.057€ = 23.697€ totale, console pulita.
+- Demolizione muro parziale drag su muro: nessun crash, demolito_partial.from/to aggiornati live, preventivo aggiunge "Demolizione muri" voce.
+- Backend: 90/93 pytest passing (3 test obsoleti per count voci/materiali pre-seed-update, non regressioni).
+
+
+
 ## Changelog (Feb 2026 — round 10: Portale Cliente + Subappaltatori + Gestore Cantieri + RBAC)
 
 **BACKEND** (nuovo modulo /app/backend/routes_round10.py, 480 LOC):

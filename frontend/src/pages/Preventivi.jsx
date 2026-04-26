@@ -7,7 +7,7 @@ import { FilePlus2, Eye, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 const PKG_NAMES = { "pkg-basic": "BASIC", "pkg-smart": "SMART", "pkg-premium": "PREMIUM", "pkg-elite": "ELITE" };
-const TIPO_LABEL = { pacchetto: "Pacchetto", bagno: "Solo Bagno", composite: "Composite", infissi: "Solo Infissi" };
+const TIPO_LABEL = { pacchetto: "Pacchetto", bagno: "Solo Bagno", composite: "Composite", infissi: "Solo Infissi", cad: "CAD" };
 const ROUTES = { pacchetto: "/preventivopacchetto", bagno: "/preventivobagno", composite: "/preventivocomposite", infissi: "/preventivoinfissi" };
 
 export default function Preventivi() {
@@ -94,7 +94,7 @@ export default function Preventivi() {
                   <td className="px-4 py-3 text-xs text-zinc-500">{new Date(p.created_at).toLocaleDateString("it-IT")}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="inline-flex gap-1">
-                      <button className="p-1.5 rounded hover:bg-zinc-100" onClick={() => nav(`${ROUTES[p.tipo] || "/preventivopacchetto"}/${p.id}`)} title="Modifica" data-testid={`prev-open-${p.id}`}>
+                      <button className="p-1.5 rounded hover:bg-zinc-100" onClick={() => p.tipo === "cad" ? (p.project_id ? nav(`/editor/${p.project_id}`) : toast.error("Progetto CAD collegato non trovato")) : nav(`${ROUTES[p.tipo] || "/preventivopacchetto"}/${p.id}`)} title={p.tipo === "cad" ? "Apri nel CAD" : "Modifica"} data-testid={`prev-open-${p.id}`}>
                         <Pencil className="h-4 w-4 text-zinc-600" />
                       </button>
                       <button className="p-1.5 rounded hover:bg-emerald-50" onClick={() => openOrCreateProgetto(p)} title={p.project_id ? "Apri progettazione collegata" : "Crea progettazione da questo preventivo"} data-testid={`prev-cad-${p.id}`}>

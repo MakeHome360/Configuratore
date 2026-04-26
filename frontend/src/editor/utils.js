@@ -140,6 +140,66 @@ export const VOCE_MAP = {
   scala_legno: "Scala in legno",
 };
 
+// Inverse map: nome voce backoffice (lowercase) → CAD key
+export const NAME_TO_CAD_KEY = Object.fromEntries(
+  Object.entries(VOCE_MAP).map(([k, v]) => [(v || "").trim().toLowerCase(), k])
+);
+
+/**
+ * Builds a packageRef for estimateProjectV2 from a backend package and a project.
+ * mq_progetto = somma stanze STATO DI PROGETTO (e quelle di fatto con override progetto)
+ * Se project.data.packageArea è settato (poligono), mq_progetto = area del poligono.
+ * voci_incluse: per ogni package.items[] calcola qty_inclusa in base a qty_mode.
+ */
+export function buildPackageRef(pkg, projectData) {
+  if (!pkg || !projectData) return null;
+  // 1. Calcola mq base
+  let mq = 0;
+  const pa = projectData.packageArea;
+  if (pa && Array.isArray(pa.polygon) && pa.polygon.length >= 3) {
+    mq = polygonArea(pa.polygon) / 10000;
+  } else {
+    // Somma stanze in stato di progetto (phase=progetto OR fatto con override)
+    (projectData.rooms || []).forEach((r) => {
+      const isFatto = (r.phase || "fatto") === "fatto";
+      if (!isFatto || (r.progetto && (r.progetto.floorMaterial || r.progetto.wallMaterial || r.progetto.controsoffitto || r.progetto.electrical || r.progetto.plumbing))) {
+        mq += polygonArea(r.points) / 10000;
+      }
+    });
+  }
+  mq = round2(mq);
+  const price = pkg.price_per_m2 || 0;
+  const package_base_total = round2(price * mq);
+  // 2. Calcola voci incluse
+  const voci_incluse = [];
+  (pkg.items || []).forEach((it) => {
+    const cadKey = NAME_TO_CAD_KEY[(it.name || "").trim().toLowerCase()];
+    if (!cadKey) return; // voce non mappata sul CAD (es. CILA, direzione lavori)
+    let qty_inclusa = 0;
+    if (it.qty_mode === "fissa" || it.qty_mode === "fixed" || it.qty_mode === "pz") {
+      qty_inclusa = it.qty_value || it.qty_ratio || 0;
+    } else {
+      // mq | mqxcoeff | default
+      qty_inclusa = (it.qty_ratio || 0) * mq;
+    }
+    voci_incluse.push({
+      key: cadKey,
+      qty_inclusa: round2(qty_inclusa),
+      voce_id: it.voce_id,
+      ref_unit_price: it.unit_price_pkg || it.prezzo_rivendita || 0,
+    });
+  });
+  return {
+    package_id: pkg.id,
+    name: pkg.name,
+    price_per_m2: price,
+    mq_inclusi: mq,
+    package_base_total,
+    voci_incluse,
+    package_area_polygon: pa?.polygon || null,
+  };
+}
+
 // Ordine lavorazioni basato su listinoMh.pdf:
 // 1. Modulistica/Cantiere → 2. Demolizioni/Muratura → 3-4. Impianti idraulici/elettrici
 // → 5. Intonaci/rasatura/decorazioni → 6. Serramenti → 7. Collaudo/Pulizia
@@ -515,7 +575,7 @@ export function computeRealisticExtras(recommendedPkg, alternativePkg, esigenze,
   return { extras, total: Math.round(total * 100) / 100 };
 }
 
-const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
 
 export const fmtEuro = (n) =>
   new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n || 0);

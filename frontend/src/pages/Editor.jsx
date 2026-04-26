@@ -13,7 +13,7 @@ import { Switch } from "../components/ui/switch";
 import { Separator } from "../components/ui/separator";
 import { Textarea } from "../components/ui/textarea";
 import {
-  MousePointer2, Minus, Square, DoorClosed, RectangleHorizontal, Sofa, Trash2,
+  MousePointer2, Minus, Square, DoorClosed, RectangleHorizontal, Sofa, Trash2, Plus,
   Save, Download, Sparkles, Eye, EyeOff, Box, Ruler, X, Home, Bath, ChefHat, Bed,
   ChevronRight, ChevronLeft, Hammer, Layers, Zap, Droplet, Flame, Wind, Grid3x3,
   Package, Upload, FileImage, FileText, Type, RotateCcw, RotateCw, Receipt,
@@ -261,7 +261,9 @@ export default function Editor() {
       { x: startX, y: startY }, { x: startX + w, y: startY },
       { x: startX + w, y: startY + h }, { x: startX, y: startY + h },
     ];
-    const wallKind = phase === "fatto" ? "esistente" : "nuovo";
+    // Le quick-room rappresentano stanze ESISTENTI della casa (schema base): muri "esistenti".
+    // Solo il tool wall esplicito disegna muri "nuovi" (di costruzione).
+    const wallKind = "esistente";
     const walls = [
       { id: wallIds[0], x1: corners[0].x, y1: corners[0].y, x2: corners[1].x, y2: corners[1].y, thickness: 10, kind: wallKind, phase },
       { id: wallIds[1], x1: corners[1].x, y1: corners[1].y, x2: corners[2].x, y2: corners[2].y, thickness: 10, kind: wallKind, phase },
@@ -275,7 +277,7 @@ export default function Editor() {
       floorMaterial: q.floorMaterial || "floor-ceramic",
       wallMaterial: q.wallMaterial || "wall-paint",
       ceilingMaterial: "ceil-paint",
-      electrical: true,
+      electrical: false,
       plumbing: !!q.plumbing,
       phase,
     };
@@ -985,6 +987,8 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
           </div>
         </div>
         <Separator className="my-6" />
+        <CatalogoVociPanel project={project} setProject={setProject} voci={voci} />
+        <Separator className="my-6" />
         <div className="text-xs text-zinc-500 mono leading-relaxed">Seleziona un elemento sulla planimetria per modificarne le proprietà.</div>
       </div>
     );
@@ -1216,6 +1220,12 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
             {[0, 90, 180, 270].map((a) => <button key={a} onClick={() => updateObj({ rotation: a })} className="flex-1 text-[10px] mono py-1 border border-zinc-300 hover:bg-zinc-50">{a}°</button>)}
           </div>
         </div>
+        <Separator />
+        <div className="bg-amber-50 border border-amber-200 p-2 space-y-1">
+          <Label className="text-xs uppercase tracking-widest text-amber-800">Prezzo a corpo (€)</Label>
+          <Input type="number" step="0.01" min="0" value={obj.priceLump || ""} onChange={(e) => { const n = parseFloat(e.target.value); updateObj({ priceLump: isNaN(n) || n <= 0 ? null : n }); }} placeholder="lascia vuoto per usare voce backoffice" className="rounded-sm h-9 mt-1 mono" data-testid="stairs-price-lump" />
+          <div className="text-[10px] text-zinc-500 mono leading-relaxed">Quando impostato, sostituisce il prezzo standard ed è SEMPRE conteggiato come voce extra (anche senza pacchetto).</div>
+        </div>
       </div>
     );
   }
@@ -1344,6 +1354,99 @@ function ColorOverridePicker({ label, value, onChange, testid }) {
   );
 }
 
+// Mappa categoria backoffice → macro-gruppo CAD (Muratura/Impianti/Serramenti/Finiture)
+const CAT_TO_GRUPPO = {
+  muratura: "Muratura", demolizioni: "Muratura", scale: "Muratura", strutture: "Muratura",
+  impianto_elettrico: "Impianti", elettrico: "Impianti", idraulico: "Impianti", impianto_idraulico: "Impianti", gas: "Impianti", impianto_gas: "Impianti", termo_idraulico: "Impianti", clima: "Impianti", termoidraulico: "Impianti", riscaldamento: "Impianti",
+  serramenti: "Serramenti", infissi: "Serramenti", porte: "Serramenti",
+  finiture: "Finiture", pavimenti: "Finiture", rivestimenti: "Finiture", decorazione: "Finiture", pittura: "Finiture", sanitari: "Finiture", controsoffitto: "Finiture",
+};
+function gruppoOf(voce) {
+  const c = (voce.category || voce.categoria || "").toLowerCase();
+  return CAT_TO_GRUPPO[c] || "Finiture";
+}
+
+function CatalogoVociPanel({ project, setProject, voci }) {
+  const [filter, setFilter] = useState("");
+  const [openGruppo, setOpenGruppo] = useState("Muratura");
+  const manualItems = project.manualItems || [];
+  const setManualItems = (next) => setProject((p) => ({ ...p, manualItems: typeof next === "function" ? next(p.manualItems || []) : next }));
+  const addVoce = (voce) => {
+    const newItem = {
+      id: uid(),
+      voce_id: voce.id,
+      name: voce.name,
+      unit: voce.unit || "pz",
+      qty: 1,
+      unit_price: voce.prezzo_rivendita || voce.unit_price || 0,
+      category: voce.category || "",
+    };
+    setManualItems((arr) => [...arr, newItem]);
+    toast.success(`+ ${voce.name}`);
+  };
+  const updateMI = (id, patch) => setManualItems((arr) => arr.map((x) => x.id === id ? { ...x, ...patch } : x));
+  const removeMI = (id) => setManualItems((arr) => arr.filter((x) => x.id !== id));
+  const grouped = (voci || []).reduce((acc, v) => {
+    const g = gruppoOf(v);
+    (acc[g] = acc[g] || []).push(v);
+    return acc;
+  }, {});
+  const groups = ["Muratura", "Impianti", "Serramenti", "Finiture"];
+  const filtFn = (v) => !filter || (v.name || "").toLowerCase().includes(filter.toLowerCase());
+  return (
+    <div className="space-y-3">
+      <div className="label-kicker">Catalogo voci backoffice</div>
+      <div className="text-[10px] text-zinc-500 mono leading-relaxed">Aggiungi qualsiasi voce dal catalogo come riga del preventivo. Modifica quantità o prezzo dopo l'aggiunta.</div>
+      <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Cerca voce…" className="rounded-sm h-8 mono text-xs" data-testid="catalog-voci-search" />
+      <div className="space-y-1">
+        {groups.map((g) => {
+          const list = (grouped[g] || []).filter(filtFn);
+          if (list.length === 0) return null;
+          const isOpen = openGruppo === g;
+          return (
+            <div key={g} className="border border-zinc-200 rounded-sm">
+              <button onClick={() => setOpenGruppo(isOpen ? "" : g)} className="w-full px-2 py-1.5 flex items-center justify-between text-xs uppercase tracking-widest font-semibold bg-zinc-50 hover:bg-zinc-100" data-testid={`gruppo-${g}`}>
+                <span>{g}</span><span className="mono text-zinc-500">{list.length}</span>
+              </button>
+              {isOpen && (
+                <div className="max-h-72 overflow-y-auto divide-y divide-zinc-100">
+                  {list.map((v) => (
+                    <button key={v.id} onClick={() => addVoce(v)} className="w-full text-left px-2 py-1.5 hover:bg-emerald-50 flex items-center gap-2 text-xs" data-testid={`add-voce-${v.id}`}>
+                      <span className="flex-1 truncate">{v.name}</span>
+                      <span className="text-zinc-400 mono text-[10px]">{fmtEuro(v.prezzo_rivendita || v.unit_price || 0)}/{v.unit}</span>
+                      <Plus className="h-3 w-3 text-emerald-600" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {manualItems.length > 0 && (
+        <div className="bg-emerald-50 border border-emerald-200 p-2 rounded-sm space-y-2 mt-3">
+          <div className="label-kicker text-emerald-800">Voci aggiunte ({manualItems.length})</div>
+          {manualItems.map((mi) => (
+            <div key={mi.id} className="bg-white border border-zinc-200 p-2 text-xs space-y-1">
+              <div className="font-medium truncate">{mi.name}</div>
+              <div className="flex items-center gap-1.5">
+                <Input type="number" step="0.1" min="0" value={mi.qty} onChange={(e) => updateMI(mi.id, { qty: parseFloat(e.target.value) || 0 })} className="rounded-sm h-7 mono w-16" />
+                <span className="text-[10px] text-zinc-500 mono">{mi.unit}</span>
+                <span className="text-[10px] text-zinc-400">×</span>
+                <Input type="number" step="0.01" min="0" value={mi.unit_price_override != null ? mi.unit_price_override : mi.unit_price} onChange={(e) => { const n = parseFloat(e.target.value); updateMI(mi.id, { unit_price_override: isNaN(n) ? null : n }); }} className="rounded-sm h-7 mono flex-1" />
+                <span className="text-[10px] text-zinc-500 mono">€</span>
+                <button onClick={() => removeMI(mi.id)} className="text-rose-600 hover:underline" data-testid={`del-mi-${mi.id}`}><Trash2 className="h-3 w-3" /></button>
+              </div>
+              <Input value={mi.descrizione || ""} onChange={(e) => updateMI(mi.id, { descrizione: e.target.value })} placeholder="descrizione opzionale" className="rounded-sm h-7 mono text-[10px]" />
+              <div className="text-right text-[10px] mono text-zinc-700 font-semibold">{fmtEuro((mi.qty || 0) * (mi.unit_price_override != null ? mi.unit_price_override : mi.unit_price))}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CatalogPanel({ catalog, selectedMaterial, setSelectedMaterial }) {
   const [cat, setCat] = useState("furniture");
   const items = (catalog || []).filter((m) => m.category === cat);
@@ -1419,7 +1522,7 @@ function CostPanelV2({ estimate, packageRef, legacy, linkedPreventivo, saveAsPre
           <table className="w-full text-xs" data-testid="computo-table">
             <thead className="border-b border-zinc-200">
               <tr className="text-left text-zinc-500 uppercase tracking-widest text-[9px]">
-                <th className="py-1.5">Voce</th><th>Q.tà</th><th>Extra</th><th className="text-right">€</th>
+                <th className="py-1.5">Voce</th><th>Q.tà</th>{packageRef && <th>Extra</th>}<th className="text-right">€</th>
               </tr>
             </thead>
             <tbody>
@@ -1427,7 +1530,7 @@ function CostPanelV2({ estimate, packageRef, legacy, linkedPreventivo, saveAsPre
                 <tr key={it.key} className="border-b border-zinc-100" data-testid={`computo-row-${it.key}`}>
                   <td className="py-1.5"><div>{it.name}</div><div className="text-[10px] text-zinc-400 mono">{it.category}</div></td>
                   <td className="mono">{fmtNum(it.qty, 2)} {it.unit}</td>
-                  <td className="mono text-rose-700">{fmtNum(it.qty_extra, 2)}</td>
+                  {packageRef && <td className="mono text-rose-700">{fmtNum(it.qty_extra, 2)}</td>}
                   <td className="mono text-right">{fmtEuro(it.total)}</td>
                 </tr>
               ))}

@@ -68,6 +68,33 @@
 - **negozi / subappaltatori / impostazioni / dati_azienda**
 - **materials / projects** (CAD)
 
+## Changelog (Feb 2026 — round 12.2: catalogo voci CAD + bugfix elettrico/quick-room/extra + scale prezzo a corpo)
+
+**🔴 BUG FIX**
+- **Auto-impianto elettrico nelle quick-room**: rimosso `electrical: true` di default sia in QuickRoom (Editor.jsx:278) che in nuova stanza disegnata a mano (Canvas2D.jsx:694). Ora le stanze nascono SENZA elettrico/idraulico (default false), si attivano esplicitamente.
+- **Muri quick-room contati come "nuova costruzione"**: cambiato `wallKind = phase==="fatto" ? "esistente" : "nuovo"` → `wallKind = "esistente"` SEMPRE per quick-room (rappresentano stanze esistenti della casa). Solo il tool wall esplicito disegna muri "nuovi" di costruzione.
+- **Senza pacchetto: voci NON marcate come "extra"**: la colonna "Extra" del computo metrico è ora visibile SOLO quando c'è un packageRef. Senza pacchetto, ogni voce è semplicemente una riga del preventivo (non extra).
+
+**🆕 CATALOGO VOCI BACKOFFICE NEL CAD**
+- Nuova sezione `CatalogoVociPanel` nel pannello globale (no-element-selected) con TUTTE le voci backoffice raggruppate in **4 macro-categorie**: Muratura / Impianti / Serramenti / Finiture (mapping `CAT_TO_GRUPPO`).
+- Filtro ricerca live + collapse per gruppo + click `+` per aggiungere come riga preventivo.
+- "Voci aggiunte" salvate in `project.data.manualItems = [{voce_id, qty, unit_price, unit_price_override, descrizione}]`.
+- Quantità e prezzo modificabili dopo l'aggiunta. Bottone Trash per rimuovere.
+- estimateProjectV2 aggrega le manualItems come voci a corpo (sempre extras, no qty_inclusa).
+
+**🆕 SCALE: PREZZO A CORPO**
+- Pannello scala selezionata: nuovo input "Prezzo a corpo (€)". Quando settato, sostituisce il prezzo standard della voce backoffice ed è SEMPRE conteggiato come extra (anche senza pacchetto).
+- estimateProjectV2 separato: `lumpItems` per scale con `priceLump > 0`.
+- Scala a chiocciola già esiste come `stairsKind="chiocciola"` nel toolbar Base → Scala.
+
+**Tests:**
+- Browser test verificato: camera aggiunta → 0 voci nel computo (no impianto elettrico forzato) ✅
+- Pannello catalogo: Muratura mostra 29 voci, Serramenti 10, Finiture 40 ✅
+- Click su "Demolizione controsoffitto 25€/m²" → aggiunta come "Voci aggiunte (1)" con qty/prezzo modificabili ✅
+- Lint Python e JS puliti.
+
+
+
 ## Changelog (Feb 2026 — round 12: AI Rendering 3D fotorealistico + miglioramenti pianta architettonica)
 
 **🎨 FRONT A — Pianta 2D in stile architettonico (Archsynth-like)**

@@ -691,7 +691,7 @@ export default function Canvas2D({
           floorMaterial: "floor-ceramic",
           wallMaterial: "wall-paint",
           ceilingMaterial: "ceil-paint",
-          electrical: true,
+          electrical: false,
           plumbing: false,
           phase: VM,
         };

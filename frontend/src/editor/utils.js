@@ -444,6 +444,7 @@ export function estimateProjectV2(project, voci, packageRef) {
   });
   // Scale
   (data.stairs || []).filter(isProgetto).forEach((s) => {
+    if (s.priceLump > 0) return; // gestito separatamente come item a corpo
     if (s.type === "chiocciola") add("scala_chiocciola", 1);
     else if (s.type === "muratura") add("scala_muratura", 1);
     else if (s.type === "legno") add("scala_legno", 1);
@@ -543,6 +544,33 @@ export function estimateProjectV2(project, voci, packageRef) {
     if (da !== db) return da - db;
     return (a.category || "").localeCompare(b.category || "") || a.name.localeCompare(b.name);
   });
+
+  // Voci a CORPO: scale con priceLump + manualItems aggiunti dall'utente dal catalogo voci backoffice.
+  const lumpItems = [];
+  (data.stairs || []).filter(isProgetto).forEach((s) => {
+    if (!(s.priceLump > 0)) return;
+    const t = s.type === "chiocciola" ? "Scala a chiocciola" : s.type === "legno" ? "Scala in legno" : "Scala in muratura";
+    lumpItems.push({
+      key: `stairs-lump-${s.id}`, name: `${t} (a corpo)`, unit: "corpo",
+      qty: 1, qty_inclusa: 0, qty_extra: 1,
+      unit_price: s.priceLump, total: s.priceLump,
+      voce_id: null, category: "Scale", lump: true,
+    });
+  });
+  (data.manualItems || []).forEach((mi) => {
+    const qty = mi.qty || 1;
+    const unitPrice = mi.unit_price_override != null ? mi.unit_price_override : (mi.unit_price || 0);
+    const totalRow = qty * unitPrice;
+    lumpItems.push({
+      key: `manual-${mi.id}`, name: mi.name + (mi.descrizione ? ` · ${mi.descrizione}` : ""),
+      unit: mi.unit || "pz",
+      qty, qty_inclusa: 0, qty_extra: qty,
+      unit_price: unitPrice, total: totalRow,
+      voce_id: mi.voce_id || null, category: mi.category || "Manuale", manual: true,
+    });
+  });
+  lumpItems.forEach((it) => { totalExtra += it.total; });
+  items.push(...lumpItems);
 
   return {
     items,

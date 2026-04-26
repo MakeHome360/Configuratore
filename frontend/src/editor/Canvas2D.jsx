@@ -491,10 +491,20 @@ export default function Canvas2D({
     if (tool === "controsoffitto") {
       const r = findRoomAt(p);
       if (r) {
-        setProject((prj) => ({
-          ...prj,
-          rooms: (prj.rooms || []).map((x) => x.id === r.id ? { ...x, controsoffitto: !x.controsoffitto } : x),
-        }));
+        const isFattoRoom = (r.phase || "fatto") === "fatto";
+        if (VM === "progetto" && isFattoRoom) {
+          // In modalità Progetto su stanza fatto: usa override progetto.controsoffitto
+          setProject((prj) => ({
+            ...prj,
+            rooms: (prj.rooms || []).map((x) => x.id === r.id ? { ...x, progetto: { ...(x.progetto || {}), controsoffitto: !((x.progetto || {}).controsoffitto) } } : x),
+          }));
+        } else {
+          // In modalità Fatto o stanza progetto: modifica diretta
+          setProject((prj) => ({
+            ...prj,
+            rooms: (prj.rooms || []).map((x) => x.id === r.id ? { ...x, controsoffitto: !x.controsoffitto } : x),
+          }));
+        }
       }
       return;
     }
@@ -514,6 +524,37 @@ export default function Canvas2D({
     }
     if (tool === "hvac") {
       const kind = hvacKind || "split";
+      // Multi-split: trial = 3 split, dual = 2 split. Posiziona uno alla volta.
+      // Conta gli split già piazzati appartenenti al gruppo corrente (group_id condiviso)
+      if (kind === "trial-split" || kind === "dual-split") {
+        const expected = kind === "trial-split" ? 3 : 2;
+        // Reset gruppo se ultimo gruppo è completo o non esiste
+        const groupId = (() => {
+          const all = (project.hvac || []).filter(h => h.group_kind === kind && h.phase === VM);
+          if (all.length === 0) return uid();
+          // raggruppa per group_id e prendi il più recente
+          const lastGid = all[all.length - 1].group_id;
+          const sameGroup = all.filter(h => h.group_id === lastGid);
+          if (sameGroup.length >= expected + 1) return uid(); // +1 per UE
+          return lastGid || uid();
+        })();
+        setProject((prj) => {
+          const sameGroup = (prj.hvac || []).filter(h => h.group_id === groupId);
+          const has_ue = sameGroup.some(h => h.type === "esterna");
+          const splitsCount = sameGroup.filter(h => h.type === "split").length;
+          // Primo click: crea UE
+          if (!has_ue) {
+            return { ...prj, hvac: [...(prj.hvac || []), { id: uid(), type: "esterna", x: p.x, y: p.y, phase: VM, group_id: groupId, group_kind: kind, group_label: `${kind === "trial-split" ? "Trial" : "Dual"} - UE` }] };
+          }
+          // Click successivi: aggiungi split (fino a expected)
+          if (splitsCount < expected) {
+            return { ...prj, hvac: [...(prj.hvac || []), { id: uid(), type: "split", x: p.x, y: p.y, phase: VM, group_id: groupId, group_kind: kind, group_label: `${kind === "trial-split" ? "Trial" : "Dual"} - Split ${splitsCount + 1}/${expected}` }] };
+          }
+          return prj;
+        });
+        return;
+      }
+      // Single placement (split/canalizzato/caldaia/etc.)
       setProject((prj) => ({ ...prj, hvac: [...(prj.hvac || []), { id: uid(), type: kind, x: p.x, y: p.y, phase: VM }] }));
       return;
     }
@@ -762,6 +803,13 @@ export default function Canvas2D({
                   <polygon points={pts} fill="#FBBF24" fillOpacity="0.10" stroke="#F59E0B" strokeWidth="1.5" strokeDasharray="2,3" pointerEvents="none" />
                   <text x={cx} y={cy + 56} fontSize="8" textAnchor="middle" fontFamily="JetBrains Mono" fill="#B45309" fontWeight="700" pointerEvents="none">⚒ MODIFICHE PROGETTO</text>
                 </>
+              )}
+              {/* Controsoffitto: bordo interno tratteggiato */}
+              {(r.controsoffitto || (r.progetto && r.progetto.controsoffitto)) && (
+                <g pointerEvents="none">
+                  <polygon points={r.points.map(p => `${p.x + (cx > p.x ? 8 : -8)},${p.y + (cy > p.y ? 8 : -8)}`).join(" ")} fill="none" stroke="#0EA5E9" strokeWidth="1.2" strokeDasharray="6,3" opacity="0.7" />
+                  <text x={cx} y={cy + 70} fontSize="8" textAnchor="middle" fontFamily="JetBrains Mono" fill="#0369A1" fontWeight="700">CONTROSOFFITTO</text>
+                </g>
               )}
               {/* corner dots + angle labels (fuori-quadro detection) */}
               {r.points.map((pt, i) => {
@@ -1194,7 +1242,22 @@ export default function Canvas2D({
       {tool === "electrical" && <div className="absolute top-3 left-3 bg-purple-700 text-white px-3 py-1.5 text-xs mono">elettrico · {electricalKind || "presa"}</div>}
       {tool === "plumbing" && <div className="absolute top-3 left-3 bg-cyan-700 text-white px-3 py-1.5 text-xs mono">idraulico · {plumbingKind || "acqua-fredda"}</div>}
       {tool === "gas" && <div className="absolute top-3 left-3 bg-yellow-600 text-white px-3 py-1.5 text-xs mono">gas · click per posizionare</div>}
-      {tool === "hvac" && <div className="absolute top-3 left-3 bg-teal-700 text-white px-3 py-1.5 text-xs mono">condizionamento · {hvacKind || "split"}</div>}
+      {tool === "hvac" && (() => {
+        // Banner intelligente per multi-split
+        const kind = hvacKind || "split";
+        if (kind === "trial-split" || kind === "dual-split") {
+          const expected = kind === "trial-split" ? 3 : 2;
+          const all = (project.hvac || []).filter(h => h.group_kind === kind && h.phase === VM);
+          const lastGid = all.length ? all[all.length - 1].group_id : null;
+          const sameGroup = all.filter(h => h.group_id === lastGid);
+          const has_ue = sameGroup.some(h => h.type === "esterna");
+          const splitsCount = sameGroup.filter(h => h.type === "split").length;
+          const completed = sameGroup.length >= expected + 1;
+          const next = !has_ue ? "Posiziona Unità Esterna (UE)" : (completed ? `${kind} completato — click per nuovo gruppo` : `Posiziona Split ${splitsCount + 1}/${expected}`);
+          return <div className="absolute top-3 left-3 bg-teal-700 text-white px-3 py-1.5 text-xs mono">condizionamento · {kind} · {next}</div>;
+        }
+        return <div className="absolute top-3 left-3 bg-teal-700 text-white px-3 py-1.5 text-xs mono">condizionamento · {kind}</div>;
+      })()}
       {tool === "tiling" && <div className="absolute top-3 left-3 bg-stone-700 text-white px-3 py-1.5 text-xs mono">schema posa · click in stanza per partire</div>}
     </div>
   );

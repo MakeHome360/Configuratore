@@ -35,22 +35,24 @@ const TOOL_GROUPS = [
     { id: "text", icon: Type, label: "Testo" },
     { id: "delete", icon: Trash2, label: "Elimina" },
   ]},
-  { id: "demo", label: "Demolizioni / Costruzioni", tools: [
+  { id: "demolizioni", label: "Demolizioni", tools: [
     { id: "demolish-wall", icon: Hammer, label: "Demolisci muro" },
-    { id: "demolish-wall-partial", icon: Hammer, label: "Demoliz. muro parziale" },
-    { id: "demolish-floor", icon: Hammer, label: "Demolisci pavimento (totale)" },
-    { id: "demolish-floor-partial", icon: Hammer, label: "Demoliz. pavim. area" },
-    { id: "demolish-rivestimento", icon: Hammer, label: "Demoliz. rivestim. parete" },
+    { id: "demolish-wall-partial", icon: Hammer, label: "Muro parziale" },
+    { id: "demolish-floor", icon: Hammer, label: "Pavimento totale" },
+    { id: "demolish-floor-partial", icon: Hammer, label: "Pavimento area" },
+    { id: "demolish-rivestimento", icon: Hammer, label: "Rivestim. parete" },
+  ]},
+  { id: "costruzioni", label: "Costruzioni", tools: [
     { id: "controsoffitto", icon: Layers, label: "Controsoffitto" },
+    { id: "tiling", icon: Grid3x3, label: "Schema piastrelle" },
   ]},
-  { id: "impianti", label: "Impianti", tools: [
+  { id: "elettrico", label: "Imp. elettrico", tools: [
     { id: "electrical", icon: Zap, label: "Elettrico" },
-    { id: "plumbing", icon: Droplet, label: "Idraulico" },
-    { id: "gas", icon: Flame, label: "Gas" },
-    { id: "hvac", icon: Wind, label: "Condizionamento" },
   ]},
-  { id: "finiture", label: "Finiture", tools: [
-    { id: "tiling", icon: Grid3x3, label: "Schema posa piastrelle" },
+  { id: "termo", label: "Imp. termo-idraulico", tools: [
+    { id: "plumbing", icon: Droplet, label: "Idraulico (acqua/scarico)" },
+    { id: "gas", icon: Flame, label: "Gas" },
+    { id: "hvac", icon: Wind, label: "Climatizz./Riscald." },
   ]},
 ];
 
@@ -593,32 +595,44 @@ export default function Editor() {
             ))}
           </div>
 
-          {activeGroup === "impianti" && tool === "electrical" && (
-            <SubKindPicker label="Tipo elemento" value={electricalKind} onChange={setElectricalKind} options={[
-              { v: "quadro", l: "Quadro elettrico" }, { v: "scatola", l: "Scatola derivazione" }, { v: "presa", l: "Presa" }, { v: "interruttore", l: "Interruttore" }, { v: "luce", l: "Punto luce" }
+          {(activeGroup === "termo" || activeGroup === "impianti") && tool === "hvac" && (() => {
+            const cadKindToHvacType = {
+              "termo.mono_split": "split", "termo.dual_split": "dual-split", "termo.trial_split": "trial-split",
+              "termo.unita_esterna": "esterna", "termo.canalizzato": "canalizzato", "termo.vmc": "vmc",
+              "termo.predisposizione": "predisposizione", "termo.caldaia": "caldaia", "termo.caldaia_ibrida": "caldaia-ibrida",
+              "termo.pompa_calore": "pompa-calore", "termo.scaldabagno": "scaldabagno", "termo.termoarredo": "termoarredo",
+              "termo.termosifone": "termosifone", "termo.fotovoltaico": "fotovoltaico",
+              "termo.pavimento_radiante": "pavimento-radiante", "termo.soffitto_radiante": "soffitto-radiante",
+            };
+            const dynamicOpts = (voci || [])
+              .filter(v => v.cad_category === "TERMO_IDRAULICO" && (v.active !== false))
+              .filter(v => cadKindToHvacType[v.cad_kind])
+              .map(v => ({ v: cadKindToHvacType[v.cad_kind], l: v.name }));
+            // Dedup by value
+            const seen = new Set();
+            const opts = dynamicOpts.filter(o => { if (seen.has(o.v)) return false; seen.add(o.v); return true; });
+            return opts.length > 0 ? (
+              <SubKindPicker label="Elemento (da Backoffice)" value={hvacKind} onChange={setHvacKind} options={opts} testid="hvac-kind" />
+            ) : (
+              <div className="text-xs text-zinc-500 mono">Nessuna voce TERMO_IDRAULICO. Aggiungi voci nel <a href="/voci-backoffice" className="text-blue-600 underline">Backoffice</a>.</div>
+            );
+          })()}
+          {(activeGroup === "elettrico" || activeGroup === "impianti") && tool === "electrical" && (
+            <SubKindPicker label="Elemento" value={electricalKind} onChange={setElectricalKind} options={[
+              { v: "presa", l: "Presa" }, { v: "presa-tv", l: "Presa TV" }, { v: "presa-rj45", l: "Presa RJ45/dati" },
+              { v: "interruttore", l: "Interruttore" }, { v: "deviatore", l: "Deviatore" },
+              { v: "punto-luce", l: "Punto luce" }, { v: "punto-luce-led", l: "Punto luce LED" },
+              { v: "quadro-elettrico", l: "Quadro elettrico" },
             ]} testid="electrical-kind" />
           )}
-          {activeGroup === "impianti" && tool === "plumbing" && (
-            <SubKindPicker label="Tipo punto" value={plumbingKind} onChange={setPlumbingKind} options={[
-              { v: "acqua-fredda", l: "Acqua fredda" }, { v: "acqua-calda", l: "Acqua calda" }, { v: "scarico", l: "Scarico" }
-            ]} testid="plumbing-kind" />
-          )}
-          {activeGroup === "impianti" && tool === "hvac" && (
-            <SubKindPicker label="Elemento" value={hvacKind} onChange={setHvacKind} options={[
-              { v: "split", l: "Split a parete" },
-              { v: "dual-split", l: "Dual split (2 unità)" },
-              { v: "trial-split", l: "Trial split (3 unità)" },
-              { v: "esterna", l: "Unità esterna (UE)" },
-              { v: "canalizzato", l: "Canalizzato (controsoffitto)" },
-              { v: "vmc", l: "VMC (ventilazione meccanica controllata)" },
-              { v: "predisposizione", l: "Predisposizione climatizzazione" },
-              { v: "caldaia", l: "Caldaia condensazione" },
-              { v: "pompa-calore", l: "Pompa di calore" },
-              { v: "scaldabagno", l: "Scaldabagno (boiler elettrico/gas)" },
-              { v: "termosifone", l: "Termosifone / radiatore" },
-              { v: "termoarredo", l: "Termoarredo (bagno design)" },
-              { v: "fotovoltaico", l: "Pannello fotovoltaico" },
-            ]} testid="hvac-kind" />
+          {(activeGroup === "termo" || activeGroup === "impianti") && tool === "plumbing" && (
+            <SubKindPicker label="Elemento" value={plumbingKind} onChange={setPlumbingKind} options={[
+              { v: "acqua-fredda", l: "Punto acqua fredda" },
+              { v: "acqua-calda", l: "Punto acqua calda" },
+              { v: "scarico", l: "Punto scarico" },
+              { v: "lavatrice", l: "Attacco lavatrice" },
+              { v: "lavastoviglie", l: "Attacco lavastoviglie" },
+            ]} testid="plumb-kind" />
           )}
           {tool === "stairs" && (
             <SubKindPicker label="Tipo scala" value={stairsKind} onChange={setStairsKind} options={[

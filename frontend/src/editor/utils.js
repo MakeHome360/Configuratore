@@ -123,6 +123,8 @@ export const VOCE_MAP = {
   canalizzato_unita_interna: "Canalizzato · Unità interna",
   canalizzato_canale_ml: "Canalizzato · Canale aria con plenum",
   vmc: "Ventilazione meccanica controllata (VMC)",
+  pavimento_radiante: "Impianto riscaldamento a pavimento",
+  soffitto_radiante: "Impianto riscaldamento a soffitto",
   porta_interna: "Porte interne serie standard",
   porta_blindata_cl3: "Porta blindata Classe 3",
   porta_blindata_cl4: "Porta blindata Classe 4",
@@ -341,6 +343,11 @@ export function estimateProjectV2(project, voci, packageRef) {
   (data.gas || []).filter(isProgetto).forEach(() => add("punto_gas", 1));
   (data.hvac || []).filter(isProgetto).forEach((h) => {
     const t = h.type || "split";
+    // Per multi-split (gruppi): trial/dual sono fatturati una volta come "trial"/"dual" (sul UE).
+    // Gli split del gruppo non aggiungono ulteriore prezzo singolo (sono inclusi nel trial/dual).
+    if (h.group_id && h.group_kind && t === "split") return; // Split del gruppo: skip (già contato sull'UE)
+    if (h.group_id && h.group_kind === "trial-split" && t === "esterna") { add("climatizzatore_trial", 1); return; }
+    if (h.group_id && h.group_kind === "dual-split" && t === "esterna") { add("climatizzatore_dual", 1); return; }
     if (t === "predisposizione") add("predisposizione_clima", 1);
     else if (t === "caldaia") add("caldaia_condensazione", 1);
     else if (t === "caldaia-ibrida") add("caldaia_ibrida", 1);
@@ -355,6 +362,8 @@ export function estimateProjectV2(project, voci, packageRef) {
     else if (t === "vmc") add("vmc", 1);
     else if (t === "dual-split" || h.kind === "dual") add("climatizzatore_dual", 1);
     else if (t === "trial-split" || h.kind === "trial") add("climatizzatore_trial", 1);
+    else if (t === "pavimento-radiante") add("pavimento_radiante", h.areaM2 || 1);
+    else if (t === "soffitto-radiante") add("soffitto_radiante", h.areaM2 || 1);
     else add("climatizzatore_mono", 1);
   });
   // Scale

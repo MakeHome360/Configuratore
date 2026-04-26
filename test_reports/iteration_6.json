@@ -1,5 +1,5 @@
 {
-  "summary": "Iteration 6 frontend testing complete. All 8 features VALIDATED on https://cad-preventivi-live.preview.emergentagent.com/editor/d9eead92-7adf-4a9f-b57b-b1ad791d387d (project 'prova') with admin@admin.it/admin. Stairs tool + picker, free-form floor demolition polygon, Tavole demolizioni view, undo/redo (button + Ctrl+Z), stairs Properties panel, Preventivi→CAD link, voci_backoffice mapping for stairs all work correctly.",
+  "summary": "Iteration 6 frontend testing complete. All 8 features VALIDATED on https://cad-stima-cantiere.preview.emergentagent.com/editor/d9eead92-7adf-4a9f-b57b-b1ad791d387d (project 'prova') with admin@admin.it/admin. Stairs tool + picker, free-form floor demolition polygon, Tavole demolizioni view, undo/redo (button + Ctrl+Z), stairs Properties panel, Preventivi→CAD link, voci_backoffice mapping for stairs all work correctly.",
   "backend_issues": {
     "critical": [],
     "minor": []

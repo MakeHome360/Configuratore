@@ -255,6 +255,119 @@ def build_biz_router(db, get_current_user):
             added.append(v["name"])
         return {"ok": True, "added": added, "count": len(added)}
 
+    @r.post("/voci-backoffice/migrate-cad-categories")
+    async def migrate_cad_categories(user=Depends(get_current_user)):
+        """Assegna cad_category alle voci esistenti in base a category/name pattern.
+        Categorie CAD: DEMOLIZIONI, COSTRUZIONI, ELETTRICO, TERMO_IDRAULICO, INFISSI, SANITARI, EXTRA
+        """
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        all_voci = await db.voci_backoffice.find({}, {"_id": 0}).to_list(2000)
+        updated = 0
+        for v in all_voci:
+            n = (v.get("name") or "").lower()
+            cat = v.get("category", "")
+            cad_cat = None
+            cad_kind = None
+            # DEMOLIZIONI
+            if "demoliz" in n:
+                cad_cat = "DEMOLIZIONI"
+                if "muri" in n: cad_kind = "demoliz.muro"
+                elif "pavim" in n: cad_kind = "demoliz.pavimento"
+                elif "rivest" in n: cad_kind = "demoliz.rivestimento"
+                elif "controsoff" in n: cad_kind = "demoliz.controsoffitto"
+                else: cad_kind = "demoliz.generica"
+            # COSTRUZIONI (muri/pavimenti/controsoffitto/finiture)
+            elif any(s in n for s in ("muro", "cartongesso", "controparete", "controsoffitto", "battiscopa", "decoraz",
+                                        "piastrelle", "posa", "massetto", "parquet", "pavimento", "rasatura",
+                                        "pittura", "intonaco", "stucco", "velette", "rivestim")):
+                cad_cat = "COSTRUZIONI"
+                if "muro mattone" in n: cad_kind = "costr.muro_mattone"
+                elif "cartongesso" in n: cad_kind = "costr.muro_cartongesso"
+                elif "controsoff" in n or "controparete" in n: cad_kind = "costr.controsoffitto"
+                elif "parquet" in n: cad_kind = "costr.parquet"
+                elif "piastrelle pavim" in n: cad_kind = "costr.piastrelle_pav"
+                elif "piastrelle rivest" in n: cad_kind = "costr.piastrelle_riv"
+                elif "pavimento pvc" in n or "laminato" in n: cad_kind = "costr.pvc"
+                elif "battiscopa" in n: cad_kind = "costr.battiscopa"
+                elif "pittura" in n: cad_kind = "costr.pittura"
+                elif "rasatura" in n: cad_kind = "costr.rasatura"
+                elif "massetto" in n: cad_kind = "costr.massetto"
+                elif "intonaco" in n: cad_kind = "costr.intonaco"
+                else: cad_kind = "costr.generica"
+            # ELETTRICO
+            elif any(s in n for s in ("elettrico", "punto luce", "punto presa", "punto interruttore",
+                                        "quadro", "tv ", "dati", "citofon", "antenn", "led")):
+                cad_cat = "ELETTRICO"
+                if "completo" in n or "appartamento" in n: cad_kind = "elec.impianto_mq"
+                elif "luce" in n: cad_kind = "elec.luce"
+                elif "presa" in n: cad_kind = "elec.presa"
+                elif "interruttore" in n: cad_kind = "elec.interruttore"
+                elif "quadro" in n: cad_kind = "elec.quadro"
+                elif "tv" in n or "antenn" in n: cad_kind = "elec.tv"
+                elif "dati" in n or "rete" in n: cad_kind = "elec.dati"
+                elif "citofon" in n: cad_kind = "elec.citofono"
+                else: cad_kind = "elec.generico"
+            # TERMO_IDRAULICO (riscaldamento + climatizzazione + idraulico bagno)
+            elif any(s in n for s in ("idraulico", "punto acqua", "punto scarico", "punto gas",
+                                        "radiator", "termosif", "termoarredo", "pavimento", "soffitto rad",
+                                        "caldai", "pompa di calor", "scaldabagn", "boiler",
+                                        "climatizz", "split", "canalizz", "vmc", "ventilaz",
+                                        "fotovolta", "predispos", "unit\u00e0 esterna", "unita esterna", "ue")):
+                cad_cat = "TERMO_IDRAULICO"
+                if "completo" in n and "idraul" in n: cad_kind = "termo.impianto_mq"
+                elif "punto acqua" in n: cad_kind = "termo.punto_acqua"
+                elif "punto scarico" in n: cad_kind = "termo.punto_scarico"
+                elif "punto gas" in n: cad_kind = "termo.punto_gas"
+                elif "pavimento" in n and ("radiant" in n or "riscald" in n): cad_kind = "termo.pavimento_radiante"
+                elif "soffitto" in n and ("radiant" in n or "riscald" in n): cad_kind = "termo.soffitto_radiante"
+                elif "collettore" in n: cad_kind = "termo.collettore"
+                elif "radiator" in n or "termosif" in n: cad_kind = "termo.termosifone"
+                elif "termoarredo" in n: cad_kind = "termo.termoarredo"
+                elif "caldai" in n and "ibrid" in n: cad_kind = "termo.caldaia_ibrida"
+                elif "caldai" in n: cad_kind = "termo.caldaia"
+                elif "pompa di calor" in n: cad_kind = "termo.pompa_calore"
+                elif "scaldabagn" in n or "boiler" in n: cad_kind = "termo.scaldabagno"
+                elif "fotovolta" in n: cad_kind = "termo.fotovoltaico"
+                elif "vmc" in n or "ventilaz" in n: cad_kind = "termo.vmc"
+                elif "canalizz" in n: cad_kind = "termo.canalizzato"
+                elif "trial" in n: cad_kind = "termo.trial_split"
+                elif "dual" in n: cad_kind = "termo.dual_split"
+                elif "mono" in n: cad_kind = "termo.mono_split"
+                elif "predispos" in n: cad_kind = "termo.predisposizione"
+                elif "unit" in n and ("esterna" in n or " ue" in n) or n.endswith("(ue)"): cad_kind = "termo.unita_esterna"
+                else: cad_kind = "termo.generico"
+            # INFISSI
+            elif any(s in n for s in ("infiss", "porta", "porte interne", "blinda", "zanzariere",
+                                        "tapparell", "griglia", "cornice")):
+                cad_cat = "INFISSI"
+                if "blinda" in n: cad_kind = "inf.porta_blindata"
+                elif "porte interne" in n: cad_kind = "inf.porte_interne"
+                elif "infissi pvc" in n: cad_kind = "inf.pvc"
+                elif "infissi alluminio" in n: cad_kind = "inf.alluminio"
+                elif "infissi legno" in n: cad_kind = "inf.legno"
+                elif "zanzar" in n: cad_kind = "inf.zanzariera"
+                elif "tapparell" in n: cad_kind = "inf.tapparella"
+                elif "griglia" in n: cad_kind = "inf.griglia"
+                else: cad_kind = "inf.generico"
+            # SANITARI / ARREDI
+            elif any(s in n for s in ("sanitari", "wc", "bidet", "lavabo", "box doccia", "mobile bagno", "vasca")):
+                cad_cat = "SANITARI"
+                if "sanitari" in n: cad_kind = "san.sanitari"
+                elif "box doccia" in n: cad_kind = "san.box_doccia"
+                elif "mobile bagno" in n: cad_kind = "san.mobile_bagno"
+                else: cad_kind = "san.generico"
+            else:
+                cad_cat = "EXTRA"
+                cad_kind = "extra.generico"
+            patch = {}
+            if v.get("cad_category") != cad_cat: patch["cad_category"] = cad_cat
+            if v.get("cad_kind") != cad_kind: patch["cad_kind"] = cad_kind
+            if patch:
+                await db.voci_backoffice.update_one({"id": v["id"]}, {"$set": patch})
+                updated += 1
+        return {"ok": True, "updated": updated, "categorie": ["DEMOLIZIONI", "COSTRUZIONI", "ELETTRICO", "TERMO_IDRAULICO", "INFISSI", "SANITARI", "EXTRA"]}
+
     # ---------- Fasi Commessa ----------
     @r.get("/fasi-commessa")
     async def list_fasi(user=Depends(get_current_user)):

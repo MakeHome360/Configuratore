@@ -43,6 +43,8 @@ DEFAULT_VOCI_BACKOFFICE = [
     {"id": "voce-idraulico", "category": "IMPIANTI", "name": "Impianto idraulico completo", "prezzo_acquisto": 40.0, "ricarico": 1.8, "unit": "m²"},
     {"id": "voce-radiatori", "category": "IMPIANTI", "name": "Impianto riscaldamento radiatori", "prezzo_acquisto": 28.0, "ricarico": 1.8, "unit": "m²"},
     {"id": "voce-radiante", "category": "IMPIANTI", "name": "Impianto riscaldamento a pavimento", "prezzo_acquisto": 45.0, "ricarico": 1.8, "unit": "m²"},
+    {"id": "voce-pavimento-radiante-collettore", "category": "IMPIANTI", "name": "Collettore riscaldamento a pavimento", "prezzo_acquisto": 320.0, "ricarico": 1.8, "unit": "pz"},
+    {"id": "voce-soffitto-radiante", "category": "IMPIANTI", "name": "Impianto riscaldamento a soffitto", "prezzo_acquisto": 55.0, "ricarico": 1.8, "unit": "m²"},
     {"id": "voce-caldaia", "category": "IMPIANTI", "name": "Caldaia a condensazione", "prezzo_acquisto": 1500.0, "ricarico": 1.8, "unit": "pz"},
     {"id": "voce-predispo-clima", "category": "IMPIANTI", "name": "Predisposizione climatizzatore", "prezzo_acquisto": 120.0, "ricarico": 1.8, "unit": "pz"},
     {"id": "voce-condiz-dual", "category": "IMPIANTI", "name": "Climatizzatore dual split", "prezzo_acquisto": 1750.0, "ricarico": 1.8, "unit": "pz"},

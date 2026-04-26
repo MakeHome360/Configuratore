@@ -24,6 +24,7 @@ from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 from packages_seed import LAVORAZIONI_CATALOG, DEFAULT_PACKAGES, DEFAULT_OPTIONAL, BATHROOM_TIERS
 from routes_biz import build_biz_router
 from routes_round10 import build_round10_router
+from routes_render import build_render_router
 
 # ---------------- Setup ----------------
 mongo_url = os.environ["MONGO_URL"]
@@ -904,6 +905,8 @@ _biz = build_biz_router(db, get_current_user)
 app.include_router(_biz, prefix="/api")
 _r10 = build_round10_router(db, get_current_user, create_access_token)
 app.include_router(_r10, prefix="/api")
+_render = build_render_router(db, get_current_user)
+app.include_router(_render, prefix="/api")
 
 app.add_middleware(
     CORSMiddleware,

@@ -784,6 +784,63 @@ export default function Canvas2D({
         </defs>
         <rect x={viewBox.x} y={viewBox.y} width={viewBox.w} height={viewBox.h} fill="url(#grid-big)" pointerEvents="none" />
 
+        {/* QUOTE DIMENSIONALI ESTERNE (stile architettonico) — bbox totale */}
+        {L.dimensions && rooms.length > 0 && (() => {
+          const allPts = rooms.flatMap((r) => r.points || []);
+          if (allPts.length < 2) return null;
+          const minX = Math.min(...allPts.map((p) => p.x));
+          const maxX = Math.max(...allPts.map((p) => p.x));
+          const minY = Math.min(...allPts.map((p) => p.y));
+          const maxY = Math.max(...allPts.map((p) => p.y));
+          const off = 50;
+          // Larghezza totale (sotto)
+          const yQ = maxY + off;
+          // Altezza totale (sinistra)
+          const xQ = minX - off;
+          const totW = (maxX - minX) / 100;
+          const totH = (maxY - minY) / 100;
+          // Catena: punti X unici (ordinati) per quote parziali sopra
+          const xs = Array.from(new Set(allPts.map((p) => Math.round(p.x)))).sort((a, b) => a - b);
+          const ys = Array.from(new Set(allPts.map((p) => Math.round(p.y)))).sort((a, b) => a - b);
+          const stroke = "#1F2937", thin = 1;
+          return (
+            <g pointerEvents="none">
+              {/* Catena quote orizzontali (sotto la pianta) */}
+              <line x1={minX} y1={yQ} x2={maxX} y2={yQ} stroke={stroke} strokeWidth={thin} />
+              {xs.map((x, i) => (
+                <g key={`xtick-${i}`}>
+                  <line x1={x} y1={yQ - 5} x2={x} y2={yQ + 5} stroke={stroke} strokeWidth={thin} />
+                  <line x1={x} y1={maxY + 5} x2={x} y2={yQ - 5} stroke={stroke} strokeWidth={0.5} strokeDasharray="2,2" opacity="0.4" />
+                  {i < xs.length - 1 && (
+                    <text x={(x + xs[i + 1]) / 2} y={yQ + 18} textAnchor="middle" fontSize="11" fontFamily="JetBrains Mono" fill={stroke}>
+                      {fmtNum((xs[i + 1] - x) / 100, 2)}
+                    </text>
+                  )}
+                </g>
+              ))}
+              {/* Quota TOTALE orizzontale (sotto la catena) */}
+              <line x1={minX} y1={yQ + 32} x2={maxX} y2={yQ + 32} stroke={stroke} strokeWidth={thin + 0.5} markerStart="url(#tick)" markerEnd="url(#tick)" />
+              <text x={(minX + maxX) / 2} y={yQ + 48} textAnchor="middle" fontSize="13" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke}>{fmtNum(totW, 2)} m</text>
+              {/* Catena quote verticali (sinistra della pianta) */}
+              <line x1={xQ} y1={minY} x2={xQ} y2={maxY} stroke={stroke} strokeWidth={thin} />
+              {ys.map((y, i) => (
+                <g key={`ytick-${i}`}>
+                  <line x1={xQ - 5} y1={y} x2={xQ + 5} y2={y} stroke={stroke} strokeWidth={thin} />
+                  <line x1={xQ + 5} y1={y} x2={minX - 5} y2={y} stroke={stroke} strokeWidth={0.5} strokeDasharray="2,2" opacity="0.4" />
+                  {i < ys.length - 1 && (
+                    <text x={xQ - 10} y={(y + ys[i + 1]) / 2 + 4} textAnchor="end" fontSize="11" fontFamily="JetBrains Mono" fill={stroke}>
+                      {fmtNum((ys[i + 1] - y) / 100, 2)}
+                    </text>
+                  )}
+                </g>
+              ))}
+              {/* Quota TOTALE verticale (a sinistra della catena) */}
+              <line x1={xQ - 32} y1={minY} x2={xQ - 32} y2={maxY} stroke={stroke} strokeWidth={thin + 0.5} />
+              <text x={xQ - 48} y={(minY + maxY) / 2 + 4} textAnchor="middle" fontSize="13" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke} transform={`rotate(-90, ${xQ - 48}, ${(minY + maxY) / 2 + 4})`}>{fmtNum(totH, 2)} m</text>
+            </g>
+          );
+        })()}
+
         {/* rooms */}
         {L.rooms && rooms.map((r) => {
           const mat = catalogById[r.floorMaterial];
@@ -825,8 +882,8 @@ export default function Canvas2D({
               {r.controsoffitto && (
                 <polygon points={pts} fill="url(#hatch-controsoff)" fillOpacity="0.4" />
               )}
-              <text x={cx} y={cy - 6} fontSize="14" textAnchor="middle" fontFamily="Outfit" fill="#0A0A0A" fontWeight="600" pointerEvents="none">{r.name}</text>
-              <text x={cx} y={cy + 12} fontSize="11" textAnchor="middle" fontFamily="JetBrains Mono" fill="#71717A" pointerEvents="none">{fmtNum(areaM2, 2)} m²</text>
+              <text x={cx} y={cy - 6} fontSize="18" textAnchor="middle" fontFamily="Outfit" fill="#0A0A0A" fontWeight="700" letterSpacing="1.5" pointerEvents="none" style={{ textTransform: "uppercase" }}>{(r.name || "").toUpperCase()}</text>
+              <text x={cx} y={cy + 14} fontSize="11" textAnchor="middle" fontFamily="JetBrains Mono" fill="#71717A" pointerEvents="none">{fmtNum(areaM2, 2)} m²</text>
               {r.controsoffitto && <text x={cx} y={cy + 28} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#0F766E" fontWeight="700" pointerEvents="none">CTRSF</text>}
               {isFullFloorDemolito && <text x={cx} y={cy + 28} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#DC2626" fontWeight="700" pointerEvents="none">DEMO PAV. TOTALE</text>}
               {isRivestDemolito && <text x={cx} y={cy + 42} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#F97316" fontWeight="700" pointerEvents="none">DEMO RIV. TOTALE</text>}

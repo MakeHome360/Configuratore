@@ -88,9 +88,11 @@ export default function Editor() {
   const [show3D, setShow3D] = useState(true);
   const [saving, setSaving] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
-  const [aiPrompt, setAiPrompt] = useState("Pavimento in rovere, pareti bianche opache, luce naturale calda dalle finestre, mobili moderni.");
+  const [aiPrompt, setAiPrompt] = useState("");
   const [aiResult, setAiResult] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiStyle, setAiStyle] = useState("isometric_dollhouse");
+  const svgWrapperRef = useRef(null);
   const [floorplanOpen, setFloorplanOpen] = useState(false);
   const [floorplanFile, setFloorplanFile] = useState(null);
   const [floorplanLoading, setFloorplanLoading] = useState(false);
@@ -353,34 +355,68 @@ export default function Editor() {
     }
   };
 
+  // Cattura il PNG della pianta 2D dal SVG (per modalità dollhouse).
+  const capture2DPng = async () => {
+    const wrap = svgWrapperRef.current;
+    if (!wrap) return null;
+    const svgEl = wrap.querySelector("svg");
+    if (!svgEl) return null;
+    const clone = svgEl.cloneNode(true);
+    // Rimuovi cursori e draft elements
+    const w = svgEl.clientWidth || 1200;
+    const h = svgEl.clientHeight || 800;
+    clone.setAttribute("width", w);
+    clone.setAttribute("height", h);
+    const xml = new XMLSerializer().serializeToString(clone);
+    const dataUri = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(xml);
+    return await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = w * 2; canvas.height = h * 2;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const png = canvas.toDataURL("image/png").split(",")[1];
+        resolve(png);
+      };
+      img.onerror = () => resolve(null);
+      img.src = dataUri;
+    });
+  };
+
   const generateAIRender = async () => {
-    // Forza la vista 3D se non attiva (necessaria per snapshot)
-    if (!show3D) {
-      setShow3D(true);
-      toast.info("Attivazione vista 3D...");
-      // Attendi il rendering del Canvas WebGL (frame iniziale)
-      await new Promise((res) => setTimeout(res, 800));
-    }
-    if (!viewer3DRef.current) {
-      toast.error("Vista 3D non disponibile. Riprova tra qualche secondo.");
-      return;
-    }
-    // Forza un render esplicito prima dello snapshot
-    await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
-    const snap = viewer3DRef.current.snapshot();
-    if (!snap || snap.length < 2000) {
-      toast.error("Snapshot 3D vuoto. Disegna almeno una stanza con dei muri prima.");
-      return;
-    }
     setAiLoading(true);
     setAiResult(null);
     try {
-      const { data } = await api.post("/ai-render", { image_base64: snap, prompt: aiPrompt, style: "photorealistic interior architectural photography" });
-      setAiResult(data.data_url);
-      toast.success("Rendering generato");
+      let snap = null;
+      if (aiStyle === "isometric_dollhouse") {
+        // Per il dollhouse usiamo la pianta 2D come reference (più chiara per l'AI).
+        snap = await capture2DPng();
+        if (!snap || snap.length < 1000) {
+          toast.error("Disegna prima la pianta 2D (almeno una stanza).");
+          setAiLoading(false);
+          return;
+        }
+      } else {
+        // Per interior_room/exterior usiamo lo snapshot 3D
+        if (!show3D) { setShow3D(true); await new Promise((res) => setTimeout(res, 900)); }
+        if (!viewer3DRef.current) { toast.error("Vista 3D non disponibile."); setAiLoading(false); return; }
+        await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+        snap = viewer3DRef.current.snapshot();
+        if (snap && snap.startsWith("data:")) snap = snap.split(",")[1];
+        if (!snap || snap.length < 2000) { toast.error("Snapshot 3D vuoto. Disegna almeno una stanza."); setAiLoading(false); return; }
+      }
+      const body = { image_base64: snap, style: aiStyle, project_id: project?.id };
+      if (aiPrompt && aiPrompt.trim()) body.prompt = aiPrompt.trim();
+      const { data } = await api.post("/render/3d", body);
+      const dataUrl = `data:${data.mime_type || "image/png"};base64,${data.image_base64}`;
+      setAiResult(dataUrl);
+      toast.success("Rendering generato ✓");
     } catch (e) {
       console.error("[AI render]", e);
-      toast.error(e.response?.data?.detail || "Errore rendering AI: il modello potrebbe non essere disponibile.");
+      toast.error(e.response?.data?.detail || "Errore rendering AI");
     }
     setAiLoading(false);
   };
@@ -696,6 +732,7 @@ export default function Editor() {
               {(tool === "door" || tool === "window") && (
                 <ToolParamsPanel tool={tool} doorParams={doorParams} setDoorParams={setDoorParams} windowParams={windowParams} setWindowParams={setWindowParams} />
               )}
+              <div ref={svgWrapperRef} className="absolute inset-0">
               <Canvas2D
                 project={project.data} setProject={setProjectData}
                 tool={tool} setTool={setTool}
@@ -705,6 +742,7 @@ export default function Editor() {
                 electricalKind={electricalKind} plumbingKind={plumbingKind} hvacKind={hvacKind} tilingParams={tilingParams} stairsKind={stairsKind}
                 viewMode={editMode}
               />
+              </div>
             </div>
           </div>
           {show3D && (
@@ -750,7 +788,7 @@ export default function Editor() {
       </div>
 
       {aiOpen && (
-        <AIRenderModal aiOpen={aiOpen} setAiOpen={setAiOpen} aiPrompt={aiPrompt} setAiPrompt={setAiPrompt} aiLoading={aiLoading} aiResult={aiResult} generateAIRender={generateAIRender} />
+        <AIRenderModal aiOpen={aiOpen} setAiOpen={setAiOpen} aiPrompt={aiPrompt} setAiPrompt={setAiPrompt} aiLoading={aiLoading} aiResult={aiResult} generateAIRender={generateAIRender} aiStyle={aiStyle} setAiStyle={setAiStyle} />
       )}
       {floorplanOpen && (
         <FloorplanImportModal open={floorplanOpen} setOpen={setFloorplanOpen} file={floorplanFile} setFile={setFloorplanFile} loading={floorplanLoading} onImport={importFloorplan} />
@@ -1387,25 +1425,47 @@ function CostPanelV2({ estimate, packageRef, legacy, linkedPreventivo, saveAsPre
   );
 }
 
-function AIRenderModal({ aiOpen, setAiOpen, aiPrompt, setAiPrompt, aiLoading, aiResult, generateAIRender }) {
+function AIRenderModal({ aiOpen, setAiOpen, aiPrompt, setAiPrompt, aiLoading, aiResult, generateAIRender, aiStyle, setAiStyle }) {
+  const STYLES = [
+    { id: "isometric_dollhouse", label: "Dollhouse Isometrico", desc: "Vista 3D dall'alto stile Archsynth — fotorealistica con mobili, luci, materiali. Usa la pianta 2D come riferimento." },
+    { id: "interior_room", label: "Stanza Interno", desc: "Render fotorealistico a livello occhi della stanza/ambiente. Usa la vista 3D come riferimento." },
+    { id: "exterior", label: "Esterno Edificio", desc: "Render fotorealistico esterno della casa. Usa la pianta come riferimento." },
+  ];
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setAiOpen(false)} data-testid="ai-render-modal">
-      <div className="bg-white w-full max-w-4xl max-h-[90vh] flex flex-col border border-zinc-300" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white w-full max-w-5xl max-h-[92vh] flex flex-col border border-zinc-300" onClick={(e) => e.stopPropagation()}>
         <div className="h-12 px-4 flex items-center border-b border-zinc-200">
           <Sparkles size={16} className="mr-2 text-blue-600" /><span className="font-medium" style={{ fontFamily: "Outfit" }}>Rendering AI fotorealistico</span>
+          <span className="ml-3 text-[10px] mono text-zinc-400">powered by Gemini Nano Banana</span>
           <button className="ml-auto" onClick={() => setAiOpen(false)} data-testid="close-ai-render"><X size={18} /></button>
         </div>
         <div className="grid lg:grid-cols-2 flex-1 min-h-0">
           <div className="p-5 space-y-4 border-r border-zinc-200 overflow-auto">
-            <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Descrizione stile</Label><Textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} rows={5} className="rounded-sm mt-2" data-testid="ai-prompt-input" /></div>
-            <Button onClick={generateAIRender} disabled={aiLoading} className="rounded-sm w-full h-11 bg-zinc-900 hover:bg-zinc-800" data-testid="ai-generate-button">{aiLoading ? "Generazione…" : <><Sparkles size={14} className="mr-2" /> Genera rendering</>}</Button>
+            <div>
+              <Label className="text-xs uppercase tracking-widest text-zinc-500 mb-2 block">Stile rendering</Label>
+              <div className="space-y-2">
+                {STYLES.map((s) => (
+                  <button key={s.id} type="button" onClick={() => setAiStyle(s.id)} className={`w-full text-left p-3 border rounded-sm transition ${aiStyle === s.id ? "bg-blue-50 border-blue-500" : "bg-white border-zinc-200 hover:bg-zinc-50"}`} data-testid={`ai-style-${s.id}`}>
+                    <div className="text-sm font-medium">{s.label}</div>
+                    <div className="text-[11px] text-zinc-500 mt-0.5 leading-snug">{s.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-widest text-zinc-500">Descrizione personalizzata (opzionale)</Label>
+              <Textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} rows={4} className="rounded-sm mt-2" placeholder="Es: 'pavimento parquet rovere chiaro, divano grigio, cucina laccata bianca, luce calda'" data-testid="ai-prompt-input" />
+              <div className="text-[10px] text-zinc-400 mono mt-1">Se vuoto, viene usato il prompt ottimale per lo stile selezionato.</div>
+            </div>
+            <Button onClick={generateAIRender} disabled={aiLoading} className="rounded-sm w-full h-11 bg-zinc-900 hover:bg-zinc-800" data-testid="ai-generate-button">{aiLoading ? "Generazione (30-60s)…" : <><Sparkles size={14} className="mr-2" /> Genera rendering</>}</Button>
+            <div className="text-[10px] text-zinc-400 mono leading-relaxed">⏱ Tempo medio: 30-60 secondi.<br/>💡 Tip: prima della generazione ricontrolla che la pianta abbia stanze, muri e mobili.</div>
           </div>
           <div className="p-5 overflow-auto">
             <Label className="text-xs uppercase tracking-widest text-zinc-500">Risultato</Label>
-            <div className="mt-2 border border-zinc-200 bg-zinc-50 aspect-video flex items-center justify-center overflow-hidden">
-              {aiLoading ? <div className="text-zinc-500 mono text-sm animate-pulse">rendering…</div> : aiResult ? <img src={aiResult} alt="AI render" className="w-full h-full object-cover" data-testid="ai-render-result" /> : <div className="text-zinc-400 mono text-xs">nessun render</div>}
+            <div className="mt-2 border border-zinc-200 bg-zinc-50 aspect-video flex items-center justify-center overflow-hidden rounded-sm">
+              {aiLoading ? <div className="text-zinc-500 mono text-sm animate-pulse">rendering in corso…</div> : aiResult ? <img src={aiResult} alt="AI render" className="w-full h-full object-contain bg-zinc-900" data-testid="ai-render-result" /> : <div className="text-zinc-400 mono text-xs">nessun render</div>}
             </div>
-            {aiResult && <a href={aiResult} download="render.png" className="block mt-3"><Button variant="outline" className="rounded-sm w-full"><Download size={14} className="mr-2" /> Scarica PNG</Button></a>}
+            {aiResult && <a href={aiResult} download={`render-${aiStyle}.png`} className="block mt-3"><Button variant="outline" className="rounded-sm w-full"><Download size={14} className="mr-2" /> Scarica PNG</Button></a>}
           </div>
         </div>
       </div>

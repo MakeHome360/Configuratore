@@ -68,6 +68,31 @@
 - **negozi / subappaltatori / impostazioni / dati_azienda**
 - **materials / projects** (CAD)
 
+## Changelog (Feb 2026 — round 12: AI Rendering 3D fotorealistico + miglioramenti pianta architettonica)
+
+**🎨 FRONT A — Pianta 2D in stile architettonico (Archsynth-like)**
+- Etichette stanze rese in MAIUSCOLO grosso (fontSize 18, fontWeight 700, letterSpacing 1.5) per leggibilità da vista d'insieme.
+- **Catena di quote dimensionali esterne**: bbox totale di tutte le stanze con ticks su ogni vertice X/Y, quote parziali tra ticks (in metri, 2 decimali) + quota TOTALE finale orizzontale e verticale.
+- Render automatico quando il layer Dimensions è attivo.
+
+**🤖 FRONT B — AI Rendering 3D fotorealistico (Gemini Nano Banana)**
+- Nuovo modulo `/app/backend/routes_render.py` con endpoint `POST /api/render/3d`.
+- Input: `image_base64` (PNG della pianta 2D o snapshot 3D), `style` (isometric_dollhouse / interior_room / exterior), opzionale `prompt` custom.
+- Output: PNG/JPG base64 + log audit in collection `renders`.
+- Usa **Emergent LLM Key gratuito** + modello `gemini-3.1-flash-image-preview` (Nano Banana) via emergentintegrations LlmChat.
+- 3 prompt template ottimizzati: dollhouse isometrico, interior, esterno.
+- Frontend `Editor.jsx`:
+  - Bottone Sparkles in toolbar apre modal "Rendering AI fotorealistico".
+  - 3 stili selezionabili (radio cards) con descrizione di ogni opzione.
+  - Per dollhouse: cattura SVG 2D → PNG via canvas → invio AI.
+  - Per interior/exterior: snapshot Three.js → AI.
+  - Modal mostra rendering generato in 30-60s + bottone Scarica PNG.
+- Test verificato browser: 4 stanze (cucina/bagno/camera/soggiorno) → dollhouse 3D fotorealistico con mobili/luci/terrazza/vetture in ~30s ✅.
+
+**Tests:** Lint Python e JS puliti. Test e2e browser PASS (vedi screenshot conversazione).
+
+
+
 ## Changelog (Feb 2026 — round 11.6: copertura pacchetti corretta + override prezzi venditore + applica-tutta-casa)
 
 **FIX CRITICO — Demolizioni e voci generiche pacchetto NON coperte**

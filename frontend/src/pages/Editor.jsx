@@ -1394,17 +1394,25 @@ function ColorOverridePicker({ label, value, onChange, testid }) {
 // Mappa categoria backoffice → macro-gruppo CAD (Muratura/Impianti/Serramenti/Finiture/Servizi)
 const CAT_TO_GRUPPO = {
   muratura: "Muratura", demolizioni: "Muratura", scale: "Muratura", strutture: "Muratura",
-  impianto_elettrico: "Impianti", elettrico: "Impianti", idraulico: "Impianti", impianto_idraulico: "Impianti", gas: "Impianti", impianto_gas: "Impianti", termo_idraulico: "Impianti", clima: "Impianti", termoidraulico: "Impianti", riscaldamento: "Impianti",
+  impianti: "Impianti", impianto: "Impianti", impianto_elettrico: "Impianti", elettrico: "Impianti", idraulico: "Impianti", impianto_idraulico: "Impianti", gas: "Impianti", impianto_gas: "Impianti", termo_idraulico: "Impianti", clima: "Impianti", termoidraulico: "Impianti", riscaldamento: "Impianti",
   serramenti: "Serramenti", infissi: "Serramenti", porte: "Serramenti",
   finiture: "Finiture", pavimenti: "Finiture", rivestimenti: "Finiture", decorazione: "Finiture", pittura: "Finiture", sanitari: "Finiture", controsoffitto: "Finiture",
   servizi: "Servizi", pratiche: "Servizi", oneri: "Servizi", professionali: "Servizi", direzione_lavori: "Servizi", sicurezza: "Servizi", documentazione: "Servizi",
 };
 function gruppoOf(voce) {
-  const c = (voce.category || voce.categoria || "").toLowerCase();
+  const c = (voce.category || voce.categoria || "").toLowerCase().trim();
   if (CAT_TO_GRUPPO[c]) return CAT_TO_GRUPPO[c];
-  // Fallback per nome voce: CILA/APE/Direzione/Sicurezza
+  // Match per parole chiave nel category
+  if (/impiant|elettric|idraulic|gas|clima|termo|caldai|split|riscald|sanitar|cond|vmc|fotov/.test(c)) return "Impianti";
+  if (/infiss|serrament|porte|finestr|tappar|zanzar/.test(c)) return "Serramenti";
+  if (/pavim|rivest|piastr|parquet|decoraz|pittur|finitur|controsoff/.test(c)) return "Finiture";
+  if (/serviz|pratich|oneri|sicurez|direz/.test(c)) return "Servizi";
+  if (/muratur|demoliz|scale|costruz/.test(c)) return "Muratura";
+  // Fallback per nome voce
   const n = (voce.name || "").toLowerCase();
-  if (/cila|ape|direzione|sicurezza|pratica|oneri|notaio/.test(n)) return "Servizi";
+  if (/cila|ape|direzione|sicurezza|pratica|oneri|notaio|capitolato|progetto/.test(n)) return "Servizi";
+  if (/elettric|idraulic|caldai|split|clima|gas|riscald|punto luce|punto presa|punto acqua|punto scarico|sanitar|vmc/.test(n)) return "Impianti";
+  if (/infiss|finestr|porta|tappar|zanzar|persian/.test(n)) return "Serramenti";
   return "Finiture";
 }
 

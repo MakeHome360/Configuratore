@@ -68,7 +68,43 @@
 - **negozi / subappaltatori / impostazioni / dati_azienda**
 - **materials / projects** (CAD)
 
-## Changelog (Feb 2026 — round 12.4: porte/finestre 3D + auto-posa + logica modificabile pacchetti)
+## Changelog (Feb 2026 — round 13: UX hotfix CAD — drag demoliz., quote prospetti, catalogo applica-a-selezionato, scelta tipo piastrelle)
+
+**🔴 BUG-FIX UX P0 — Demolizione muro PARZIALE con DRAG visivo**
+- Bug: l'utente lavorava SOLO con input numerici per definire da/a della demolizione parziale (richiesta: "voglio anche disegnare la demolizione disegnando").
+- Fix: aggiunte maniglie circolari rosse interattive (data-testid `wall-demo-handle-from-{wallId}` / `wall-demo-handle-to-{wallId}`) sui punti from/to della demolizione parziale quando il muro è selezionato in tool=select. Drag in tempo reale aggiorna `demolito_partial.from`/`to`. Hint nel pannello proprietà: "Trascina i pallini rossi sul canvas".
+
+**🔴 BUG-FIX UX P0 — Quote complete nei Prospetti pareti**
+- Bug: i Prospetti mostravano solo larghezza+altezza totali muro e WxH per opening, MA mancavano (richiesta esplicita ripetuta): distanza da sx, distanza da dx, altezza apertura per ogni elemento; sill height per finestre; rendering visivo demolizioni.
+- Fix: `Prospetti.jsx` riscritto con `DimLine`/`DimLineV` complete per ogni elemento. Ora ogni porta/finestra renderizza: width sotto pavimento, sx/dx (distanze dai bordi) sotto, H altezza apertura a sinistra (verticale), parapetto a destra (per finestre). Le demolizioni parziali del muro hanno hatch arancione + quota WxH. Le demolizioni rivestimento (zona) sono renderizzate con hatch arancione + label `DEMO RIV.`
+
+**🔴 BUG-FIX UX P0 — Catalogo voci spostato in TAB dedicato + applica a selezionato**
+- Bug: il catalogo voci era nascosto in fondo al tab PROPRIETÀ ("troppo in basso, come le applico agli elementi?").
+- Fix: 
+  - Spostato `CatalogoVociPanel` dal PropertiesPanel al tab CATALOGO (data-testid `tab-catalog`), con sub-tabs `Voci Backoffice` (default) / `Arredi & Materiali`.
+  - Quando una parete è selezionata: banner blu (`catalog-selected-wall`) con L/H/area + bottone `↗ parete (qty)` su ogni voce che calcola qty automaticamente in base a m²/ml della parete.
+  - Quando una stanza è selezionata: banner verde (`catalog-selected-room`) con area/perimetro + bottone `↗ stanza (qty)` che calcola qty su area/perimetro.
+  - Sempre disponibili: `+ libera` (qty=1) e `↗ tutta casa` (calcolo cumulativo su tutte le stanze).
+  - Ogni voce aggiunta è marcata con `target_kind` (wall/room/all-house/free) e `target_id` per audit.
+  - Tab default cambiato da `cost` a `properties` (più intuitivo).
+  - PropertiesPanel mostra ora un banner "Per aggiungere voci dal catalogo, vai al tab CATALOGO".
+
+**🔴 BUG-FIX UX P0 — Schema piastrelle: scelta TIPO specifico dal catalogo**
+- Bug: il tool 'Schema piastrelle' permetteva di scegliere SOLO il formato (60x60, 30x60, ecc.) ma NON il tipo di piastrella ("non mi fa selezionare il tipo di pavimento").
+- Fix:
+  - Nuovo Select `tile-voce-select` nel pannello tool tiling: lista voci backoffice filtrate per nome (gres/parquet/marmo/pvc/laminato).
+  - Tile object salva ora `voceId`, `vocePrice`, `voceName`.
+  - `estimateProjectV2` riconosce `tilingLumps` per ogni tiling con voce: sottrae l'area dalla voce generica `pavimento_piastrelle` e crea una riga dedicata "Gres porcellanato effetto X · stanza Y" con il prezzo specifico della voce scelta.
+
+**🆕 SEED — 13 nuove voci backoffice tile-specific**
+- `voce-gres-cemento-60x60`, `voce-gres-marmo-60x120`, `voce-gres-legno-22x90`, `voce-gres-pietra-80x80`, `voce-gres-mono-30x60`, `voce-marmo-naturale-25x150`, `voce-parquet-rovere-pl`, `voce-parquet-noce-spina`, `voce-pvc-effetto-legno`, `voce-laminato-ac4`, `voce-piast-mosaico-bagno`, `voce-piast-cucina-10x10`, `voce-piast-bagno-25x40`. Tutte `modificabile_dal_venditore=True` con prezzi realistici (gres mono 27€, marmo naturale 162€, parquet noce spina 162€).
+- `gruppoOf()` in Editor.jsx esteso per riconoscere correttamente 5 gruppi: Muratura/Impianti/Serramenti/Finiture/Servizi anche per categoria backoffice in maiuscolo (IMPIANTI/INFISSI/SERVIZI/MURATURA).
+
+**Tests:** Backend 5/5 pytest PASS (`/app/backend/tests/test_round13.py`). Frontend smoke OK: tab CATALOGO funziona, 4 gruppi visibili (43+32+10+7=92 voci), Listino Personalizzato con 13 nuove voci tile editabili, hint demo, lint pulito su tutti i file modificati.
+
+---
+
+
 
 **🔵 PORTE/FINESTRE VISIBILI IN 3D**
 - Bug: il Viewer3D mostrava solo il VARCO senza il pannello porta o il vetro finestra.

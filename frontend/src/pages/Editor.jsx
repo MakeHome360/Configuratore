@@ -940,6 +940,14 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
       return { ...p, priceOverrides: next };
     });
     const editable = (voci || []).filter((v) => v.modificabile_dal_venditore);
+    const pkgRef = project.packageRef;
+    // Mappa voce_id → prezzo MAX coperto dal pacchetto (se voce è in pacchetto)
+    const pkgPriceMap = {};
+    if (pkgRef && Array.isArray(pkgRef.voci_incluse)) {
+      pkgRef.voci_incluse.forEach((vi) => {
+        if (vi.voce_id && vi.ref_unit_price > 0) pkgPriceMap[vi.voce_id] = vi.ref_unit_price;
+      });
+    }
     return (
       <div>
         <div className="label-kicker mb-3">Progetto</div>
@@ -953,17 +961,23 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
         <div className="space-y-3">
           <div className="label-kicker">Listino personalizzato</div>
           <div className="text-[10px] text-zinc-500 mono leading-relaxed">
-            Sovrascrivi il prezzo unitario delle voci marcate "modificabile dal venditore" nel Backoffice. Se in pacchetto e supera il prezzo di riferimento, l'eccedenza diventa extra.
+            Sovrascrivi il prezzo unitario delle voci modificabili.<br/>
+            {pkgRef ? <span className="text-amber-700">CON PACCHETTO ({pkgRef.name}): se il prezzo supera il <b>prezzo MAX coperto</b>, l'eccedenza × qty inclusa diventa extra.</span> : <span>SENZA PACCHETTO: il prezzo personalizzato vale per tutte le quantità (no extras).</span>}
           </div>
           {editable.length === 0 && <div className="text-xs text-zinc-400 mono">Nessuna voce modificabile configurata. Imposta `modificabile_dal_venditore=true` nelle voci dal Backoffice.</div>}
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {editable.map((v) => {
               const cur = overrides[v.id];
-              const ref = v.prezzo_rivendita || v.unit_price || 0;
+              const standardPrice = v.prezzo_rivendita || v.unit_price || 0;
+              const pkgMax = pkgPriceMap[v.id]; // null se voce NON nel pacchetto
+              const ref = pkgRef && pkgMax ? pkgMax : standardPrice;
+              const isInPkg = !!(pkgRef && pkgMax);
               return (
                 <div key={v.id} className="bg-zinc-50 border border-zinc-200 p-2 rounded text-xs">
                   <div className="font-medium text-zinc-800">{v.name}</div>
-                  <div className="text-[10px] text-zinc-500 mono">Riferimento: {fmtEuro(ref)} / {v.unit}</div>
+                  <div className="text-[10px] text-zinc-500 mono">
+                    {isInPkg ? <>Prezzo MAX pacchetto: <b className="text-amber-700">{fmtEuro(pkgMax)}</b> · standard: {fmtEuro(standardPrice)}</> : <>Riferimento: {fmtEuro(standardPrice)}</>} / {v.unit}
+                  </div>
                   <div className="flex items-center gap-2 mt-1">
                     <Input type="number" step="0.01" placeholder={String(ref)} value={cur != null ? cur : ""}
                       onChange={(e) => {
@@ -974,8 +988,11 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
                       className="rounded-sm h-8 mono w-24"
                       data-testid={`price-override-${v.id}`} />
                     <span className="text-[10px] text-zinc-400 mono">€/{v.unit}</span>
-                    {cur != null && cur > ref && (
-                      <span className="text-[10px] text-amber-600 mono">+{fmtEuro(cur - ref)} eccedenza</span>
+                    {cur != null && isInPkg && cur > pkgMax && (
+                      <span className="text-[10px] text-amber-600 mono">+{fmtEuro(cur - pkgMax)} eccedenza → extra</span>
+                    )}
+                    {cur != null && isInPkg && cur <= pkgMax && (
+                      <span className="text-[10px] text-emerald-600 mono">✓ entro soglia</span>
                     )}
                     {cur != null && (
                       <button onClick={() => removeOverride(v.id)} className="text-[10px] text-rose-600 hover:underline ml-auto">reset</button>

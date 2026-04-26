@@ -756,6 +756,8 @@ async def list_packages(user: Dict[str, Any] = Depends(get_current_user)):
                     "prezzo_acquisto": v["prezzo_acquisto"],
                     "ricarico": v["ricarico"],
                     "prezzo_rivendita": round(v["prezzo_acquisto"] * v["ricarico"], 2),
+                    "unit_price_pkg": meta.get("unit_price_pkg"),
+                    "modificabile_dal_venditore": bool(v.get("modificabile_dal_venditore")),
                 })
             items.sort(key=_voci_sort_key)
             out.append({"id": p["id"], "name": p["name"], "subtitle": p["subtitle"], "price_per_m2": p["price_per_m2"], "color": p["color"], "description": p["description"], "items": items})
@@ -775,6 +777,8 @@ async def list_packages(user: Dict[str, Any] = Depends(get_current_user)):
                 "prezzo_acquisto": v["prezzo_acquisto"],
                 "ricarico": v["ricarico"],
                 "prezzo_rivendita": round(v["prezzo_acquisto"] * v["ricarico"], 2),
+                "unit_price_pkg": it.get("unit_price_pkg"),  # prezzo MAX coperto dal pacchetto (None = usa prezzo_rivendita standard)
+                "modificabile_dal_venditore": bool(v.get("modificabile_dal_venditore")),
             })
         items.sort(key=_voci_sort_key)
         out.append({"id": p["id"], "name": p["name"], "subtitle": p.get("subtitle", ""), "price_per_m2": p["price_per_m2"], "color": p.get("color", "#475569"), "description": p.get("description", ""), "items": items})

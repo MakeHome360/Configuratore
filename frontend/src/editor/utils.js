@@ -348,14 +348,28 @@ export function estimateProjectV2(project, voci, packageRef) {
     }
   });
 
+  // Tiling rooms: anche stanze "fatto" senza progetto overrides ma con un tiling specifico
+  // devono entrare nel computo (l'utente ha applicato piastrelle a TUTTE le stanze).
+  const tilingRoomIds = new Set((data.tiling || []).filter((t) => t.voceId).map((t) => t.roomId));
+  const billedRoomIds = new Set(allRoomsForBilling.map((b) => b.room.id));
+  (data.rooms || []).forEach((r) => {
+    if (billedRoomIds.has(r.id)) return;
+    if (tilingRoomIds.has(r.id)) {
+      // Aggiungi billing minimo per pavimento (piastrelle) anche su stanza "fatto" senza progetto
+      allRoomsForBilling.push({ room: r, fm: "floor-ceramic", wm: null, ctr: false, elec: false, plumb: false, pittura: false });
+    }
+  });
+
   allRoomsForBilling.forEach(({ room: r, fm, wm, ctr, elec, plumb, pittura }) => {
     const areaM2 = polygonArea(r.points) / 10000;
     const perimM = polygonPerimeter(r.points) / 100;
     const wallAreaM2 = perimM * (height / 100);
-    if (fm) {
+    // Force floor materiale a "piastrelle" se nella stanza è stato applicato un tiling specifico
+    const hasTilingHere = tilingRoomIds.has(r.id);
+    if (fm || hasTilingHere) {
       const f = (fm || "").toLowerCase();
-      if (f.includes("parquet")) add("pavimento_parquet", areaM2);
-      else if (f.includes("pvc") || f.includes("laminat")) add("pavimento_pvc", areaM2);
+      if (!hasTilingHere && f.includes("parquet")) add("pavimento_parquet", areaM2);
+      else if (!hasTilingHere && (f.includes("pvc") || f.includes("laminat"))) add("pavimento_pvc", areaM2);
       else add("pavimento_piastrelle", areaM2);
       add("battiscopa", perimM);
     }
@@ -374,6 +388,20 @@ export function estimateProjectV2(project, voci, packageRef) {
 
   // helper isProgetto per gli ELEMENTI (porte, finestre, items, impianti, scale)
   const isProgetto = (el) => el?.phase === "progetto";
+
+  // DECORAZIONE/VOCE PARETE: voce_id specifica scelta dal venditore per una parete (override prezzo).
+  // wallDecorOverridesByVoce: per ogni voce_id usata su qualche parete, accumula area mq totale.
+  const wallDecorAreaByVoceId = {}; // { voceId: { area, name, price } }
+  (data.walls || []).forEach((w) => {
+    if (w.demolito) return;
+    const lenM = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) / 100;
+    const aM2 = lenM * (height / 100);
+    if (w.decorVoceId && w.decorVocePrice) {
+      const cur = wallDecorAreaByVoceId[w.decorVoceId] || { area: 0, name: w.decorVoceName || "Decorazione", price: w.decorVocePrice };
+      cur.area += aM2;
+      wallDecorAreaByVoceId[w.decorVoceId] = cur;
+    }
+  });
 
   // Walls: fatturare SOLO se phase==="progetto". (cartongesso o kind="nuovo" senza phase = legacy → trattati come progetto)
   (data.walls || []).forEach((w) => {
@@ -422,20 +450,20 @@ export function estimateProjectV2(project, voci, packageRef) {
     else add("finestre_pvc", 1);
   });
 
-  // Impianti dettagliati — solo nuovi
-  (data.electrical || []).filter(isProgetto).forEach((e) => {
+  // Impianti dettagliati — tutti contati per billing (anche se phase=fatto: l'impianto è sempre nuova fornitura)
+  (data.electrical || []).forEach((e) => {
     if (e.type === "presa") add("punto_presa", 1);
     else if (e.type === "interruttore") add("punto_interruttore", 1);
-    else if (e.type === "luce") add("punto_luce", 1);
+    else if (e.type === "luce" || e.type === "punto-luce") add("punto_luce", 1);
     else if (e.type === "quadro" || e.type === "quadro-elettrico") add("quadro_elettrico", 1);
     else add("punto_luce", 1); // fallback per altri tipi
   });
-  (data.plumbing || []).filter(isProgetto).forEach((p) => {
+  (data.plumbing || []).forEach((p) => {
     if (p.type === "scarico" || p.type === "acqua-scarico") add("punto_scarico", 1);
     else add("punto_acqua", 1);
   });
-  (data.gas || []).filter(isProgetto).forEach(() => add("punto_gas", 1));
-  (data.hvac || []).filter(isProgetto).forEach((h) => {
+  (data.gas || []).forEach(() => add("punto_gas", 1));
+  (data.hvac || []).forEach((h) => {
     const t = h.type || "split";
     // Per multi-split (gruppi): trial/dual sono fatturati una volta come "trial"/"dual" (sul UE).
     // Gli split del gruppo non aggiungono ulteriore prezzo singolo (sono inclusi nel trial/dual).
@@ -650,11 +678,43 @@ export function estimateProjectV2(project, voci, packageRef) {
       voce_id: mi.voce_id || null, category: mi.category || "Manuale", manual: true,
     });
   });
+  // Decorazioni parete con voce specifica (per-parete o globali): un riga per voce_id
+  Object.entries(wallDecorAreaByVoceId).forEach(([voceId, info]) => {
+    const totalRow = round2(info.area * info.price);
+    lumpItems.push({
+      key: `walldecor-${voceId}`, name: `${info.name} (decorazione/rivestimento parete)`,
+      unit: "m²",
+      qty: round2(info.area), qty_inclusa: 0, qty_extra: round2(info.area),
+      unit_price: info.price, total: totalRow,
+      voce_id: voceId, category: "Decorazioni pareti", manual: true,
+    });
+  });
   lumpItems.forEach((it) => { totalExtra += it.total; });
   items.push(...lumpItems);
 
+  // EXCLUDED_KEYS: l'utente ha cliccato la "X" di rimozione su queste righe → escludi dal computo.
+  const excludedKeys = new Set(data.excluded_keys || []);
+  let removedExtra = 0;
+  let removedIncluded = 0;
+  const finalItems = items.filter((it) => {
+    if (!excludedKeys.has(it.key)) return true;
+    // Sottrai il contributo di questa riga ai totali
+    if (it.manual || it.lump) {
+      removedExtra += it.total;
+    } else {
+      // riga computata: extra_unit_price * qty_extra + delta + included_unit_price * inclusa
+      const extraRow = (it.qty_extra || 0) * (it.unit_price || 0) + (it.price_delta_extra || 0);
+      const inclRow = (it.qty_inclusa || 0) * (it.unit_price || 0);
+      removedExtra += extraRow;
+      removedIncluded += inclRow;
+    }
+    return false;
+  });
+  totalExtra -= removedExtra;
+  totalIncluded -= removedIncluded;
+
   return {
-    items,
+    items: finalItems,
     total: round2(totalExtra + (packageRef?.package_base_total || totalIncluded)),
     extra_total: round2(totalExtra),
     included_total: round2(totalIncluded),

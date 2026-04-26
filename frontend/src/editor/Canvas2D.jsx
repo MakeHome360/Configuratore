@@ -27,37 +27,49 @@ function Measurement({ x1, y1, x2, y2, big = false, color = "#16A34A" }) {
 // Impianti symbol renderers
 function ElectricalSymbol({ e, isSel }) {
   const c = isSel ? "#2563EB" : "#7C3AED";
-  if (e.type === "quadro") {
-    return <g><rect x={-18} y={-12} width={36} height={24} fill="white" stroke={c} strokeWidth="1.5" /><text x={0} y={4} fontSize="11" textAnchor="middle" fontWeight="700" fill={c}>Q</text></g>;
+  if (e.type === "quadro" || e.type === "quadro-elettrico") {
+    return <g><rect x={-22} y={-15} width={44} height={30} fill="white" stroke={c} strokeWidth="2" /><text x={0} y={5} fontSize="13" textAnchor="middle" fontWeight="900" fill={c}>Q</text><text x={0} y={28} fontSize="8" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>QUADRO</text></g>;
   }
   if (e.type === "scatola") {
-    return <g><rect x={-8} y={-8} width={16} height={16} fill="white" stroke={c} strokeWidth="1.2" strokeDasharray="2,2" /></g>;
+    return <g><rect x={-10} y={-10} width={20} height={20} fill="white" stroke={c} strokeWidth="1.5" strokeDasharray="2,2" /><text x={0} y={4} fontSize="9" textAnchor="middle" fontWeight="700" fill={c}>D</text></g>;
   }
   if (e.type === "presa") {
-    return <g><circle cx={0} cy={0} r={9} fill="white" stroke={c} strokeWidth="1.5" /><line x1={-3} y1={-3} x2={-3} y2={3} stroke={c} strokeWidth="1.5" /><line x1={3} y1={-3} x2={3} y2={3} stroke={c} strokeWidth="1.5" /></g>;
+    return <g><circle cx={0} cy={0} r={12} fill="white" stroke={c} strokeWidth="2" /><line x1={-4} y1={-4} x2={-4} y2={4} stroke={c} strokeWidth="2" /><line x1={4} y1={-4} x2={4} y2={4} stroke={c} strokeWidth="2" /><text x={0} y={22} fontSize="8" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>PRESA</text></g>;
   }
   if (e.type === "interruttore") {
-    return <g><circle cx={0} cy={0} r={7} fill="white" stroke={c} strokeWidth="1.5" /><line x1={-3} y1={3} x2={3} y2={-3} stroke={c} strokeWidth="1.5" /></g>;
+    return <g><circle cx={0} cy={0} r={10} fill="white" stroke={c} strokeWidth="2" /><line x1={-4} y1={4} x2={4} y2={-4} stroke={c} strokeWidth="2" /><text x={0} y={20} fontSize="8" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>INT</text></g>;
   }
-  if (e.type === "luce") {
-    return <g><circle cx={0} cy={0} r={9} fill="white" stroke={c} strokeWidth="1.5" /><line x1={-6} y1={-6} x2={6} y2={6} stroke={c} strokeWidth="1.2" /><line x1={-6} y1={6} x2={6} y2={-6} stroke={c} strokeWidth="1.2" /></g>;
+  if (e.type === "luce" || e.type === "punto-luce") {
+    return <g><circle cx={0} cy={0} r={12} fill="white" stroke={c} strokeWidth="2" /><line x1={-8} y1={-8} x2={8} y2={8} stroke={c} strokeWidth="1.5" /><line x1={-8} y1={8} x2={8} y2={-8} stroke={c} strokeWidth="1.5" /><text x={0} y={22} fontSize="8" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>LUCE</text></g>;
   }
   return null;
 }
 
 function PlumbingSymbol({ p, isSel }) {
   const c = isSel ? "#2563EB" : (p.type === "scarico" ? "#0891B2" : (p.type === "acqua-calda" ? "#DC2626" : "#0EA5E9"));
+  const lbl = p.type === "scarico" ? "SCARICO" : (p.type === "acqua-calda" ? "C. CALDA" : "C. FREDDA");
+  const sym = p.type === "scarico" ? "S" : (p.type === "acqua-calda" ? "C" : "F");
   return (
     <g>
-      <circle cx={0} cy={0} r={9} fill="white" stroke={c} strokeWidth="1.5" />
-      <text x={0} y={4} fontSize="10" textAnchor="middle" fontWeight="800" fill={c}>{p.type === "scarico" ? "S" : (p.type === "acqua-calda" ? "C" : "F")}</text>
+      <circle cx={0} cy={0} r={12} fill="white" stroke={c} strokeWidth="2" />
+      <text x={0} y={5} fontSize="13" textAnchor="middle" fontWeight="900" fill={c}>{sym}</text>
+      <text x={0} y={24} fontSize="8" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>{lbl}</text>
     </g>
   );
 }
 
 function GasSymbol({ g, isSel }) {
   const c = isSel ? "#2563EB" : "#EAB308";
-  return <g><circle cx={0} cy={0} r={9} fill="#FEF9C3" stroke={c} strokeWidth="1.5" /><text x={0} y={4} fontSize="10" textAnchor="middle" fontWeight="800" fill={c}>G</text></g>;
+  return (
+    <g>
+      {/* Background contrast halo */}
+      <circle cx={0} cy={0} r={16} fill="#FEF9C3" stroke={c} strokeWidth="2.5" />
+      {/* Inner flame icon */}
+      <text x={0} y={3} fontSize="14" textAnchor="middle" fontWeight="900" fill={c}>G</text>
+      {/* Label below for prints */}
+      <text x={0} y={28} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill="#854D0E">GAS</text>
+    </g>
+  );
 }
 
 function HvacSymbol({ h, isSel }) {

@@ -817,7 +817,7 @@ export default function Editor() {
                 <CatalogPanel catalog={catalog} selectedMaterial={selectedMaterial} setSelectedMaterial={(id) => { setSelectedMaterial(id); setTool("item"); }} project={project.data} setProject={setProjectData} voci={voci} selected={selected} />
               </TabsContent>
               <TabsContent value="cost" className="p-0 overflow-auto flex-1 mt-0">
-                <CostPanelV2 estimate={estimateV2} packageRef={project.data?.packageRef} legacy={estimate} linkedPreventivo={linkedPreventivo} saveAsPreventivo={saveAsPreventivo} />
+                <CostPanelV2 estimate={estimateV2} packageRef={project.data?.packageRef} legacy={estimate} linkedPreventivo={linkedPreventivo} saveAsPreventivo={saveAsPreventivo} excludedKeys={project.data?.excluded_keys || []} setExcludedKeys={(keys) => setProjectData((d) => ({ ...d, excluded_keys: keys }))} />
               </TabsContent>
             </Tabs>
           </aside>
@@ -1133,14 +1133,62 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
           <div className="mt-3"><Label className="text-xs uppercase tracking-widest text-zinc-500">Spessore (cm)</Label><Input type="number" value={obj.thickness || 10} onChange={(e) => updateObj({ thickness: parseInt(e.target.value) || 10 })} className="rounded-sm h-9 mt-1.5 mono" /></div>
         </fieldset>
         <Separator />
-        <div className="bg-purple-50 border border-purple-200 p-2 space-y-2">
-          <Label className="text-xs uppercase tracking-widest text-purple-800">Decorazione · pittura parete</Label>
+        <div className="bg-purple-50 border border-purple-200 p-2 space-y-2" data-testid="wall-decoration-block">
+          <Label className="text-xs uppercase tracking-widest text-purple-800">Decorazione · pittura/rivestimento parete</Label>
           <div className="flex items-center gap-2">
             <input type="color" value={obj.paintColor || "#FFFFFF"} onChange={(e) => updateObj({ paintColor: e.target.value })} className="w-10 h-9 rounded-sm border border-zinc-300 cursor-pointer" data-testid="wall-paint-color" />
             <Input value={obj.paintColor || ""} placeholder="#FFFFFF" onChange={(e) => updateObj({ paintColor: e.target.value })} className="rounded-sm h-9 flex-1 mono text-xs" />
             {obj.paintColor && <button onClick={() => updateObj({ paintColor: null })} className="text-[10px] text-rose-600 hover:underline">reset</button>}
           </div>
-          <div className="text-[10px] text-zinc-500 mono">Colore visibile in 2D e applicato al rendering AI.</div>
+          <Label className="text-[10px] uppercase tracking-widest text-purple-800">Voce catalogo (decorazione/laminato/parquet a parete)</Label>
+          <Select value={obj.decorVoceId || "__none__"} onValueChange={(v) => {
+            if (v === "__none__") { updateObj({ decorVoceId: null, decorVoceName: null, decorVocePrice: null }); return; }
+            const voce = (voci || []).find((x) => x.id === v);
+            if (!voce) return;
+            updateObj({ decorVoceId: v, decorVoceName: voce.name, decorVocePrice: voce.prezzo_rivendita || voce.unit_price || 0 });
+          }}>
+            <SelectTrigger className="rounded-sm h-8" data-testid="wall-decor-voce-select"><SelectValue placeholder="Nessuna voce" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">— Nessuna voce —</SelectItem>
+              {(voci || []).filter((v) => /decoraz|pittur|idropittur|laminat|parquet|rivestim|tappezz|carta da par|mosaic|gres parete|piastrell|legno parete/i.test(v.name || "")).map((v) => (
+                <SelectItem key={v.id} value={v.id}>{v.name} · {fmtEuro(v.prezzo_rivendita || v.unit_price || 0)}/{v.unit}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {obj.decorVoceName && (
+            <div className="text-[10px] text-emerald-700 mono">✓ {obj.decorVoceName} · {fmtEuro(obj.decorVocePrice || 0)}/{(voci || []).find((x) => x.id === obj.decorVoceId)?.unit || "m²"}</div>
+          )}
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                if (!obj.paintColor && !obj.decorVoceId) { toast.error("Imposta prima un colore o una voce"); return; }
+                setProject((p) => ({
+                  ...p,
+                  walls: (p.walls || []).map((w) => w.demolito ? w : ({
+                    ...w,
+                    paintColor: obj.paintColor || w.paintColor,
+                    decorVoceId: obj.decorVoceId || w.decorVoceId,
+                    decorVoceName: obj.decorVoceName || w.decorVoceName,
+                    decorVocePrice: obj.decorVocePrice != null ? obj.decorVocePrice : w.decorVocePrice,
+                  })),
+                }));
+                toast.success("✓ Applicato a TUTTA LA CASA (tutte le pareti)");
+              }}
+              className="rounded-sm h-8 bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-semibold"
+              data-testid="wall-apply-house"
+            >↗ Applica a tutta la casa</button>
+            <button
+              type="button"
+              onClick={() => updateObj({ decorVoceId: null, decorVoceName: null, decorVocePrice: null, paintColor: null })}
+              className="rounded-sm h-8 bg-zinc-200 hover:bg-zinc-300 text-zinc-700 text-[10px] font-medium"
+              data-testid="wall-decor-clear"
+            >Pulisci parete</button>
+          </div>
+          <div className="text-[10px] text-zinc-500 mono leading-tight">
+            Usa "Applica a parete" cambiando solo il colore/voce qui sopra (la parete corrente è la selezionata).<br/>
+            Usa "Applica a tutta la casa" per replicare colore + voce su <b>tutte le pareti</b> non demolite.
+          </div>
         </div>
         <Separator />
         <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-zinc-500">Demolisci tutto</Label><Switch checked={!!obj.demolito} onCheckedChange={(v) => updateObj({ demolito: v, demolito_partial: v ? null : obj.demolito_partial })} data-testid="wall-demolito-switch" /></div>
@@ -1643,7 +1691,7 @@ function CatalogPanel({ catalog, selectedMaterial, setSelectedMaterial, project,
   );
 }
 
-function CostPanelV2({ estimate, packageRef, legacy, linkedPreventivo, saveAsPreventivo }) {
+function CostPanelV2({ estimate, packageRef, legacy, linkedPreventivo, saveAsPreventivo, excludedKeys = [], setExcludedKeys }) {
   if (!estimate) return null;
   // Calcola scostamento vs budget preventivo approvato (se collegato)
   const budgetTotal = linkedPreventivo?.totale_iva_escl || linkedPreventivo?.total || 0;
@@ -1703,7 +1751,25 @@ function CostPanelV2({ estimate, packageRef, legacy, linkedPreventivo, saveAsPre
             <tbody>
               {estimate.items.map((it) => (
                 <tr key={it.key} className="border-b border-zinc-100" data-testid={`computo-row-${it.key}`}>
-                  <td className="py-1.5"><div>{it.name}</div><div className="text-[10px] text-zinc-400 mono">{it.category}</div></td>
+                  <td className="py-1.5">
+                    <div className="flex items-start gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!setExcludedKeys) return;
+                          setExcludedKeys([...(excludedKeys || []), it.key]);
+                          toast.success(`Riga "${it.name}" rimossa dal preventivo`);
+                        }}
+                        className="mt-0.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded p-0.5"
+                        title="Rimuovi questa voce dal preventivo"
+                        data-testid={`computo-delete-${it.key}`}
+                      ><X size={12} /></button>
+                      <div className="flex-1 min-w-0">
+                        <div className="leading-tight">{it.name}</div>
+                        <div className="text-[10px] text-zinc-400 mono">{it.category}</div>
+                      </div>
+                    </div>
+                  </td>
                   <td className="mono">{fmtNum(it.qty, 2)} {it.unit}</td>
                   {packageRef && <td className="mono text-rose-700">{fmtNum(it.qty_extra, 2)}</td>}
                   <td className="mono text-right">{fmtEuro(it.total)}</td>
@@ -1711,6 +1777,22 @@ function CostPanelV2({ estimate, packageRef, legacy, linkedPreventivo, saveAsPre
               ))}
             </tbody>
           </table>
+        )}
+        {(excludedKeys && excludedKeys.length > 0) && (
+          <div className="mt-3 bg-amber-50 border border-amber-300 p-2 text-[11px]">
+            <div className="flex items-center justify-between mb-1">
+              <span className="mono uppercase tracking-widest text-amber-800 text-[9px]">{excludedKeys.length} voci rimosse</span>
+              <button onClick={() => setExcludedKeys && setExcludedKeys([])} className="text-amber-800 underline text-[10px]" data-testid="restore-excluded-all">Ripristina tutte</button>
+            </div>
+            <ul className="space-y-0.5 max-h-24 overflow-auto">
+              {excludedKeys.map((k) => (
+                <li key={k} className="flex items-center justify-between gap-2">
+                  <span className="mono text-amber-900 truncate">{k}</span>
+                  <button onClick={() => setExcludedKeys && setExcludedKeys(excludedKeys.filter((x) => x !== k))} className="text-amber-700 hover:text-amber-900" data-testid={`restore-excluded-${k}`}><RotateCcw size={11} /></button>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
       <Separator />
@@ -1801,10 +1883,10 @@ const TAVOLE = [
   { id: "stato-progetto", title: "Stato di Progetto", viewMode: "progetto", layers: { walls: true, doors: true, windows: true, rooms: true, items: true, electrical: false, plumbing: false, gas: false, hvac: false, demolitions: false, tiling: false, dimensions: true, floors: true } },
   { id: "demolizioni", title: "Demolizioni", viewMode: "demolizioni", layers: { walls: true, doors: false, windows: false, rooms: true, items: false, electrical: false, plumbing: false, gas: false, hvac: false, demolitions: true, tiling: false, dimensions: true, floors: true } },
   { id: "costruzioni", title: "Costruzioni", viewMode: "costruzioni", layers: { walls: true, doors: false, windows: false, rooms: true, items: false, electrical: false, plumbing: false, gas: false, hvac: false, demolitions: false, tiling: false, dimensions: true, floors: false } },
-  { id: "elettrico", title: "Impianto Elettrico", viewMode: "progetto", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: true, plumbing: false, gas: false, hvac: false, demolitions: false, tiling: false, dimensions: false, floors: false } },
-  { id: "idraulico", title: "Impianto Idraulico", viewMode: "progetto", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: false, plumbing: true, gas: false, hvac: false, demolitions: false, tiling: false, dimensions: false, floors: false } },
-  { id: "gas", title: "Impianto Gas", viewMode: "progetto", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: false, plumbing: false, gas: true, hvac: false, demolitions: false, tiling: false, dimensions: false, floors: false } },
-  { id: "condizionamento", title: "Impianto Condizionamento", viewMode: "progetto", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: false, plumbing: false, gas: false, hvac: true, demolitions: false, tiling: false, dimensions: false, floors: false } },
+  { id: "elettrico", title: "Impianto Elettrico", viewMode: "progetto", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: true, plumbing: false, gas: false, hvac: false, demolitions: false, tiling: false, dimensions: true, floors: false } },
+  { id: "idraulico", title: "Impianto Idraulico", viewMode: "progetto", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: false, plumbing: true, gas: false, hvac: false, demolitions: false, tiling: false, dimensions: true, floors: false } },
+  { id: "gas", title: "Impianto Gas", viewMode: "progetto", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: false, plumbing: false, gas: true, hvac: false, demolitions: false, tiling: false, dimensions: true, floors: false } },
+  { id: "condizionamento", title: "Impianto Condizionamento", viewMode: "progetto", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: false, plumbing: false, gas: false, hvac: true, demolitions: false, tiling: false, dimensions: true, floors: false } },
   { id: "schema-posa", title: "Schema Posa Piastrelle", viewMode: "progetto", layers: { walls: true, doors: true, windows: true, rooms: true, items: false, electrical: false, plumbing: false, gas: false, hvac: false, demolitions: false, tiling: true, dimensions: true, floors: false } },
 ];
 

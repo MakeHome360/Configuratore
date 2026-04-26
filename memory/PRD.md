@@ -68,6 +68,28 @@
 - **negozi / subappaltatori / impostazioni / dati_azienda**
 - **materials / projects** (CAD)
 
+## Changelog (Feb 2026 — round 12.4: porte/finestre 3D + auto-posa + logica modificabile pacchetti)
+
+**🔵 PORTE/FINESTRE VISIBILI IN 3D**
+- Bug: il Viewer3D mostrava solo il VARCO senza il pannello porta o il vetro finestra.
+- Fix: `Viewer3D.jsx` ora aggiunge dopo ogni muro:
+  - Pannello PORTA (BoxGeometry width×height×4cm) inclinato 30° per simulare apertura, colore marrone default o `door.color` se settato. Maniglia cilindrica argentata a 100cm.
+  - TELAIO finestra (cornice bianca/colorata) + VETRO azzurrato semitrasparente (opacity 0.55, metalness 0.4) all'interno del varco, tra `sillHeight` e `sillHeight + height`.
+
+**🔵 AUTO-POSA + MASSETTO ACCOPPIATI AUTOMATICAMENTE**
+- Quando il CAD genera una qty di Piastrelle pavimento → aggiunge automaticamente "Posa piastrelle pavimento" + "Massetto cementizio".
+- Stessa logica per: Parquet, Pavimento PVC, Piastrelle rivestimento.
+- Map `PAIRED_LABOR` in utils.js. Coperte da pacchetto se `PACKAGE_VOCE_GROUPS` le include.
+
+**🆙 LOGICA "MODIFICABILE DAL VENDITORE" CHIARITA**
+- Backend `/api/packages` ora espone `unit_price_pkg` (prezzo MAX coperto) e `modificabile_dal_venditore` per ogni item.
+- Backoffice Pacchetti: nuovo input "Prezzo MAX coperto" visibile SOLO per voci modificabili.
+- CAD Listino personalizzato CON pacchetto: bandiera amber "+X€ eccedenza → extra" se override > pkg_max, verde "✓ entro soglia" se ≤. SENZA pacchetto: prezzo applicato direttamente.
+
+**Tests:** Browser test porta 3D visibile ✅. Lint pulito.
+
+---
+
 ## Changelog (Feb 2026 — round 12.2: catalogo voci CAD + bugfix elettrico/quick-room/extra + scale prezzo a corpo)
 
 **🔴 BUG FIX**

@@ -91,9 +91,14 @@ export const VOCE_MAP = {
   costruzione_muro_cartongesso: "Muro cartongesso",
   controsoffitto: "Controparete / controsoffitto",
   pavimento_piastrelle: "Piastrelle pavimento",
+  posa_pavimento_piastrelle: "Posa piastrelle pavimento",
+  massetto: "Massetto cementizio",
   pavimento_parquet: "Parquet",
+  posa_pavimento_parquet: "Posa parquet",
   pavimento_pvc: "Pavimento PVC/laminato",
+  posa_pavimento_pvc: "Posa pavimento PVC/laminato",
   rivestimento_piastrelle: "Piastrelle rivestimento",
+  posa_rivestimento_piastrelle: "Posa piastrelle rivestimento",
   pittura_pareti: "Pittura prima mano",
   battiscopa: "Posa Battiscopa",
   impianto_elettrico_mq: "Impianto elettrico completo",
@@ -151,9 +156,13 @@ export const NAME_TO_CAD_KEY = Object.fromEntries(
 export const PACKAGE_VOCE_GROUPS = {
   "demolizione e smaltimento": { keys: ["demolizione_pavimento", "demolizione_muro", "demolizione_rivestimento", "demolizione_controsoffitto"], shared: true },
   "decorazione": { keys: ["pittura_pareti"], shared: false },
-  "posa massetto": { keys: ["pavimento_piastrelle", "pavimento_parquet", "pavimento_pvc"], shared: true },
-  "posa pavimento ceramica": { keys: ["pavimento_piastrelle"], shared: false },
-  "posa rivestimento ceramica": { keys: ["rivestimento_piastrelle"], shared: false },
+  "posa massetto": { keys: ["massetto"], shared: false },
+  "massetto cementizio": { keys: ["massetto"], shared: false },
+  "posa pavimento ceramica": { keys: ["posa_pavimento_piastrelle"], shared: false },
+  "posa piastrelle pavimento": { keys: ["posa_pavimento_piastrelle"], shared: false },
+  "posa rivestimento ceramica": { keys: ["posa_rivestimento_piastrelle"], shared: false },
+  "posa piastrelle rivestimento": { keys: ["posa_rivestimento_piastrelle"], shared: false },
+  "posa parquet": { keys: ["posa_pavimento_parquet"], shared: false },
   "posa battiscopa": { keys: ["battiscopa"], shared: false },
 };
 
@@ -459,6 +468,20 @@ export function estimateProjectV2(project, voci, packageRef) {
   // Controsoffitti AD AREA (poligoni custom)
   (data.controsoffitti || []).forEach((c) => {
     if (c.areaM2 > 0) add("controsoffitto", c.areaM2);
+  });
+
+  // AUTO-AGGIUNTA voci di POSA e MASSETTO accoppiate al materiale (posa = sempre).
+  // Quando il CAD genera una qty di pavimento/rivestimento, aggiungo automaticamente la posa relativa
+  // in modo che il preventivo CAD includa SEMPRE materiale + posa.
+  const PAIRED_LABOR = {
+    pavimento_piastrelle: ["posa_pavimento_piastrelle", "massetto"],
+    pavimento_parquet: ["posa_pavimento_parquet", "massetto"],
+    pavimento_pvc: ["posa_pavimento_pvc"],
+    rivestimento_piastrelle: ["posa_rivestimento_piastrelle"],
+  };
+  Object.entries(PAIRED_LABOR).forEach(([trigger, paired]) => {
+    const q = qtyByKey[trigger] || 0;
+    if (q > 0) paired.forEach((p) => add(p, q));
   });
 
   // Build itemized list

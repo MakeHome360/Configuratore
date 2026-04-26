@@ -144,6 +144,63 @@ function buildScene(project, catalog) {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     root.add(mesh);
+
+    // Render porte dentro il varco (pannello porta inclinato 30° per simulare apertura)
+    doors
+      .filter((d) => d.wallId === w.id)
+      .forEach((d) => {
+        const cxLocal = (d.t - 0.5) * length;
+        const hw = (d.width * CM) / 2;
+        const hh = (d.height || 210) * CM;
+        const doorGeom = new THREE.BoxGeometry(d.width * CM, hh, 4 * CM);
+        const doorMat = new THREE.MeshStandardMaterial({ color: d.color ? new THREE.Color(d.color) : 0xb08968, roughness: 0.7 });
+        const doorMesh = new THREE.Mesh(doorGeom, doorMat);
+        // Posiziona nel sistema locale del muro (x lungo il muro, z in profondità)
+        const sin = Math.sin(angle), cos = Math.cos(angle);
+        const wx = mx + cxLocal * cos;
+        const wz = mz - cxLocal * sin;
+        doorMesh.position.set(wx, hh / 2, wz);
+        doorMesh.rotation.y = -angle + (d.swing === "left" ? Math.PI / 6 : -Math.PI / 6);
+        // Sposta il pivot al cardine
+        doorMesh.position.x += (d.hinge === "left" ? -hw : hw) * Math.cos(-angle);
+        doorMesh.position.z -= (d.hinge === "left" ? -hw : hw) * Math.sin(-angle);
+        doorMesh.castShadow = true;
+        root.add(doorMesh);
+        // Maniglia
+        const handleGeom = new THREE.CylinderGeometry(2 * CM, 2 * CM, 8 * CM, 8);
+        const handleMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af, metalness: 0.7, roughness: 0.3 });
+        const handle = new THREE.Mesh(handleGeom, handleMat);
+        handle.rotation.z = Math.PI / 2;
+        handle.position.copy(doorMesh.position);
+        handle.position.y = 100 * CM;
+        root.add(handle);
+      });
+
+    // Render finestre dentro il varco (vetro azzurrato + cornice)
+    windows
+      .filter((wn) => wn.wallId === w.id)
+      .forEach((wn) => {
+        const cxLocal = (wn.t - 0.5) * length;
+        const sill = (wn.sillHeight || 90) * CM;
+        const winH = (wn.height || 140) * CM;
+        const sin = Math.sin(angle), cos = Math.cos(angle);
+        const wx = mx + cxLocal * cos;
+        const wz = mz - cxLocal * sin;
+        // Telaio (cornice)
+        const frameGeom = new THREE.BoxGeometry(wn.width * CM, winH, th * 1.05);
+        const frameMat = new THREE.MeshStandardMaterial({ color: wn.color ? new THREE.Color(wn.color) : 0xffffff, roughness: 0.5 });
+        const frame = new THREE.Mesh(frameGeom, frameMat);
+        frame.position.set(wx, sill + winH / 2, wz);
+        frame.rotation.y = -angle;
+        root.add(frame);
+        // Vetro (azzurrato semitrasparente)
+        const glassGeom = new THREE.BoxGeometry((wn.width - 8) * CM, winH - 8 * CM, 1 * CM);
+        const glassMat = new THREE.MeshStandardMaterial({ color: 0xa5d8e6, roughness: 0.05, metalness: 0.4, transparent: true, opacity: 0.55 });
+        const glass = new THREE.Mesh(glassGeom, glassMat);
+        glass.position.copy(frame.position);
+        glass.rotation.y = -angle;
+        root.add(glass);
+      });
   });
 
   // Items

@@ -68,6 +68,38 @@
 - **negozi / subappaltatori / impostazioni / dati_azienda**
 - **materials / projects** (CAD)
 
+## Changelog (Feb 2026 — round 11.6: copertura pacchetti corretta + override prezzi venditore + applica-tutta-casa)
+
+**FIX CRITICO — Demolizioni e voci generiche pacchetto NON coperte**
+- Era: il package PREMIUM include "Demolizione e smaltimento" coeff 1.0 (= 100% mq della casa). La VOCE_MAP CAD mappa solo `demolizione_muro → "Demolizione muri"` → nessun match → tutta la demolizione finiva extra.
+- Ora: nuovo `PACKAGE_VOCE_GROUPS` in utils.js per voci pacchetto generiche con MULTIPLE CAD keys e flag `shared` (budget condiviso):
+  - "Demolizione e smaltimento" → [demolizione_pavimento, demolizione_muro, demolizione_rivestimento, demolizione_controsoffitto] (shared=true, budget cumulato)
+  - "Decorazione" → [pittura_pareti]
+  - "Posa massetto" → [pavimento_piastrelle, pavimento_parquet, pavimento_pvc] (shared)
+  - "Posa pavimento ceramica" / "Posa rivestimento ceramica" / "Posa Battiscopa" → alias 1:1
+- estimateProjectV2 riscritto per supportare `voci_incluse` con array `keys` e `shared`: il budget condiviso viene consumato in ordine sulle quantità reali; non-shared applica qty piena ad ogni key.
+- Test Node verifica: 28mq stanze + 20mq demolizione pavimento + PREMIUM (790€/m² × 28 = 22.120€ forfait) → extra_total=0 ✅ (prima erano centinaia di €).
+
+**FEATURE — Materiali "applica a tutta casa"**
+- Ogni MaterialPicker (pavimento/pareti/soffitto, sia stato di fatto che modifiche di progetto) ha bottone "↗ Tutta casa" sopra il select.
+- Click → applica il materiale corrente a TUTTE le stanze (target=base se in mode fatto, target=progetto.X se in mode progetto).
+- Toast conferma il numero di stanze aggiornate.
+- Non rompe override per stanza: l'utente può ri-cambiare singole stanze dopo aver fatto il broadcast.
+
+**FEATURE — Override prezzi voci modificabili dal venditore**
+- Nuova sezione "Listino personalizzato" nel pannello globale del CAD (visibile quando nessun elemento è selezionato).
+- Mostra solo le voci con `modificabile_dal_venditore=true` (campo già esistente nel backoffice).
+- Per ciascuna: prezzo di riferimento + input prezzo override.
+- Se in pacchetto e override > prezzo riferimento → l'**eccedenza** sulle quantità INCLUSE viene aggiunta come extra (richiesta utente: "se supera quel prezzo viene contato come extra l'eccedenza").
+- Salvato in `project.data.priceOverrides = { voce_id: customPrice }`.
+- estimateProjectV2 usa l'override quando presente, calcolando price_delta_extra.
+
+**Tests:**
+- Lint JS pulito su Editor.jsx + utils.js.
+- Test Node manuale: PREMIUM 28mq, 20mq demolizione pavimento → 0€ extra (correttezza copertura confermata).
+
+
+
 ## Changelog (Feb 2026 — round 11: pacchetti dinamici + fix critici Editor)
 
 **FRONTEND (Editor.jsx + Canvas2D.jsx + utils.js):**

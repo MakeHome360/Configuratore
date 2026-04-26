@@ -145,21 +145,32 @@ export const NAME_TO_CAD_KEY = Object.fromEntries(
   Object.entries(VOCE_MAP).map(([k, v]) => [(v || "").trim().toLowerCase(), k])
 );
 
+// Voci PACCHETTO che coprono MULTIPLE CAD keys (con budget condiviso) o aliases.
+// shared=true significa che la qty_inclusa è un budget condiviso tra le keys (es. "Demolizione e smaltimento" copre muri+pavimento+riv. cumulati).
+// shared=false significa che la qty_inclusa va applicata a OGNI key separatamente (alias).
+export const PACKAGE_VOCE_GROUPS = {
+  "demolizione e smaltimento": { keys: ["demolizione_pavimento", "demolizione_muro", "demolizione_rivestimento", "demolizione_controsoffitto"], shared: true },
+  "decorazione": { keys: ["pittura_pareti"], shared: false },
+  "posa massetto": { keys: ["pavimento_piastrelle", "pavimento_parquet", "pavimento_pvc"], shared: true },
+  "posa pavimento ceramica": { keys: ["pavimento_piastrelle"], shared: false },
+  "posa rivestimento ceramica": { keys: ["rivestimento_piastrelle"], shared: false },
+  "posa battiscopa": { keys: ["battiscopa"], shared: false },
+};
+
 /**
  * Builds a packageRef for estimateProjectV2 from a backend package and a project.
  * mq_progetto = somma stanze STATO DI PROGETTO (e quelle di fatto con override progetto)
  * Se project.data.packageArea è settato (poligono), mq_progetto = area del poligono.
- * voci_incluse: per ogni package.items[] calcola qty_inclusa in base a qty_mode.
+ * voci_incluse: per ogni package.items[] calcola qty_inclusa in base a qty_mode,
+ * espandendo nomi generici (es. "Demolizione e smaltimento") in più CAD keys.
  */
 export function buildPackageRef(pkg, projectData) {
   if (!pkg || !projectData) return null;
-  // 1. Calcola mq base
   let mq = 0;
   const pa = projectData.packageArea;
   if (pa && Array.isArray(pa.polygon) && pa.polygon.length >= 3) {
     mq = polygonArea(pa.polygon) / 10000;
   } else {
-    // Somma stanze in stato di progetto (phase=progetto OR fatto con override)
     (projectData.rooms || []).forEach((r) => {
       const isFatto = (r.phase || "fatto") === "fatto";
       if (!isFatto || (r.progetto && (r.progetto.floorMaterial || r.progetto.wallMaterial || r.progetto.controsoffitto || r.progetto.electrical || r.progetto.plumbing))) {
@@ -170,24 +181,29 @@ export function buildPackageRef(pkg, projectData) {
   mq = round2(mq);
   const price = pkg.price_per_m2 || 0;
   const package_base_total = round2(price * mq);
-  // 2. Calcola voci incluse
   const voci_incluse = [];
   (pkg.items || []).forEach((it) => {
-    const cadKey = NAME_TO_CAD_KEY[(it.name || "").trim().toLowerCase()];
-    if (!cadKey) return; // voce non mappata sul CAD (es. CILA, direzione lavori)
+    const nameLow = (it.name || "").trim().toLowerCase();
     let qty_inclusa = 0;
     if (it.qty_mode === "fissa" || it.qty_mode === "fixed" || it.qty_mode === "pz") {
       qty_inclusa = it.qty_value || it.qty_ratio || 0;
     } else {
-      // mq | mqxcoeff | default
       qty_inclusa = (it.qty_ratio || 0) * mq;
     }
-    voci_incluse.push({
-      key: cadKey,
-      qty_inclusa: round2(qty_inclusa),
-      voce_id: it.voce_id,
-      ref_unit_price: it.unit_price_pkg || it.prezzo_rivendita || 0,
-    });
+    qty_inclusa = round2(qty_inclusa);
+    if (qty_inclusa <= 0) return;
+    // 1. Esatto match VOCE_MAP
+    const exactKey = NAME_TO_CAD_KEY[nameLow];
+    if (exactKey) {
+      voci_incluse.push({ keys: [exactKey], qty_inclusa, shared: false, name: it.name, voce_id: it.voce_id, ref_unit_price: it.unit_price_pkg || it.prezzo_rivendita || 0 });
+      return;
+    }
+    // 2. Group/alias generico
+    const grp = PACKAGE_VOCE_GROUPS[nameLow];
+    if (grp) {
+      voci_incluse.push({ keys: grp.keys, qty_inclusa, shared: grp.shared, name: it.name, voce_id: it.voce_id, ref_unit_price: it.unit_price_pkg || it.prezzo_rivendita || 0 });
+    }
+    // Sennò la voce è administrativa (CILA, APE, Direzione lavori) → ignorata sul CAD ma il forfait la copre.
   });
   return {
     package_id: pkg.id,
@@ -444,10 +460,36 @@ export function estimateProjectV2(project, voci, packageRef) {
   const byCat = {};
   let totalExtra = 0;
   let totalIncluded = 0;
-  const includedMap = {};
+  const includedMap = {}; // qty coperta dal pacchetto, per CAD key
+  const refPriceMap = {}; // prezzo di riferimento del pacchetto, per CAD key (per calcolo eccedenza override)
   if (packageRef && Array.isArray(packageRef.voci_incluse)) {
-    packageRef.voci_incluse.forEach((v) => { includedMap[v.key] = (includedMap[v.key] || 0) + (v.qty_inclusa || 0); });
+    packageRef.voci_incluse.forEach((vi) => {
+      const keys = Array.isArray(vi.keys) ? vi.keys : (vi.key ? [vi.key] : []);
+      const totalQty = vi.qty_inclusa || 0;
+      if (vi.shared) {
+        // Budget condiviso: distribuisco nell'ordine delle keys consumando le quantità presenti
+        let budget = totalQty;
+        keys.forEach((k) => {
+          if (budget <= 0) return;
+          const have = qtyByKey[k] || 0;
+          const remaining = have - (includedMap[k] || 0);
+          if (remaining <= 0) return;
+          const used = Math.min(remaining, budget);
+          includedMap[k] = (includedMap[k] || 0) + used;
+          if (vi.ref_unit_price) refPriceMap[k] = vi.ref_unit_price;
+          budget -= used;
+        });
+      } else {
+        keys.forEach((k) => {
+          includedMap[k] = (includedMap[k] || 0) + totalQty;
+          if (vi.ref_unit_price) refPriceMap[k] = vi.ref_unit_price;
+        });
+      }
+    });
   }
+
+  // priceOverrides applicati dal venditore: { voce_id: customUnitPrice }
+  const priceOverrides = data.priceOverrides || {};
 
   Object.keys(qtyByKey).forEach((key) => {
     const qty = qtyByKey[key];
@@ -455,10 +497,22 @@ export function estimateProjectV2(project, voci, packageRef) {
     const voceName = VOCE_MAP[key];
     const voce = findVoce(voci, voceName);
     if (!voce) return;
-    const unitPrice = priceOf(voce);
+    const basePrice = priceOf(voce);
+    const overridePrice = priceOverrides[voce.id];
+    const useOverride = typeof overridePrice === "number" && overridePrice > 0;
+    const unitPrice = useOverride ? overridePrice : basePrice;
     const inclusa = includedMap[key] || 0;
+    const refPrice = refPriceMap[key] || 0;
     const extra = Math.max(0, qty - inclusa);
-    const totalRow = extra * unitPrice;
+    let totalRow = extra * unitPrice;
+    let priceDelta = 0;
+    // ECCEDENZA materiale: se la voce è coperta dal pacchetto e l'override prezzo > prezzo riferimento,
+    // l'eccedenza unitaria sulla quantità INCLUSA si aggiunge come extra (richiesta utente: "se supera quel prezzo viene contato come extra l'eccedenza").
+    if (useOverride && refPrice > 0 && overridePrice > refPrice && inclusa > 0) {
+      const coveredQty = Math.min(qty, inclusa);
+      priceDelta = round2((overridePrice - refPrice) * coveredQty);
+      totalRow += priceDelta;
+    }
     const incTotalRow = Math.min(qty, inclusa) * unitPrice;
     totalExtra += totalRow;
     totalIncluded += incTotalRow;
@@ -467,6 +521,9 @@ export function estimateProjectV2(project, voci, packageRef) {
       qty_inclusa: round2(inclusa),
       qty_extra: round2(extra),
       unit_price: round2(unitPrice),
+      ref_unit_price: round2(refPrice),
+      price_override: useOverride ? round2(overridePrice) : null,
+      price_delta_extra: priceDelta,
       total: round2(totalRow),
       voce_id: voce.id,
       category: voce.category,

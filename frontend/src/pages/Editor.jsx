@@ -731,7 +731,7 @@ export default function Editor() {
                 <TabsTrigger value="cost" className="rounded-none text-xs uppercase tracking-widest" data-testid="tab-cost">Preventivo Live</TabsTrigger>
               </TabsList>
               <TabsContent value="properties" className="p-4 overflow-auto flex-1 mt-0">
-                <PropertiesPanel project={project.data} setProject={setProjectData} selected={selected} catalog={catalog} editMode={editMode} />
+                <PropertiesPanel project={project.data} setProject={setProjectData} selected={selected} catalog={catalog} editMode={editMode} voci={voci} />
               </TabsContent>
               <TabsContent value="catalog" className="p-0 overflow-auto flex-1 mt-0">
                 <CatalogPanel catalog={catalog} selectedMaterial={selectedMaterial} setSelectedMaterial={(id) => { setSelectedMaterial(id); setTool("item"); }} />
@@ -886,8 +886,19 @@ function ToolParamsPanel({ tool, doorParams, setDoorParams, windowParams, setWin
   );
 }
 
-function PropertiesPanel({ project, setProject, selected, catalog, editMode }) {
+function PropertiesPanel({ project, setProject, selected, catalog, editMode, voci }) {
   if (!selected) {
+    const overrides = project.priceOverrides || {};
+    const setOverride = (voce_id, price) => setProject((p) => ({
+      ...p,
+      priceOverrides: { ...(p.priceOverrides || {}), [voce_id]: price },
+    }));
+    const removeOverride = (voce_id) => setProject((p) => {
+      const next = { ...(p.priceOverrides || {}) };
+      delete next[voce_id];
+      return { ...p, priceOverrides: next };
+    });
+    const editable = (voci || []).filter((v) => v.modificabile_dal_venditore);
     return (
       <div>
         <div className="label-kicker mb-3">Progetto</div>
@@ -895,6 +906,43 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode }) {
           <div>
             <Label className="text-xs uppercase tracking-widest text-zinc-500">Altezza soffitto (cm)</Label>
             <Input type="number" value={project.roomHeight || 270} onChange={(e) => setProject((p) => ({ ...p, roomHeight: parseInt(e.target.value) || 270 }))} className="rounded-sm h-9 mt-1.5 mono" data-testid="room-height-input" />
+          </div>
+        </div>
+        <Separator className="my-6" />
+        <div className="space-y-3">
+          <div className="label-kicker">Listino personalizzato</div>
+          <div className="text-[10px] text-zinc-500 mono leading-relaxed">
+            Sovrascrivi il prezzo unitario delle voci marcate "modificabile dal venditore" nel Backoffice. Se in pacchetto e supera il prezzo di riferimento, l'eccedenza diventa extra.
+          </div>
+          {editable.length === 0 && <div className="text-xs text-zinc-400 mono">Nessuna voce modificabile configurata. Imposta `modificabile_dal_venditore=true` nelle voci dal Backoffice.</div>}
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {editable.map((v) => {
+              const cur = overrides[v.id];
+              const ref = v.prezzo_rivendita || v.unit_price || 0;
+              return (
+                <div key={v.id} className="bg-zinc-50 border border-zinc-200 p-2 rounded text-xs">
+                  <div className="font-medium text-zinc-800">{v.name}</div>
+                  <div className="text-[10px] text-zinc-500 mono">Riferimento: {fmtEuro(ref)} / {v.unit}</div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Input type="number" step="0.01" placeholder={String(ref)} value={cur != null ? cur : ""}
+                      onChange={(e) => {
+                        const n = parseFloat(e.target.value);
+                        if (isNaN(n) || n <= 0) removeOverride(v.id);
+                        else setOverride(v.id, n);
+                      }}
+                      className="rounded-sm h-8 mono w-24"
+                      data-testid={`price-override-${v.id}`} />
+                    <span className="text-[10px] text-zinc-400 mono">€/{v.unit}</span>
+                    {cur != null && cur > ref && (
+                      <span className="text-[10px] text-amber-600 mono">+{fmtEuro(cur - ref)} eccedenza</span>
+                    )}
+                    {cur != null && (
+                      <button onClick={() => removeOverride(v.id)} className="text-[10px] text-rose-600 hover:underline ml-auto">reset</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
         <Separator className="my-6" />
@@ -913,6 +961,18 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode }) {
   if (kind === "rooms") {
     const prog = obj.progetto || {};
     const updateProgetto = (patch) => updateObj({ progetto: { ...prog, ...patch } });
+    const applyMaterialAllRooms = (field, value) => {
+      if (!value) { toast.error("Seleziona prima un materiale"); return; }
+      const target = isProgettoMode ? "progetto" : "base";
+      setProject((p) => ({
+        ...p,
+        rooms: (p.rooms || []).map((r) => {
+          if (target === "progetto") return { ...r, progetto: { ...(r.progetto || {}), [field]: value } };
+          return { ...r, [field]: value };
+        }),
+      }));
+      toast.success(`"${field}" applicato a tutte le ${(project.rooms || []).length} stanze`);
+    };
     return (
       <div className="space-y-4">
         <div className="label-kicker">Stanza{isFattoElement ? " (Stato di Fatto)" : " (Progetto)"}</div>
@@ -923,11 +983,11 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode }) {
         )}
         <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Nome</Label><Input value={obj.name} onChange={(e) => updateObj({ name: e.target.value })} disabled={lockedFatto} className="rounded-sm h-9 mt-1.5" data-testid="room-name-input" /></div>
         <fieldset disabled={lockedFatto} className={lockedFatto ? "opacity-60 pointer-events-none" : ""}>
-          <MaterialSelect label="Pavimento (esistente)" category="floor" catalog={catalog} value={obj.floorMaterial} onChange={(v) => updateObj({ floorMaterial: v })} testid="room-floor-select" />
+          <MaterialPickerWithApplyAll label="Pavimento (esistente)" category="floor" catalog={catalog} value={obj.floorMaterial} onChange={(v) => updateObj({ floorMaterial: v })} testid="room-floor-select" applyAll={() => applyMaterialAllRooms("floorMaterial", obj.floorMaterial)} />
           <div className="h-3"></div>
-          <MaterialSelect label="Pareti (esistente)" category="wall" catalog={catalog} value={obj.wallMaterial} onChange={(v) => updateObj({ wallMaterial: v })} testid="room-wall-select" />
+          <MaterialPickerWithApplyAll label="Pareti (esistente)" category="wall" catalog={catalog} value={obj.wallMaterial} onChange={(v) => updateObj({ wallMaterial: v })} testid="room-wall-select" applyAll={() => applyMaterialAllRooms("wallMaterial", obj.wallMaterial)} />
           <div className="h-3"></div>
-          <MaterialSelect label="Soffitto (esistente)" category="ceiling" catalog={catalog} value={obj.ceilingMaterial} onChange={(v) => updateObj({ ceilingMaterial: v })} testid="room-ceiling-select" />
+          <MaterialPickerWithApplyAll label="Soffitto (esistente)" category="ceiling" catalog={catalog} value={obj.ceilingMaterial} onChange={(v) => updateObj({ ceilingMaterial: v })} testid="room-ceiling-select" applyAll={() => applyMaterialAllRooms("ceilingMaterial", obj.ceilingMaterial)} />
           <div className="flex items-center justify-between mt-3"><Label className="text-xs uppercase tracking-widest text-zinc-500">Imp. elettrico</Label><Switch checked={!!obj.electrical} onCheckedChange={(v) => updateObj({ electrical: v })} data-testid="room-electrical-switch" /></div>
           <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-zinc-500">Imp. idraulico</Label><Switch checked={!!obj.plumbing} onCheckedChange={(v) => updateObj({ plumbing: v })} data-testid="room-plumbing-switch" /></div>
           <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-zinc-500">Controsoffitto</Label><Switch checked={!!obj.controsoffitto} onCheckedChange={(v) => updateObj({ controsoffitto: v })} data-testid="room-controsoff-switch" /></div>
@@ -936,9 +996,9 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode }) {
         {isProgettoMode && (
           <div className="bg-amber-50 border border-amber-300 p-3 space-y-3" data-testid="room-progetto-overrides">
             <div className="label-kicker text-amber-800">⚒ Modifiche di progetto</div>
-            <MaterialSelect label="Nuovo pavimento" category="floor" catalog={catalog} value={prog.floorMaterial || ""} onChange={(v) => updateProgetto({ floorMaterial: v })} testid="room-prog-floor" />
-            <MaterialSelect label="Nuovo rivestimento pareti" category="wall" catalog={catalog} value={prog.wallMaterial || ""} onChange={(v) => updateProgetto({ wallMaterial: v })} testid="room-prog-wall" />
-            <MaterialSelect label="Nuovo soffitto" category="ceiling" catalog={catalog} value={prog.ceilingMaterial || ""} onChange={(v) => updateProgetto({ ceilingMaterial: v })} testid="room-prog-ceiling" />
+            <MaterialPickerWithApplyAll label="Nuovo pavimento" category="floor" catalog={catalog} value={prog.floorMaterial || ""} onChange={(v) => updateProgetto({ floorMaterial: v })} testid="room-prog-floor" applyAll={() => applyMaterialAllRooms("floorMaterial", prog.floorMaterial)} />
+            <MaterialPickerWithApplyAll label="Nuovo rivestimento pareti" category="wall" catalog={catalog} value={prog.wallMaterial || ""} onChange={(v) => updateProgetto({ wallMaterial: v })} testid="room-prog-wall" applyAll={() => applyMaterialAllRooms("wallMaterial", prog.wallMaterial)} />
+            <MaterialPickerWithApplyAll label="Nuovo soffitto" category="ceiling" catalog={catalog} value={prog.ceilingMaterial || ""} onChange={(v) => updateProgetto({ ceilingMaterial: v })} testid="room-prog-ceiling" applyAll={() => applyMaterialAllRooms("ceilingMaterial", prog.ceilingMaterial)} />
             <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-amber-800">Aggiungi controsoffitto</Label><Switch checked={!!prog.controsoffitto} onCheckedChange={(v) => updateProgetto({ controsoffitto: v })} data-testid="room-prog-ctrsoff" /></div>
             <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-amber-800">Rifare imp. elettrico</Label><Switch checked={!!prog.electrical} onCheckedChange={(v) => updateProgetto({ electrical: v })} data-testid="room-prog-elec" /></div>
             <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-amber-800">Rifare imp. idraulico</Label><Switch checked={!!prog.plumbing} onCheckedChange={(v) => updateProgetto({ plumbing: v })} data-testid="room-prog-plumb" /></div>
@@ -1182,6 +1242,32 @@ function MaterialSelect({ label, category, catalog, value, onChange, testid }) {
         <SelectTrigger className="rounded-sm h-9 mt-1.5" data-testid={testid}><SelectValue placeholder="Seleziona…" /></SelectTrigger>
         <SelectContent>
           {options.map((o) => (
+            <SelectItem key={o.id} value={o.id}>
+              <span className="flex items-center gap-2">
+                <span className="w-3 h-3 border border-zinc-300" style={{ background: o.color }} />
+                {o.name} <span className="text-zinc-400 mono text-xs">· {fmtEuro(o.price)}</span>
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function MaterialPickerWithApplyAll({ label, category, catalog, value, onChange, testid, applyAll }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <Label className="text-xs uppercase tracking-widest text-zinc-500">{label}</Label>
+        <button type="button" onClick={applyAll} disabled={!value} title="Applica questo materiale a tutte le stanze del progetto" className="text-[10px] text-emerald-700 hover:underline disabled:text-zinc-400 disabled:cursor-not-allowed mono" data-testid={`${testid}-apply-all`}>
+          ↗ Tutta casa
+        </button>
+      </div>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="rounded-sm h-9" data-testid={testid}><SelectValue placeholder="Seleziona…" /></SelectTrigger>
+        <SelectContent>
+          {(catalog || []).filter((m) => m.category === category).map((o) => (
             <SelectItem key={o.id} value={o.id}>
               <span className="flex items-center gap-2">
                 <span className="w-3 h-3 border border-zinc-300" style={{ background: o.color }} />

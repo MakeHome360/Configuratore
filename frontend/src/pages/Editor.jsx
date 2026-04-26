@@ -703,6 +703,21 @@ export default function Editor() {
           )}
           {tool === "tiling" && (
             <div className="mx-2 mt-2 space-y-2 px-2">
+              <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Tipo piastrella (catalogo)</Label>
+              <Select value={tilingParams.voceId || ""} onValueChange={(v) => {
+                const voce = (voci || []).find((x) => x.id === v);
+                setTilingParams((p) => ({ ...p, voceId: v, vocePrice: voce?.prezzo_rivendita || voce?.unit_price || 0, voceName: voce?.name || "" }));
+              }}>
+                <SelectTrigger className="rounded-sm h-8" data-testid="tile-voce-select"><SelectValue placeholder="Scegli tipo…" /></SelectTrigger>
+                <SelectContent>
+                  {(voci || []).filter((v) => /piastrell|gres|ceramic|marmo|parquet|laminato|pvc|battiscop/i.test(v.name || "")).map((v) => (
+                    <SelectItem key={v.id} value={v.id}>{v.name} · {fmtEuro(v.prezzo_rivendita || v.unit_price || 0)}/{v.unit}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {tilingParams.voceName && (
+                <div className="text-[10px] text-emerald-700 mono">✓ {tilingParams.voceName} · {fmtEuro(tilingParams.vocePrice)}/m²</div>
+              )}
               <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Formato</Label>
               <Select value={tilingParams.size} onValueChange={(v) => setTilingParams((p) => ({ ...p, size: v }))}>
                 <SelectTrigger className="rounded-sm h-8" data-testid="tile-size"><SelectValue /></SelectTrigger>
@@ -710,7 +725,7 @@ export default function Editor() {
               </Select>
               <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Angolo (°)</Label>
               <Input type="number" value={tilingParams.angle} onChange={(e) => setTilingParams((p) => ({ ...p, angle: parseInt(e.target.value) || 0 }))} className="rounded-sm h-8 mono" data-testid="tile-angle" />
-              <div className="text-[10px] text-zinc-500 mono leading-tight">click in stanza per posare<br/>angolo per ruotare</div>
+              <div className="text-[10px] text-zinc-500 mono leading-tight">scegli il tipo di piastrella dal catalogo<br/>poi click in stanza per posare</div>
             </div>
           )}
 
@@ -765,7 +780,7 @@ export default function Editor() {
         {sidebarOpen ? (
           <aside className="w-96 border-l border-zinc-200 bg-white flex flex-col min-h-0 relative" data-testid="right-sidebar">
             <button onClick={() => setSidebarOpen(false)} className="absolute -left-3 top-3 z-10 w-6 h-6 bg-white border border-zinc-300 flex items-center justify-center hover:bg-zinc-50 shadow-sm" title="Riduci pannello" data-testid="sidebar-collapse-btn"><ChevronRight size={14} /></button>
-            <Tabs defaultValue="cost" className="flex-1 flex flex-col">
+            <Tabs defaultValue="properties" className="flex-1 flex flex-col">
               <TabsList className="rounded-none h-10 border-b border-zinc-200 bg-white justify-start px-2">
                 <TabsTrigger value="properties" className="rounded-none text-xs uppercase tracking-widest" data-testid="tab-properties">Proprietà</TabsTrigger>
                 <TabsTrigger value="catalog" className="rounded-none text-xs uppercase tracking-widest" data-testid="tab-catalog">Catalogo</TabsTrigger>
@@ -775,7 +790,7 @@ export default function Editor() {
                 <PropertiesPanel project={project.data} setProject={setProjectData} selected={selected} catalog={catalog} editMode={editMode} voci={voci} />
               </TabsContent>
               <TabsContent value="catalog" className="p-0 overflow-auto flex-1 mt-0">
-                <CatalogPanel catalog={catalog} selectedMaterial={selectedMaterial} setSelectedMaterial={(id) => { setSelectedMaterial(id); setTool("item"); }} />
+                <CatalogPanel catalog={catalog} selectedMaterial={selectedMaterial} setSelectedMaterial={(id) => { setSelectedMaterial(id); setTool("item"); }} project={project.data} setProject={setProjectData} voci={voci} selected={selected} />
               </TabsContent>
               <TabsContent value="cost" className="p-0 overflow-auto flex-1 mt-0">
                 <CostPanelV2 estimate={estimateV2} packageRef={project.data?.packageRef} legacy={estimate} linkedPreventivo={linkedPreventivo} saveAsPreventivo={saveAsPreventivo} />
@@ -1004,7 +1019,9 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
           </div>
         </div>
         <Separator className="my-6" />
-        <CatalogoVociPanel project={project} setProject={setProject} voci={voci} />
+        <div className="text-xs text-zinc-500 mono leading-relaxed bg-blue-50 border border-blue-200 p-2.5 rounded">
+          💡 Per <b>aggiungere voci dal catalogo</b> (piastrelle, decorazioni, servizi, infissi…) e applicarle a una parete o stanza specifica, vai al tab <b>CATALOGO</b> qui sopra.
+        </div>
         <Separator className="my-6" />
         <div className="text-xs text-zinc-500 mono leading-relaxed">Seleziona un elemento sulla planimetria per modificarne le proprietà.</div>
       </div>
@@ -1106,6 +1123,9 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
         {!obj.demolito && (
           <div className="bg-rose-50 border border-rose-200 p-2 space-y-2">
             <Label className="text-xs uppercase tracking-widest text-rose-700">Demolizione parziale</Label>
+            <div className="text-[10px] text-rose-700 mono leading-relaxed bg-white border border-rose-200 p-1.5">
+              ✋ Seleziona il muro e <b>trascina i pallini rossi</b> sul canvas per ridefinire visivamente la zona demolita. Oppure usa i numeri qui sotto per precisione.
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label className="text-[10px] text-zinc-500">Da (% lunghezza)</Label>
@@ -1388,23 +1408,63 @@ function gruppoOf(voce) {
   return "Finiture";
 }
 
-function CatalogoVociPanel({ project, setProject, voci }) {
+function CatalogoVociPanel({ project, setProject, voci, selected, catalog }) {
   const [filter, setFilter] = useState("");
   const [openGruppo, setOpenGruppo] = useState("Muratura");
   const manualItems = project.manualItems || [];
   const setManualItems = (next) => setProject((p) => ({ ...p, manualItems: typeof next === "function" ? next(p.manualItems || []) : next }));
-  const addVoce = (voce) => {
+
+  // Determine selected target context
+  const selWall = selected?.kind === "walls" ? (project.walls || []).find((x) => x.id === selected.id) : null;
+  const selRoom = selected?.kind === "rooms" ? (project.rooms || []).find((x) => x.id === selected.id) : null;
+  const roomHeight = project.roomHeight || 270;
+
+  // Compute target-specific qty
+  const qtyForTarget = (voce, target) => {
+    const u = (voce.unit || "pz").toLowerCase();
+    if (target === "wall" && selWall) {
+      const len = Math.hypot(selWall.x2 - selWall.x1, selWall.y2 - selWall.y1) / 100; // m
+      if (u === "ml" || u === "m") return parseFloat(len.toFixed(2));
+      if (u === "m²" || u === "mq" || u === "m2") return parseFloat((len * (roomHeight / 100)).toFixed(2));
+      return 1;
+    }
+    if (target === "room" && selRoom) {
+      const areaM2 = polygonArea(selRoom.points) / 10000;
+      const perimM = polygonPerimeter(selRoom.points) / 100;
+      if (u === "m²" || u === "mq" || u === "m2") return parseFloat(areaM2.toFixed(2));
+      if (u === "ml" || u === "m") return parseFloat(perimM.toFixed(2));
+      return 1;
+    }
+    if (target === "all-house") {
+      const totalArea = (project.rooms || []).reduce((s, r) => s + polygonArea(r.points) / 10000, 0);
+      const totalPerim = (project.rooms || []).reduce((s, r) => s + polygonPerimeter(r.points) / 100, 0);
+      if (u === "m²" || u === "mq" || u === "m2") return parseFloat(totalArea.toFixed(2));
+      if (u === "ml" || u === "m") return parseFloat(totalPerim.toFixed(2));
+      return 1;
+    }
+    return 1;
+  };
+
+  const addVoce = (voce, target = "free") => {
+    const qty = qtyForTarget(voce, target);
+    const targetLabel = target === "wall" ? `Parete (${selWall?.id?.slice(0, 4)})` :
+                       target === "room" ? `Stanza ${selRoom?.name || ""}` :
+                       target === "all-house" ? "Tutta casa" : "";
+    const desc = targetLabel ? `Applicato a: ${targetLabel}` : "";
     const newItem = {
       id: uid(),
       voce_id: voce.id,
       name: voce.name,
       unit: voce.unit || "pz",
-      qty: 1,
+      qty,
       unit_price: voce.prezzo_rivendita || voce.unit_price || 0,
       category: voce.category || "",
+      target_kind: target,
+      target_id: target === "wall" ? selWall?.id : (target === "room" ? selRoom?.id : null),
+      descrizione: desc,
     };
     setManualItems((arr) => [...arr, newItem]);
-    toast.success(`+ ${voce.name}`);
+    toast.success(`+ ${voce.name}${targetLabel ? ` → ${targetLabel}` : ""} (${qty} ${voce.unit || "pz"})`);
   };
   const updateMI = (id, patch) => setManualItems((arr) => arr.map((x) => x.id === id ? { ...x, ...patch } : x));
   const removeMI = (id) => setManualItems((arr) => arr.filter((x) => x.id !== id));
@@ -1415,10 +1475,41 @@ function CatalogoVociPanel({ project, setProject, voci }) {
   }, {});
   const groups = ["Muratura", "Impianti", "Serramenti", "Finiture", "Servizi"];
   const filtFn = (v) => !filter || (v.name || "").toLowerCase().includes(filter.toLowerCase());
+
+  // Wall/room helpers
+  const wallLenM = selWall ? Math.hypot(selWall.x2 - selWall.x1, selWall.y2 - selWall.y1) / 100 : 0;
+  const wallAreaM2 = wallLenM * (roomHeight / 100);
+  const roomAreaM2 = selRoom ? polygonArea(selRoom.points) / 10000 : 0;
+
   return (
     <div className="space-y-3">
       <div className="label-kicker">Catalogo voci backoffice</div>
-      <div className="text-[10px] text-zinc-500 mono leading-relaxed">Aggiungi qualsiasi voce dal catalogo come riga del preventivo. Modifica quantità o prezzo dopo l'aggiunta.</div>
+
+      {/* SELECTION CONTEXT BANNER */}
+      {selWall && (
+        <div className="bg-blue-50 border border-blue-300 p-2 rounded text-xs space-y-1" data-testid="catalog-selected-wall">
+          <div className="font-semibold text-blue-900">📐 Parete selezionata</div>
+          <div className="mono text-[11px] text-blue-800">
+            L = <b>{fmtNum(wallLenM, 2)} m</b> · H = <b>{fmtNum(roomHeight / 100, 2)} m</b> · area = <b>{fmtNum(wallAreaM2, 2)} m²</b>
+          </div>
+          <div className="text-[10px] text-blue-700 leading-relaxed">Quando aggiungi una voce, scegli <b>"Applica a parete"</b>: la quantità verrà calcolata automaticamente in base a m²/ml della parete.</div>
+        </div>
+      )}
+      {selRoom && (
+        <div className="bg-emerald-50 border border-emerald-300 p-2 rounded text-xs space-y-1" data-testid="catalog-selected-room">
+          <div className="font-semibold text-emerald-900">🏠 Stanza selezionata: {selRoom.name}</div>
+          <div className="mono text-[11px] text-emerald-800">
+            Area = <b>{fmtNum(roomAreaM2, 2)} m²</b> · perimetro = <b>{fmtNum(polygonPerimeter(selRoom.points) / 100, 2)} m</b>
+          </div>
+          <div className="text-[10px] text-emerald-700 leading-relaxed">Quando aggiungi una voce, scegli <b>"Applica a stanza"</b>: la quantità verrà calcolata in base all'area / perimetro.</div>
+        </div>
+      )}
+      {!selWall && !selRoom && (
+        <div className="bg-zinc-50 border border-zinc-200 p-2 rounded text-[11px] text-zinc-600 leading-relaxed">
+          ℹ️ <b>Seleziona prima una parete o una stanza</b> sulla planimetria, poi aggiungi una voce dal catalogo per applicarla con la quantità giusta. Oppure clicca <b>+</b> per aggiungere come voce libera.
+        </div>
+      )}
+
       <div className="bg-blue-50 border border-blue-200 p-2 rounded text-[10px] mono text-blue-900 leading-relaxed">
         💡 <b>Tip:</b> Una volta finalizzata la progettazione, aggiungi i <b>SERVIZI</b> (pratiche edilizie, CILA, direzione lavori, sicurezza). Se hai un pacchetto, controlla se sono già inclusi nel forfait.
       </div>
@@ -1427,20 +1518,27 @@ function CatalogoVociPanel({ project, setProject, voci }) {
         {groups.map((g) => {
           const list = (grouped[g] || []).filter(filtFn);
           if (list.length === 0) return null;
-          const isOpen = openGruppo === g;
+          const isOpen = openGruppo === g || filter.length > 0;
           return (
             <div key={g} className="border border-zinc-200 rounded-sm">
-              <button onClick={() => setOpenGruppo(isOpen ? "" : g)} className="w-full px-2 py-1.5 flex items-center justify-between text-xs uppercase tracking-widest font-semibold bg-zinc-50 hover:bg-zinc-100" data-testid={`gruppo-${g}`}>
+              <button onClick={() => setOpenGruppo(isOpen && openGruppo === g ? "" : g)} className="w-full px-2 py-1.5 flex items-center justify-between text-xs uppercase tracking-widest font-semibold bg-zinc-50 hover:bg-zinc-100" data-testid={`gruppo-${g}`}>
                 <span>{g}</span><span className="mono text-zinc-500">{list.length}</span>
               </button>
               {isOpen && (
                 <div className="max-h-72 overflow-y-auto divide-y divide-zinc-100">
                   {list.map((v) => (
-                    <button key={v.id} onClick={() => addVoce(v)} className="w-full text-left px-2 py-1.5 hover:bg-emerald-50 flex items-center gap-2 text-xs" data-testid={`add-voce-${v.id}`}>
-                      <span className="flex-1 truncate">{v.name}</span>
-                      <span className="text-zinc-400 mono text-[10px]">{fmtEuro(v.prezzo_rivendita || v.unit_price || 0)}/{v.unit}</span>
-                      <Plus className="h-3 w-3 text-emerald-600" />
-                    </button>
+                    <div key={v.id} className="px-2 py-1.5 hover:bg-zinc-50 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="flex-1 truncate font-medium">{v.name}</span>
+                        <span className="text-zinc-400 mono text-[10px]">{fmtEuro(v.prezzo_rivendita || v.unit_price || 0)}/{v.unit}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        <button onClick={() => addVoce(v, "free")} className="px-1.5 py-0.5 text-[10px] bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 rounded-sm" data-testid={`add-voce-${v.id}`}>+ libera</button>
+                        {selWall && <button onClick={() => addVoce(v, "wall")} className="px-1.5 py-0.5 text-[10px] bg-blue-100 hover:bg-blue-200 border border-blue-400 text-blue-900 rounded-sm font-semibold" data-testid={`add-voce-wall-${v.id}`}>↗ parete ({fmtNum(qtyForTarget(v, "wall"), 2)} {v.unit})</button>}
+                        {selRoom && <button onClick={() => addVoce(v, "room")} className="px-1.5 py-0.5 text-[10px] bg-emerald-100 hover:bg-emerald-200 border border-emerald-400 text-emerald-900 rounded-sm font-semibold" data-testid={`add-voce-room-${v.id}`}>↗ stanza ({fmtNum(qtyForTarget(v, "room"), 2)} {v.unit})</button>}
+                        <button onClick={() => addVoce(v, "all-house")} className="px-1.5 py-0.5 text-[10px] bg-amber-100 hover:bg-amber-200 border border-amber-400 text-amber-900 rounded-sm" data-testid={`add-voce-all-${v.id}`}>↗ tutta casa</button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}
@@ -1453,7 +1551,12 @@ function CatalogoVociPanel({ project, setProject, voci }) {
           <div className="label-kicker text-emerald-800">Voci aggiunte ({manualItems.length})</div>
           {manualItems.map((mi) => (
             <div key={mi.id} className="bg-white border border-zinc-200 p-2 text-xs space-y-1">
-              <div className="font-medium truncate">{mi.name}</div>
+              <div className="font-medium truncate flex items-center gap-1">
+                <span className="flex-1 truncate">{mi.name}</span>
+                {mi.target_kind === "wall" && <span className="px-1 bg-blue-100 text-blue-800 text-[9px] rounded-sm">parete</span>}
+                {mi.target_kind === "room" && <span className="px-1 bg-emerald-100 text-emerald-800 text-[9px] rounded-sm">stanza</span>}
+                {mi.target_kind === "all-house" && <span className="px-1 bg-amber-100 text-amber-800 text-[9px] rounded-sm">casa</span>}
+              </div>
               <div className="flex items-center gap-1.5">
                 <Input type="number" step="0.1" min="0" value={mi.qty} onChange={(e) => updateMI(mi.id, { qty: parseFloat(e.target.value) || 0 })} className="rounded-sm h-7 mono w-16" />
                 <span className="text-[10px] text-zinc-500 mono">{mi.unit}</span>
@@ -1472,23 +1575,38 @@ function CatalogoVociPanel({ project, setProject, voci }) {
   );
 }
 
-function CatalogPanel({ catalog, selectedMaterial, setSelectedMaterial }) {
+function CatalogPanel({ catalog, selectedMaterial, setSelectedMaterial, project, setProject, voci, selected }) {
+  const [tab, setTab] = useState("voci");
   const [cat, setCat] = useState("furniture");
   const items = (catalog || []).filter((m) => m.category === cat);
   return (
     <div className="flex flex-col h-full">
-      <div className="flex border-b border-zinc-200">
-        {ITEM_CATEGORIES.map((c) => <button key={c.id} onClick={() => setCat(c.id)} className={`flex-1 text-[10px] uppercase tracking-widest py-2 ${cat === c.id ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-50"}`} data-testid={`catalog-tab-${c.id}`}>{c.label}</button>)}
+      {/* Top sub-tabs: Voci backoffice / Arredi & materiali */}
+      <div className="flex border-b border-zinc-200 bg-zinc-50">
+        <button onClick={() => setTab("voci")} className={`flex-1 text-[11px] uppercase tracking-widest py-2 font-semibold ${tab === "voci" ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-100"}`} data-testid="catalog-tab-voci">Voci Backoffice</button>
+        <button onClick={() => setTab("materiali")} className={`flex-1 text-[11px] uppercase tracking-widest py-2 font-semibold ${tab === "materiali" ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-100"}`} data-testid="catalog-tab-materiali">Arredi & Materiali</button>
       </div>
-      <div className="flex-1 overflow-auto p-3 space-y-1">
-        <div className="text-xs text-zinc-500 mono mb-2 px-1">clicca per selezionare → poi clicca sulla planimetria</div>
-        {items.map((m) => (
-          <button key={m.id} onClick={() => setSelectedMaterial(m.id)} className={`w-full flex items-center gap-3 p-2 border text-left ${selectedMaterial === m.id ? "border-zinc-900 bg-zinc-50" : "border-zinc-200 hover:border-zinc-300"}`} data-testid={`catalog-item-${m.id}`}>
-            <div className="w-10 h-10 border border-zinc-200" style={{ background: m.color }} />
-            <div className="flex-1 min-w-0"><div className="text-sm truncate">{m.name}</div>{cat !== "furniture" && <div className="text-xs text-zinc-500 mono">{fmtEuro(m.price)} / {m.unit}</div>}</div>
-          </button>
-        ))}
-      </div>
+      {tab === "voci" && (
+        <div className="p-3 overflow-auto flex-1">
+          <CatalogoVociPanel project={project} setProject={setProject} voci={voci} selected={selected} catalog={catalog} />
+        </div>
+      )}
+      {tab === "materiali" && (
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <div className="flex border-b border-zinc-200">
+            {ITEM_CATEGORIES.map((c) => <button key={c.id} onClick={() => setCat(c.id)} className={`flex-1 text-[10px] uppercase tracking-widest py-2 ${cat === c.id ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-50"}`} data-testid={`catalog-tab-${c.id}`}>{c.label}</button>)}
+          </div>
+          <div className="flex-1 overflow-auto p-3 space-y-1">
+            <div className="text-xs text-zinc-500 mono mb-2 px-1">clicca per selezionare → poi clicca sulla planimetria</div>
+            {items.map((m) => (
+              <button key={m.id} onClick={() => setSelectedMaterial(m.id)} className={`w-full flex items-center gap-3 p-2 border text-left ${selectedMaterial === m.id ? "border-zinc-900 bg-zinc-50" : "border-zinc-200 hover:border-zinc-300"}`} data-testid={`catalog-item-${m.id}`}>
+                <div className="w-10 h-10 border border-zinc-200" style={{ background: m.color }} />
+                <div className="flex-1 min-w-0"><div className="text-sm truncate">{m.name}</div>{cat !== "furniture" && <div className="text-xs text-zinc-500 mono">{fmtEuro(m.price)} / {m.unit}</div>}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

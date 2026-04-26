@@ -311,6 +311,21 @@ export default function Canvas2D({
           const toT = Math.max(drag.startT, tNow);
           return { ...prj, walls: (prj.walls || []).map((x) => x.id === drag.id ? { ...x, demolito_partial: { ...(x.demolito_partial || { height: prj.roomHeight || 270 }), from: fromT, to: toT } } : x) };
         });
+      } else if (drag.kind === "demo-handle") {
+        // Drag di una delle maniglie (from/to) di una demolizione parziale esistente
+        setProject((prj) => {
+          const w = (prj.walls || []).find((ww) => ww.id === drag.id);
+          if (!w) return prj;
+          const len = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1;
+          const dirX = (w.x2 - w.x1) / len, dirY = (w.y2 - w.y1) / len;
+          const proj = ((p.x - w.x1) * dirX + (p.y - w.y1) * dirY) / len;
+          const tNow = Math.max(0, Math.min(1, proj));
+          const partial = w.demolito_partial || { from: 0, to: 0, height: prj.roomHeight || 270 };
+          let from = partial.from, to = partial.to;
+          if (drag.side === "from") from = Math.min(tNow, partial.to);
+          else to = Math.max(tNow, partial.from);
+          return { ...prj, walls: (prj.walls || []).map((x) => x.id === drag.id ? { ...x, demolito_partial: { ...partial, from, to } } : x) };
+        });
       }
     }
   };
@@ -612,7 +627,7 @@ export default function Canvas2D({
         const tp = tilingParams || { size: "60x60", angle: 0 };
         setProject((prj) => ({
           ...prj,
-          tiling: [...(prj.tiling || []).filter((x) => x.roomId !== r.id), { id: uid(), roomId: r.id, size: tp.size, angle: tp.angle, startPoint: p }],
+          tiling: [...(prj.tiling || []).filter((x) => x.roomId !== r.id), { id: uid(), roomId: r.id, size: tp.size, angle: tp.angle, startPoint: p, voceId: tp.voceId || null, vocePrice: tp.vocePrice || 0, voceName: tp.voceName || "" }],
         }));
       }
       return;
@@ -1032,6 +1047,27 @@ export default function Canvas2D({
                     style={{ cursor: "move" }}
                     onMouseDown={(e) => { e.stopPropagation(); setDrag({ kind: "wall-end", id: w.id, sub: "p2", start: snapPt(toWorld(e)), orig: { x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 } }); }}
                     data-testid={`wall-handle-p2-${w.id}`}
+                  />
+                </>
+              )}
+              {/* drag handles for PARTIAL DEMOLITION (resize from/to along wall) */}
+              {isSel && tool === "select" && !w.demolito && partial && partial.to > partial.from && (
+                <>
+                  <circle
+                    cx={w.x1 + partial.from * (w.x2 - w.x1)}
+                    cy={w.y1 + partial.from * (w.y2 - w.y1)}
+                    r="11" fill="white" stroke="#DC2626" strokeWidth="3"
+                    style={{ cursor: "ew-resize" }}
+                    onMouseDown={(e) => { e.stopPropagation(); setDrag({ kind: "demo-handle", id: w.id, side: "from", start: toWorld(e) }); }}
+                    data-testid={`wall-demo-handle-from-${w.id}`}
+                  />
+                  <circle
+                    cx={w.x1 + partial.to * (w.x2 - w.x1)}
+                    cy={w.y1 + partial.to * (w.y2 - w.y1)}
+                    r="11" fill="white" stroke="#DC2626" strokeWidth="3"
+                    style={{ cursor: "ew-resize" }}
+                    onMouseDown={(e) => { e.stopPropagation(); setDrag({ kind: "demo-handle", id: w.id, side: "to", start: toWorld(e) }); }}
+                    data-testid={`wall-demo-handle-to-${w.id}`}
                   />
                 </>
               )}

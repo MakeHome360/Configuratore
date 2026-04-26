@@ -484,6 +484,34 @@ export function estimateProjectV2(project, voci, packageRef) {
     if (q > 0) paired.forEach((p) => add(p, q));
   });
 
+  // TILING CON VOCE SPECIFICA: se l'utente ha scelto una piastrella specifica dal catalogo
+  // tramite il tool "Schema piastrelle", sottraggo l'area dalla voce generica pavimento_piastrelle
+  // e creo una riga dedicata con il prezzo della voce scelta.
+  const tilingLumps = [];
+  (data.tiling || []).forEach((t) => {
+    if (!t.voceId || !t.vocePrice) return;
+    const r = (data.rooms || []).find((rr) => rr.id === t.roomId);
+    if (!r) return;
+    const areaM2 = polygonArea(r.points) / 10000;
+    if (areaM2 <= 0) return;
+    // Sottraggo l'area dalla voce generica
+    qtyByKey.pavimento_piastrelle = Math.max(0, (qtyByKey.pavimento_piastrelle || 0) - areaM2);
+    // Aggiungo come lump
+    tilingLumps.push({
+      key: `tiling-${t.id}`,
+      name: `${t.voceName || "Piastrelle"} · stanza ${r.name || ""}`,
+      unit: "m²",
+      qty: round2(areaM2),
+      qty_inclusa: 0,
+      qty_extra: round2(areaM2),
+      unit_price: t.vocePrice,
+      total: round2(areaM2 * t.vocePrice),
+      voce_id: t.voceId,
+      category: "Pavimenti (specifico)",
+      tiling_specific: true,
+    });
+  });
+
   // Build itemized list
   const items = [];
   const byCat = {};
@@ -594,6 +622,13 @@ export function estimateProjectV2(project, voci, packageRef) {
   });
   lumpItems.forEach((it) => { totalExtra += it.total; });
   items.push(...lumpItems);
+
+  // Aggiungo le righe tiling-specific (sopra calcolate)
+  tilingLumps.forEach((it) => {
+    totalExtra += it.total;
+    items.push(it);
+    byCat[it.category] = (byCat[it.category] || 0) + it.total;
+  });
 
   return {
     items,

@@ -1,25 +1,19 @@
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { fmtNum } from "./utils";
 
 // Standard heights (cm) for installation elements on a wall (height from floor)
 const STD_HEIGHTS = {
   // electrical
-  "presa": 30,
-  "presa-cucina": 110,
-  "interruttore": 110,
-  "luce": 220,
-  "scatola": 110,
-  "quadro": 160,
+  "presa": 30, "presa-cucina": 110, "presa-tv": 30, "presa-rj45": 30,
+  "interruttore": 110, "deviatore": 110, "luce": 220, "punto-luce": 220, "punto-luce-led": 220,
+  "scatola": 110, "quadro": 160, "quadro-elettrico": 160,
   // plumbing
-  "acqua-fredda": 35,
-  "acqua-calda": 35,
-  "scarico": 30,
+  "acqua-fredda": 35, "acqua-calda": 35, "scarico": 30,
+  "lavatrice": 70, "lavastoviglie": 70,
   // gas
   "gas": 40,
   // hvac
-  "split": 220,
-  "esterna": 250,
-  "predisposizione": 220,
+  "split": 220, "esterna": 250, "predisposizione": 220,
 };
 
 // Project a plan-view point onto a wall segment, returning {t, dist}
@@ -31,7 +25,7 @@ function projectOnWall(p, w) {
   return { t, dist: Math.hypot(cx - p.x, cy - p.y) };
 }
 
-// Find walls that are "interesting" for prospetto: in plumbing room OR have any electrical/plumbing/hvac point within 80 cm
+// Find walls that are "interesting" for prospetto: demolitions, openings, electrical/plumbing/hvac points within 80cm
 export function computeInterestingWalls(project) {
   const walls = project?.walls || [];
   const result = [];
@@ -47,38 +41,36 @@ export function computeInterestingWalls(project) {
     const onThisWall = [];
     allPts.forEach((p) => {
       const pr = projectOnWall(p, w);
-      if (pr.dist < 80) {
-        onThisWall.push({ ...p, t: pr.t });
-      }
+      if (pr.dist < 80) onThisWall.push({ ...p, t: pr.t });
     });
-    // Also include doors/windows on this wall
     const doorsOnWall = (project?.doors || []).filter((d) => d.wallId === w.id);
     const windowsOnWall = (project?.windows || []).filter((d) => d.wallId === w.id);
-    if (onThisWall.length > 0 || doorsOnWall.length > 0 || windowsOnWall.length > 0) {
-      result.push({ wall: w, length: len, points: onThisWall, doors: doorsOnWall, windows: windowsOnWall });
+    const wallDemos = (project?.demolitions || []).filter((d) => d.kind === "rivestimento" && d.wallId === w.id);
+    const partial = w.demolito_partial && w.demolito_partial.to > w.demolito_partial.from ? w.demolito_partial : null;
+    if (onThisWall.length > 0 || doorsOnWall.length > 0 || windowsOnWall.length > 0 || wallDemos.length > 0 || partial) {
+      result.push({ wall: w, length: len, points: onThisWall, doors: doorsOnWall, windows: windowsOnWall, demolitions: wallDemos, partial });
     }
   });
   return result;
 }
 
-const COLORS = {
-  electrical: "#7C3AED", plumbing: "#0EA5E9", gas: "#EAB308", hvac: "#0F766E",
-};
+const COLORS = { electrical: "#7C3AED", plumbing: "#0EA5E9", gas: "#EAB308", hvac: "#0F766E" };
 
 /**
  * ProspettoWall: side-view (elevation) of one wall.
- * Renders length × height (cm). Doors anchored to floor, windows at sillHeight.
- * Electrical/plumbing/gas/hvac points placed at standard heights (or override via heightOverrides[id]).
- * Editable: drag points orizzontale per cambiare posizione (t lungo parete) e verticale per altezza.
+ * Renders length × height (cm) WITH FULL DIMENSIONAL QUOTES:
+ *   - Total length & height
+ *   - For each door/window/demolition: width, distance from left, distance from right, height-from-floor (sill)
+ *   - For each MEP point: h from floor + horizontal distance from left/right
  */
 export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, onChangeHeight, onChangePosition }) {
-  const { wall, length, points, doors, windows } = entry;
+  const { wall, length, points, doors, windows, demolitions, partial } = entry;
   const W = length, H = roomHeight || 270;
-  const [dragging, setDragging] = useState(null); // {id, axis: 'xy'}
+  const [dragging, setDragging] = useState(null);
   const svgRef = React.useRef(null);
-  const pad = 60;
+  // Bigger padding to host multiple dim chains
+  const padTop = 120, padBottom = 100, padSide = 80;
 
-  const pxScaleX = 1, pxScaleY = 1; // 1cm = 1 unit in viewBox
   const onPointerMove = (e) => {
     if (!dragging || !svgRef.current) return;
     const pt = svgRef.current.createSVGPoint();
@@ -86,19 +78,23 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
     const ctm = svgRef.current.getScreenCTM();
     if (!ctm) return;
     const local = pt.matrixTransform(ctm.inverse());
-    // y in viewBox; floor is at H, ceiling at 0. height = H - local.y
     const newH = Math.max(5, Math.min(H - 5, H - local.y));
     onChangeHeight && onChangeHeight(dragging, Math.round(newH / 5) * 5);
-    // horizontal: t = local.x / W (clamped 0..1)
     const newT = Math.max(0, Math.min(1, local.x / W));
     onChangePosition && onChangePosition(dragging, parseFloat(newT.toFixed(3)));
   };
   const stopDrag = () => setDragging(null);
 
+  // Pre-compute openings list with positions (cm)
+  const openings = [
+    ...doors.map((d) => ({ kind: "door", id: d.id, t: d.t, width: d.width, height: d.height, sill: 0, label: d.type === "blindata" ? "Blindata" : (d.type === "scorrevole" ? "Porta scorrevole" : "Porta"), color: d.type === "blindata" ? "#7C2D12" : "#0A0A0A", obj: d })),
+    ...windows.map((wn) => ({ kind: "window", id: wn.id, t: wn.t, width: wn.width, height: wn.height, sill: wn.sillHeight || 90, label: wn.type === "porta-finestra" ? "Porta-finestra" : (wn.type === "scorrevole" ? "Finestra scorrevole" : (wn.type === "vasistas" ? "Vasistas" : "Finestra")), color: "#0A0A0A", obj: wn })),
+  ].sort((a, b) => a.t - b.t);
+
   return (
     <svg
       ref={svgRef}
-      viewBox={`-${pad} -${pad} ${W + pad * 2} ${H + pad * 2 + 60}`}
+      viewBox={`-${padSide} -${padTop} ${W + padSide * 2} ${H + padTop + padBottom}`}
       width="100%"
       style={{ display: "block", background: "#FFF" }}
       data-testid={`prospetto-svg-${wall.id}`}
@@ -106,48 +102,100 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
       onPointerUp={stopDrag}
       onPointerLeave={stopDrag}
     >
-      {/* floor and ceiling lines */}
+      {/* wall body */}
       <rect x={0} y={0} width={W} height={H} fill="#FAFAFA" stroke="#0A0A0A" strokeWidth="2" />
+      {/* floor hatch */}
       <line x1={0} y1={H} x2={W} y2={H} stroke="#0A0A0A" strokeWidth="3" />
-      {/* hatched floor */}
       <line x1={-30} y1={H + 8} x2={W + 30} y2={H + 8} stroke="#0A0A0A" strokeWidth="1" />
-      {Array.from({ length: Math.floor((W + 60) / 20) }).map((_, i) => (
-        <line key={i} x1={-30 + i * 20} y1={H + 8} x2={-40 + i * 20} y2={H + 18} stroke="#71717A" strokeWidth="0.6" />
+      {Array.from({ length: Math.floor((W + 60) / 18) }).map((_, i) => (
+        <line key={i} x1={-30 + i * 18} y1={H + 8} x2={-40 + i * 18} y2={H + 18} stroke="#71717A" strokeWidth="0.6" />
       ))}
-      {/* total dimensions */}
-      <DimLine x1={0} y1={-30} x2={W} y2={-30} label={`${fmtNum(W / 100, 2)} m`} color="#16A34A" />
-      <DimLineV x1={W + 30} y1={0} x2={W + 30} y2={H} label={`${fmtNum(H / 100, 2)} m`} color="#16A34A" />
 
-      {/* doors on this wall (always anchored to floor) */}
-      {doors.map((d) => {
-        const x = d.t * W - d.width / 2;
-        const isBlind = d.type === "blindata";
+      {/* TOTAL DIMENSION CHAIN (top, far) + per-element dim chain (top, near) */}
+      <DimLine x1={0} y1={-90} x2={W} y2={-90} label={`L tot ${fmtNum(W / 100, 2)} m`} color="#16A34A" big />
+      <DimLineV x1={W + 50} y1={0} x2={W + 50} y2={H} label={`H ${fmtNum(H / 100, 2)} m`} color="#16A34A" big />
+
+      {/* PARTIAL WALL DEMOLITION (rendered inside wall) */}
+      {partial && (() => {
+        const xa = partial.from * W, xb = partial.to * W;
+        const wDem = xb - xa;
+        const hDem = partial.height || H;
+        const yDem = H - hDem;
+        return (
+          <g key="partial-demo">
+            <pattern id={`hatch-demo-${wall.id}`} patternUnits="userSpaceOnUse" width="10" height="10" patternTransform="rotate(45)">
+              <line x1="0" y1="0" x2="0" y2="10" stroke="#DC2626" strokeWidth="2" />
+            </pattern>
+            <rect x={xa} y={yDem} width={wDem} height={hDem} fill={`url(#hatch-demo-${wall.id})`} stroke="#DC2626" strokeWidth="2" strokeDasharray="6,4" opacity="0.85" />
+            <text x={xa + wDem / 2} y={yDem - 6} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="11" fontWeight="800" fill="#DC2626">DEMO MURO {Math.round(wDem)}×{Math.round(hDem)} cm</text>
+            {/* quote width sotto */}
+            <DimLine x1={xa} y1={H + 50} x2={xb} y2={H + 50} label={`${Math.round(wDem)} cm`} color="#DC2626" />
+          </g>
+        );
+      })()}
+
+      {/* CLADDING DEMOLITION zones on this wall */}
+      {(demolitions || []).map((d) => {
+        const xFrom = (d.xFrom != null ? d.xFrom : 0);
+        const xTo = (d.xTo != null ? d.xTo : Math.min(W, 100));
+        const hFromFloor = d.hFromFloor != null ? d.hFromFloor : 0;
+        const hDem = d.height != null ? d.height : H;
+        const w0 = xTo - xFrom;
+        const yDem = H - hFromFloor - hDem;
         return (
           <g key={d.id}>
-            <rect x={x} y={H - d.height} width={d.width} height={d.height} fill="#FAFAFA" stroke={isBlind ? "#7C2D12" : "#0A0A0A"} strokeWidth={isBlind ? 3 : 1.5} />
-            <text x={x + d.width / 2} y={H + 32} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="14" fontWeight="700" fill="#0A0A0A">{d.width}×{d.height}</text>
-            <text x={x + d.width / 2} y={H - d.height - 6} textAnchor="middle" fontFamily="Outfit" fontSize="13" fill="#0A0A0A">{isBlind ? "Blindata" : (d.type === "scorrevole" ? "Scorr." : "Porta")}</text>
+            <pattern id={`hatch-rivest-${d.id}`} patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+              <line x1="0" y1="0" x2="0" y2="8" stroke="#F97316" strokeWidth="1.5" />
+            </pattern>
+            <rect x={xFrom} y={yDem} width={w0} height={hDem} fill={`url(#hatch-rivest-${d.id})`} stroke="#F97316" strokeWidth="1.5" strokeDasharray="4,3" opacity="0.7" />
+            <text x={xFrom + w0 / 2} y={yDem + hDem / 2} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="10" fontWeight="700" fill="#C2410C">DEMO RIV.<tspan x={xFrom + w0 / 2} dy="14">{Math.round(w0)}×{Math.round(hDem)}</tspan></text>
           </g>
         );
       })}
 
-      {/* windows on this wall */}
-      {windows.map((wn) => {
-        const x = wn.t * W - wn.width / 2;
-        const sill = wn.sillHeight || 90;
-        const yTop = H - sill - wn.height;
+      {/* OPENINGS + per-element quotes */}
+      {openings.map((o) => {
+        const xCenter = o.t * W;
+        const x = xCenter - o.width / 2;
+        const xR = x + o.width;
+        const yTop = o.kind === "window" ? H - o.sill - o.height : H - o.height;
+        const distSx = Math.round(x);
+        const distDx = Math.round(W - xR);
         return (
-          <g key={wn.id}>
-            <rect x={x} y={yTop} width={wn.width} height={wn.height} fill="#DBEAFE" fillOpacity="0.5" stroke="#0A0A0A" strokeWidth="1.5" />
-            <line x1={x} y1={yTop + wn.height / 2} x2={x + wn.width} y2={yTop + wn.height / 2} stroke="#0A0A0A" strokeWidth="0.6" />
-            <line x1={x + wn.width / 2} y1={yTop} x2={x + wn.width / 2} y2={yTop + wn.height} stroke="#0A0A0A" strokeWidth="0.6" />
-            <text x={x + wn.width / 2} y={H + 32} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="14" fontWeight="700" fill="#0A0A0A">{wn.width}×{wn.height}</text>
-            <text x={x + wn.width / 2} y={yTop - 6} textAnchor="middle" fontFamily="Outfit" fontSize="13" fill="#0A0A0A">{wn.type === "porta-finestra" ? "Porta-finestra" : "Finestra"} (h={sill})</text>
+          <g key={`${o.kind}-${o.id}`}>
+            {/* opening box */}
+            {o.kind === "window" ? (
+              <>
+                <rect x={x} y={yTop} width={o.width} height={o.height} fill="#DBEAFE" fillOpacity="0.5" stroke={o.color} strokeWidth="1.5" />
+                <line x1={x} y1={yTop + o.height / 2} x2={x + o.width} y2={yTop + o.height / 2} stroke={o.color} strokeWidth="0.6" />
+                <line x1={x + o.width / 2} y1={yTop} x2={x + o.width / 2} y2={yTop + o.height} stroke={o.color} strokeWidth="0.6" />
+              </>
+            ) : (
+              <>
+                <rect x={x} y={yTop} width={o.width} height={o.height} fill="#FAFAFA" stroke={o.color} strokeWidth={o.label === "Blindata" ? 3 : 1.5} />
+                {/* swing arc indication */}
+                <line x1={x + o.width / 2} y1={yTop + 15} x2={x + o.width / 2 + 10} y2={yTop + 15} stroke={o.color} strokeWidth="1" />
+              </>
+            )}
+            {/* element label sopra */}
+            <text x={xCenter} y={yTop - 8} textAnchor="middle" fontFamily="Outfit" fontSize="13" fontWeight="600" fill="#0A0A0A">{o.label}</text>
+            {/* width dim sotto al pavimento */}
+            <DimLine x1={x} y1={H + 30} x2={xR} y2={H + 30} label={`${Math.round(o.width)}`} color="#0A0A0A" />
+            {/* sx dim (distance from left) */}
+            {distSx > 5 && <DimLine x1={0} y1={H + 60} x2={x} y2={H + 60} label={`sx ${distSx}`} color="#2563EB" small />}
+            {/* dx dim (distance from right) */}
+            {distDx > 5 && <DimLine x1={xR} y1={H + 60} x2={W} y2={H + 60} label={`dx ${distDx}`} color="#2563EB" small />}
+            {/* opening height (vertical, RIGHT side) */}
+            <DimLineV x1={x - 18} y1={yTop} x2={x - 18} y2={yTop + o.height} label={`H ${o.height}`} color="#0A0A0A" small />
+            {/* sill height (vertical, from floor) */}
+            {o.kind === "window" && o.sill > 0 && (
+              <DimLineV x1={xR + 18} y1={yTop + o.height} x2={xR + 18} y2={H} label={`par. ${o.sill}`} color="#7C3AED" small />
+            )}
           </g>
         );
       })}
 
-      {/* points (electrical/plumbing/gas/hvac) */}
+      {/* MEP points */}
       {points.map((p) => {
         const x = p.t * W;
         const stdKey = p.type || p.kind;
@@ -163,20 +211,21 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
              data-testid={`prospetto-point-${p.id}`}
           >
             <line x1={x} y1={H} x2={x} y2={y} stroke={color} strokeWidth="1" strokeDasharray="3,3" opacity="0.5" />
-            <circle cx={x} cy={y} r="14" fill="white" stroke={color} strokeWidth="2.5" />
-            <text x={x} y={y + 5} textAnchor="middle" fontSize="13" fontWeight="800" fontFamily="JetBrains Mono" fill={color} pointerEvents="none">{symbolFor(p)}</text>
-            {/* Quota H altezza dal pavimento (a destra del punto) */}
-            <text x={x + 18} y={y + 5} fontFamily="JetBrains Mono" fontSize="11" fontWeight="700" fill={color} pointerEvents="none">h={h}cm</text>
-            {/* Quote orizzontali dx (verde) e sx (blu) sotto pavimento */}
-            <text x={x} y={H + 50} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="10" fontWeight="700" fill="#16A34A" pointerEvents="none">←{dxFromLeft}</text>
-            <text x={x} y={H + 64} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="10" fontWeight="700" fill="#2563EB" pointerEvents="none">{dxFromRight}→</text>
+            <circle cx={x} cy={y} r="13" fill="white" stroke={color} strokeWidth="2.5" />
+            <text x={x} y={y + 4} textAnchor="middle" fontSize="11" fontWeight="800" fontFamily="JetBrains Mono" fill={color} pointerEvents="none">{symbolFor(p)}</text>
+            {/* quota verticale a destra */}
+            <text x={x + 16} y={y + 4} fontFamily="JetBrains Mono" fontSize="10" fontWeight="700" fill={color} pointerEvents="none">h={h}</text>
+            {/* quote orizzontali sotto pavimento */}
+            <text x={x} y={H + 78} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="9" fontWeight="700" fill="#16A34A" pointerEvents="none">←{dxFromLeft}</text>
+            <text x={x} y={H + 90} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="9" fontWeight="700" fill="#2563EB" pointerEvents="none">{dxFromRight}→</text>
           </g>
         );
       })}
 
-      {/* legend at bottom */}
-      <text x={0} y={H + 80} fontFamily="Outfit" fontSize="13" fontWeight="700" fill="#0A0A0A">Parete · L={fmtNum(W / 100, 2)}m · H={fmtNum(H / 100, 2)}m</text>
-      {editable && <text x={W} y={H + 80} textAnchor="end" fontFamily="JetBrains Mono" fontSize="10" fill="#16A34A">trascina i punti (XY) per posizione e altezza · usa input per editing preciso</text>}
+      {/* legend on top-left */}
+      <text x={0} y={-padTop + 18} fontFamily="Outfit" fontSize="13" fontWeight="700" fill="#0A0A0A">Parete · L={fmtNum(W / 100, 2)}m · H={fmtNum(H / 100, 2)}m</text>
+      <text x={0} y={-padTop + 36} fontFamily="JetBrains Mono" fontSize="9" fill="#525252">quote in cm · sx/dx = distanze dai bordi parete · h = altezza da pavimento</text>
+      {editable && <text x={W} y={-padTop + 18} textAnchor="end" fontFamily="JetBrains Mono" fontSize="10" fill="#16A34A">trascina i punti per posizione e altezza</text>}
     </svg>
   );
 }
@@ -199,27 +248,11 @@ export function ProspettoInputs({ entry, heightOverrides, onChangeHeight, onChan
             <div className="flex-1 min-w-0">
               <div className="text-[10px] uppercase tracking-widest text-zinc-500">{p.type || p.kind}</div>
               <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  value={h}
-                  onChange={(e) => onChangeHeight(p.id, parseInt(e.target.value) || 0)}
-                  className="w-12 text-sm font-mono border-0 bg-transparent p-0 focus:outline-none"
-                  step={5}
-                  data-testid={`prospetto-input-${p.id}`}
-                  title="Altezza (cm)"
-                />
+                <input type="number" value={h} onChange={(e) => onChangeHeight(p.id, parseInt(e.target.value) || 0)} className="w-12 text-sm font-mono border-0 bg-transparent p-0 focus:outline-none" step={5} data-testid={`prospetto-input-${p.id}`} title="Altezza (cm)" />
                 <span className="text-[9px] mono text-zinc-400">h</span>
                 {onChangePosition && (
                   <>
-                    <input
-                      type="number"
-                      value={posCm}
-                      onChange={(e) => onChangePosition(p.id, Math.max(0, Math.min(1, (parseInt(e.target.value) || 0) / W)))}
-                      className="w-14 text-sm font-mono border-0 bg-transparent p-0 focus:outline-none border-l border-zinc-200 pl-2"
-                      step={5}
-                      data-testid={`prospetto-pos-${p.id}`}
-                      title="Posizione orizzontale dal lato sinistro (cm)"
-                    />
+                    <input type="number" value={posCm} onChange={(e) => onChangePosition(p.id, Math.max(0, Math.min(1, (parseInt(e.target.value) || 0) / W)))} className="w-14 text-sm font-mono border-0 bg-transparent p-0 focus:outline-none border-l border-zinc-200 pl-2" step={5} data-testid={`prospetto-pos-${p.id}`} title="Posizione orizzontale dal lato sinistro (cm)" />
                     <span className="text-[9px] mono text-zinc-400">x</span>
                   </>
                 )}
@@ -235,14 +268,16 @@ export function ProspettoInputs({ entry, heightOverrides, onChangeHeight, onChan
 
 function symbolFor(p) {
   const t = p.type || p.kind;
-  if (t === "presa" || t === "presa-cucina") return "P";
-  if (t === "interruttore") return "I";
-  if (t === "luce") return "L";
+  if (t === "presa" || t === "presa-cucina" || t === "presa-tv" || t === "presa-rj45") return "P";
+  if (t === "interruttore" || t === "deviatore") return "I";
+  if (t === "luce" || t === "punto-luce" || t === "punto-luce-led") return "L";
   if (t === "scatola") return "■";
-  if (t === "quadro") return "Q";
+  if (t === "quadro" || t === "quadro-elettrico") return "Q";
   if (t === "acqua-calda") return "C";
   if (t === "acqua-fredda") return "F";
   if (t === "scarico") return "S";
+  if (t === "lavatrice") return "LV";
+  if (t === "lavastoviglie") return "LS";
   if (t === "gas" || p.kind === "gas") return "G";
   if (t === "split") return "❄";
   if (t === "esterna") return "U";
@@ -250,25 +285,35 @@ function symbolFor(p) {
   return "•";
 }
 
-function DimLine({ x1, y1, x2, y2, label, color = "#16A34A" }) {
+function DimLine({ x1, y1, x2, y2, label, color = "#16A34A", big = false, small = false }) {
+  const tickH = small ? 4 : (big ? 7 : 6);
+  const fontSize = small ? 10 : (big ? 13 : 11);
+  const boxH = small ? 16 : (big ? 22 : 18);
+  const boxW = Math.max(40, label.length * 7 + 14);
+  if (Math.abs(x2 - x1) < 4) return null;
   return (
     <g pointerEvents="none">
-      <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth="1" />
-      <line x1={x1} y1={y1 - 6} x2={x1} y2={y1 + 6} stroke={color} strokeWidth="1" />
-      <line x1={x2} y1={y2 - 6} x2={x2} y2={y2 + 6} stroke={color} strokeWidth="1" />
-      <rect x={(x1 + x2) / 2 - 50} y={y1 - 14} width={100} height={20} fill="white" stroke={color} strokeWidth="1.5" />
-      <text x={(x1 + x2) / 2} y={y1 + 1} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="13" fontWeight="800" fill={color}>{label}</text>
+      <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth="0.8" />
+      <line x1={x1} y1={y1 - tickH} x2={x1} y2={y1 + tickH} stroke={color} strokeWidth="1" />
+      <line x1={x2} y1={y2 - tickH} x2={x2} y2={y2 + tickH} stroke={color} strokeWidth="1" />
+      <rect x={(x1 + x2) / 2 - boxW / 2} y={y1 - boxH / 2} width={boxW} height={boxH} fill="white" stroke={color} strokeWidth="1" />
+      <text x={(x1 + x2) / 2} y={y1 + (small ? 3 : 4)} textAnchor="middle" fontFamily="JetBrains Mono" fontSize={fontSize} fontWeight={big ? 800 : 700} fill={color}>{label}</text>
     </g>
   );
 }
-function DimLineV({ x1, y1, x2, y2, label, color = "#16A34A" }) {
+function DimLineV({ x1, y1, x2, y2, label, color = "#16A34A", big = false, small = false }) {
+  const tickW = small ? 4 : (big ? 7 : 6);
+  const fontSize = small ? 10 : (big ? 13 : 11);
+  const boxH = small ? 16 : (big ? 22 : 18);
+  const boxW = Math.max(50, label.length * 7 + 14);
+  if (Math.abs(y2 - y1) < 4) return null;
   return (
     <g pointerEvents="none">
-      <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth="1" />
-      <line x1={x1 - 6} y1={y1} x2={x1 + 6} y2={y1} stroke={color} strokeWidth="1" />
-      <line x1={x2 - 6} y1={y2} x2={x2 + 6} y2={y2} stroke={color} strokeWidth="1" />
-      <rect x={x1 - 50} y={(y1 + y2) / 2 - 10} width={100} height={20} fill="white" stroke={color} strokeWidth="1.5" />
-      <text x={x1} y={(y1 + y2) / 2 + 5} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="13" fontWeight="800" fill={color}>{label}</text>
+      <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth="0.8" />
+      <line x1={x1 - tickW} y1={y1} x2={x1 + tickW} y2={y1} stroke={color} strokeWidth="1" />
+      <line x1={x2 - tickW} y1={y2} x2={x2 + tickW} y2={y2} stroke={color} strokeWidth="1" />
+      <rect x={x1 - boxW / 2} y={(y1 + y2) / 2 - boxH / 2} width={boxW} height={boxH} fill="white" stroke={color} strokeWidth="1" />
+      <text x={x1} y={(y1 + y2) / 2 + (small ? 3 : 4)} textAnchor="middle" fontFamily="JetBrains Mono" fontSize={fontSize} fontWeight={big ? 800 : 700} fill={color}>{label}</text>
     </g>
   );
 }

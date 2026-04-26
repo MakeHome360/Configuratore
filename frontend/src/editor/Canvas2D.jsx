@@ -62,9 +62,70 @@ function GasSymbol({ g, isSel }) {
 
 function HvacSymbol({ h, isSel }) {
   const c = isSel ? "#2563EB" : "#0F766E";
-  if (h.type === "esterna") {
+  const t = h.type || "split";
+  if (t === "esterna" || t === "ue") {
     return <g><rect x={-22} y={-14} width={44} height={28} fill="white" stroke={c} strokeWidth="1.5" /><text x={0} y={4} fontSize="9" textAnchor="middle" fontWeight="700" fill={c}>UE</text></g>;
   }
+  if (t === "caldaia") {
+    return <g>
+      <rect x={-22} y={-22} width={44} height={44} rx={2} fill="#FEF3C7" stroke="#B91C1C" strokeWidth="1.5" />
+      <circle cx={0} cy={-4} r={5} fill="#B91C1C" />
+      <text x={0} y={16} fontSize="8" textAnchor="middle" fontWeight="700" fill="#B91C1C">CALDAIA</text>
+    </g>;
+  }
+  if (t === "pompa-calore") {
+    return <g>
+      <rect x={-26} y={-16} width={52} height={32} rx={3} fill="#DBEAFE" stroke="#1D4ED8" strokeWidth="1.5" />
+      <text x={0} y={4} fontSize="8" textAnchor="middle" fontWeight="700" fill="#1D4ED8">P.CALORE</text>
+    </g>;
+  }
+  if (t === "scaldabagno") {
+    return <g>
+      <circle cx={0} cy={0} r={14} fill="#FEE2E2" stroke="#B91C1C" strokeWidth="1.5" />
+      <text x={0} y={3} fontSize="8" textAnchor="middle" fontWeight="700" fill="#B91C1C">SB</text>
+      <text x={0} y={22} fontSize="7" textAnchor="middle" fill="#B91C1C">SCALDABAGNO</text>
+    </g>;
+  }
+  if (t === "vmc") {
+    return <g>
+      <rect x={-20} y={-12} width={40} height={24} fill="#E0E7FF" stroke="#4338CA" strokeWidth="1.5" />
+      <text x={0} y={3} fontSize="8" textAnchor="middle" fontWeight="700" fill="#4338CA">VMC</text>
+    </g>;
+  }
+  if (t === "fotovoltaico") {
+    return <g>
+      <rect x={-22} y={-14} width={44} height={28} fill="#1E293B" stroke="#0F172A" strokeWidth="1.5" />
+      {[-10,0,10].map(x => [-7,7].map(y => <rect key={`${x},${y}`} x={x-4} y={y-4} width={8} height={8} fill="#3B82F6" stroke="#0F172A" strokeWidth="0.5" />))}
+      <text x={0} y={26} fontSize="7" textAnchor="middle" fontWeight="700" fill="#0F172A">FV</text>
+    </g>;
+  }
+  if (t === "termoarredo") {
+    return <g>
+      <rect x={-8} y={-20} width={16} height={40} fill="white" stroke="#7C3AED" strokeWidth="1.5" />
+      {[-14,-7,0,7,14].map(y => <line key={y} x1={-8} y1={y} x2={8} y2={y} stroke="#7C3AED" strokeWidth="0.6" />)}
+      <text x={0} y={32} fontSize="7" textAnchor="middle" fontWeight="700" fill="#7C3AED">TERMOA.</text>
+    </g>;
+  }
+  if (t === "termosifone" || t === "radiatore") {
+    return <g>
+      <rect x={-22} y={-7} width={44} height={14} fill="white" stroke={c} strokeWidth="1.5" />
+      {[-16,-8,0,8,16].map(x => <line key={x} x1={x} y1={-7} x2={x} y2={7} stroke={c} strokeWidth="0.6" />)}
+      <text x={0} y={18} fontSize="7" textAnchor="middle" fontWeight="700" fill={c}>RADIAT.</text>
+    </g>;
+  }
+  if (t === "canalizzato") {
+    return <g>
+      <rect x={-32} y={-10} width={64} height={20} rx={3} fill="white" stroke={c} strokeWidth="1.5" strokeDasharray="3,2" />
+      <text x={0} y={4} fontSize="9" textAnchor="middle" fontWeight="700" fill={c}>CANALIZZ.</text>
+    </g>;
+  }
+  if (t === "dual-split") {
+    return <g><rect x={-32} y={-9} width={64} height={18} rx={3} fill="white" stroke={c} strokeWidth="1.5" /><text x={0} y={4} fontSize="10" textAnchor="middle" fontWeight="700" fill={c}>DUAL SPL.</text></g>;
+  }
+  if (t === "trial-split") {
+    return <g><rect x={-34} y={-9} width={68} height={18} rx={3} fill="white" stroke={c} strokeWidth="1.5" /><text x={0} y={4} fontSize="10" textAnchor="middle" fontWeight="700" fill={c}>TRIAL SPL.</text></g>;
+  }
+  // default split
   return <g><rect x={-30} y={-9} width={60} height={18} rx={3} fill="white" stroke={c} strokeWidth="1.5" /><text x={0} y={4} fontSize="10" textAnchor="middle" fontWeight="700" fill={c}>SPLIT</text></g>;
 }
 
@@ -279,11 +340,11 @@ export default function Canvas2D({
     if (best && bestD < 80) {
       if (tool === "door") {
         const dp = doorParams || { width: 80, height: 210, type: "interna" };
-        const op = { id: uid(), wallId: best.w.id, t: best.t, width: dp.width || 80, height: dp.height || 210, type: dp.type || "interna", hinge: "left", swing: "in", phase: VM };
+        const op = { id: uid(), wallId: best.w.id, t: best.t, width: dp.width || 80, height: dp.height || 210, type: dp.type || "interna", hinge: dp.hinge || "left", swing: dp.swing || "in", phase: VM };
         setProject((prj) => ({ ...prj, doors: [...(prj.doors || []), op] }));
       } else {
         const wp = windowParams || { width: 120, height: 140, sillHeight: 90, type: "finestra", material: "pvc" };
-        const op = { id: uid(), wallId: best.w.id, t: best.t, width: wp.width || 120, height: wp.height || 140, sillHeight: wp.sillHeight ?? 90, type: wp.type || "finestra", material: wp.material || "pvc", hinge: "left", swing: "in", phase: VM };
+        const op = { id: uid(), wallId: best.w.id, t: best.t, width: wp.width || 120, height: wp.height || 140, sillHeight: wp.sillHeight ?? 90, type: wp.type || "finestra", material: wp.material || "pvc", hinge: wp.hinge || "left", swing: wp.swing || "in", phase: VM };
         setProject((prj) => ({ ...prj, windows: [...(prj.windows || []), op] }));
       }
     }

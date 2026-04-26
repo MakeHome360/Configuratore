@@ -19,7 +19,7 @@ export default function PortaleSub() {
     if (!user?.subappaltatore_id) { setLoading(false); return; }
     api.get(`/subappaltatori/${user.subappaltatore_id}/cantieri`).then(r => setCantieri(r.data || [])).catch(() => {}).finally(() => setLoading(false));
   };
-  useEffect(reload, [user?.subappaltatore_id]);
+  useEffect(() => { reload(); }, [user?.subappaltatore_id]);
 
   return (
     <Page>

@@ -20,7 +20,7 @@ export default function SubappaltatoreDettaglio() {
     api.get(`/subappaltatori/${id}/cantieri`).then(r => setCantieri(r.data || [])).catch(() => {}).finally(() => setLoading(false));
     api.get("/subappaltatori").then(r => setSub((r.data || []).find(s => s.id === id))).catch(() => {});
   };
-  useEffect(reload, [id]);
+  useEffect(() => { reload(); }, [id]);
 
   return (
     <Page>

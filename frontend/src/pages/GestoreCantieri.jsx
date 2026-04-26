@@ -11,7 +11,7 @@ export default function GestoreCantieri() {
   const [cantieri, setCantieri] = useState([]);
   const [loading, setLoading] = useState(true);
   const reload = () => api.get("/gestore/cantieri").then(r => setCantieri(r.data || [])).catch(() => {}).finally(() => setLoading(false));
-  useEffect(reload, []);
+  useEffect(() => { reload(); }, []);
 
   const convalida = async (assId, avId) => {
     try {

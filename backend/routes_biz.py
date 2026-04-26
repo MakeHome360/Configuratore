@@ -449,6 +449,16 @@ def build_biz_router(db, get_current_user):
         await db.users.update_one({"id": user_id}, {"$set": {"role": body.role}})
         return {"ok": True}
 
+    @r.put("/users/{user_id}")
+    async def update_user_attrs(user_id: str, body: dict, user=Depends(get_current_user)):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        allowed = {k: v for k, v in (body or {}).items() if k in ("name", "negozio_id", "subappaltatore_id", "phone", "active")}
+        if not allowed:
+            return {"ok": True}
+        await db.users.update_one({"id": user_id}, {"$set": allowed})
+        return {"ok": True, "updated": list(allowed.keys())}
+
     # ---------- Configurazioni riferimento ----------
     @r.get("/composite-sections")
     async def composite(user=Depends(get_current_user)):

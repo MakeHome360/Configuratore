@@ -108,13 +108,21 @@ export const VOCE_MAP = {
   riscaldamento_radiatori: "Impianto riscaldamento radiatori",
   riscaldamento_pavimento: "Impianto riscaldamento a pavimento",
   predisposizione_clima: "Predisposizione climatizzatore",
+  climatizzatore_mono: "Climatizzatore mono split",
   climatizzatore_dual: "Climatizzatore dual split",
   climatizzatore_trial: "Climatizzatore trial split",
+  climatizzatore_canalizzato: "Climatizzatore canalizzato (controsoffitto)",
   caldaia_condensazione: "Caldaia a condensazione",
   caldaia_ibrida: "Caldaia ibrida (pompa di calore)",
+  pompa_calore: "Pompa di calore aria/acqua",
+  scaldabagno: "Scaldabagno (boiler elettrico)",
+  termoarredo: "Termoarredo bagno",
+  termosifone: "Termosifone alluminio (5 elementi)",
+  fotovoltaico: "Pannello fotovoltaico (modulo)",
+  unita_esterna: "Unità esterna climatizzatore (UE)",
   canalizzato_unita_interna: "Canalizzato · Unità interna",
   canalizzato_canale_ml: "Canalizzato · Canale aria con plenum",
-  vmc: "VMC ventilazione meccanica",
+  vmc: "Ventilazione meccanica controllata (VMC)",
   porta_interna: "Porte interne serie standard",
   porta_blindata_cl3: "Porta blindata Classe 3",
   porta_blindata_cl4: "Porta blindata Classe 4",
@@ -332,15 +340,22 @@ export function estimateProjectV2(project, voci, packageRef) {
   });
   (data.gas || []).filter(isProgetto).forEach(() => add("punto_gas", 1));
   (data.hvac || []).filter(isProgetto).forEach((h) => {
-    if (h.type === "predisposizione") add("predisposizione_clima", 1);
-    else if (h.type === "caldaia") add("caldaia_condensazione", 1);
-    else if (h.type === "caldaia-ibrida") add("caldaia_ibrida", 1);
-    else if (h.type === "canalizzato-ui") add("canalizzato_unita_interna", 1);
-    else if (h.type === "canalizzato-canale") add("canalizzato_canale_ml", h.lengthMl || 1);
-    else if (h.type === "vmc") add("vmc", 1);
-    else if (h.kind === "dual") add("climatizzatore_dual", 1);
-    else if (h.kind === "trial") add("climatizzatore_trial", 1);
-    else add("predisposizione_clima", 1);
+    const t = h.type || "split";
+    if (t === "predisposizione") add("predisposizione_clima", 1);
+    else if (t === "caldaia") add("caldaia_condensazione", 1);
+    else if (t === "caldaia-ibrida") add("caldaia_ibrida", 1);
+    else if (t === "pompa-calore") add("pompa_calore", 1);
+    else if (t === "scaldabagno") add("scaldabagno", 1);
+    else if (t === "termoarredo") add("termoarredo", 1);
+    else if (t === "termosifone" || t === "radiatore") add("termosifone", 1);
+    else if (t === "fotovoltaico") add("fotovoltaico", 1);
+    else if (t === "esterna" || t === "ue") add("unita_esterna", 1);
+    else if (t === "canalizzato" || t === "canalizzato-ui") add("climatizzatore_canalizzato", 1);
+    else if (t === "canalizzato-canale") add("canalizzato_canale_ml", h.lengthMl || 1);
+    else if (t === "vmc") add("vmc", 1);
+    else if (t === "dual-split" || h.kind === "dual") add("climatizzatore_dual", 1);
+    else if (t === "trial-split" || h.kind === "trial") add("climatizzatore_trial", 1);
+    else add("climatizzatore_mono", 1);
   });
   // Scale
   (data.stairs || []).filter(isProgetto).forEach((s) => {

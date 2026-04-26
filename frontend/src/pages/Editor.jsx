@@ -606,13 +606,18 @@ export default function Editor() {
           {activeGroup === "impianti" && tool === "hvac" && (
             <SubKindPicker label="Elemento" value={hvacKind} onChange={setHvacKind} options={[
               { v: "split", l: "Split a parete" },
-              { v: "esterna", l: "Unità esterna" },
-              { v: "predisposizione", l: "Predisposizione" },
+              { v: "dual-split", l: "Dual split (2 unità)" },
+              { v: "trial-split", l: "Trial split (3 unità)" },
+              { v: "esterna", l: "Unità esterna (UE)" },
+              { v: "canalizzato", l: "Canalizzato (controsoffitto)" },
+              { v: "vmc", l: "VMC (ventilazione meccanica controllata)" },
+              { v: "predisposizione", l: "Predisposizione climatizzazione" },
               { v: "caldaia", l: "Caldaia condensazione" },
-              { v: "caldaia-ibrida", l: "Caldaia ibrida (pompa di calore)" },
-              { v: "canalizzato-ui", l: "Canalizzato · Unità interna" },
-              { v: "canalizzato-canale", l: "Canalizzato · Canale aria (auto plenum)" },
-              { v: "vmc", l: "VMC (ventil. meccanica)" },
+              { v: "pompa-calore", l: "Pompa di calore" },
+              { v: "scaldabagno", l: "Scaldabagno (boiler elettrico/gas)" },
+              { v: "termosifone", l: "Termosifone / radiatore" },
+              { v: "termoarredo", l: "Termoarredo (bagno design)" },
+              { v: "fotovoltaico", l: "Pannello fotovoltaico" },
             ]} testid="hvac-kind" />
           )}
           {tool === "stairs" && (

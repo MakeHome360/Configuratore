@@ -111,15 +111,38 @@ def build_round10_router(db, get_current_user, jwt_create_access):
 
     @r.post("/subappaltatori/assegna")
     async def assegna_sub(body: AssegnaIn, user=Depends(get_current_user)):
-        if user.get("role") not in ("admin", "venditore", "gestore"):
-            raise HTTPException(403, "Non autorizzato")
+        # SOLO ADMIN può assegnare un cantiere a un subappaltatore (richiesta utente).
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo l'admin può assegnare un cantiere a un subappaltatore")
+        # VINCOLO 1: preventivo accettato collegato alla commessa.
+        commessa = await db.commesse.find_one({"id": body.commessa_id}, {"_id": 0})
+        if not commessa:
+            raise HTTPException(404, "Commessa non trovata")
+        prev_id = commessa.get("preventivo_id")
+        if not prev_id:
+            raise HTTPException(400, "Impossibile assegnare: la commessa non ha un preventivo collegato. Crea/collega un preventivo accettato.")
+        prev = await db.preventivi.find_one({"id": prev_id}, {"_id": 0})
+        if not prev or prev.get("stato") != "accettato":
+            raise HTTPException(400, "Impossibile assegnare: il preventivo collegato non è ACCETTATO. Stato attuale: " + str(prev.get("stato") if prev else "non trovato"))
+        # VINCOLO 2: deve esistere un contratto di subappalto FIRMATO per questa coppia commessa+sub.
+        contratto = await db.documenti_commessa.find_one({
+            "commessa_id": body.commessa_id,
+            "tipo": "contratto_subappalto",
+            "subappaltatore_id": body.subappaltatore_id,
+            "stato": "firmato",
+        }, {"_id": 0})
+        if not contratto:
+            raise HTTPException(400, "Impossibile assegnare: manca il CONTRATTO DI SUBAPPALTO firmato per questo subappaltatore. Carica il documento (tipo=contratto_subappalto, subappaltatore_id) e fai firmare il sub via OTP prima di assegnare.")
         doc = {
             "id": f"ass-{uuid.uuid4().hex[:10]}",
             **body.model_dump(),
             "stato": "assegnata",
             "fatturato": 0, "incassato": 0,
             "avanzamenti": [],
+            "contratto_id": contratto["id"],
+            "preventivo_id": prev_id,
             "created_at": now_iso(),
+            "created_by": user["id"],
         }
         await db.subapp_assegnazioni.insert_one(doc)
         # Aggiorna anche commessa.subappaltatori_ids
@@ -312,12 +335,13 @@ def build_round10_router(db, get_current_user, jwt_create_access):
     # ============================================================
     class DocumentoIn(BaseModel):
         commessa_id: str
-        tipo: str  # contratto / capitolato / sal / collaudo
+        tipo: str  # contratto / capitolato / sal / collaudo / contratto_subappalto
         nome: str
         contenuto_html: Optional[str] = None
         file_url: Optional[str] = None
         visibile_cliente: bool = True
         firma_richiesta: bool = False
+        subappaltatore_id: Optional[str] = None  # solo per tipo=contratto_subappalto
 
     @r.post("/documenti")
     async def crea_documento(body: DocumentoIn, user=Depends(get_current_user)):
@@ -466,12 +490,22 @@ def build_round10_router(db, get_current_user, jwt_create_access):
     # ============================================================
     @r.get("/gestore/cantieri")
     async def gestore_cantieri(user=Depends(get_current_user)):
-        """Cantieri visibili: admin/venditore/user vedono tutto, gestore solo i suoi."""
+        """Cantieri visibili in base al ruolo."""
         role = user.get("role")
-        if role in ("admin", "venditore", "user"):
+        if role == "admin":
             q = {}
         elif role == "gestore":
             q = {"gestore_id": user["id"]}
+        elif role == "venditore":
+            negozio_id = user.get("negozio_id")
+            if negozio_id:
+                colleagues = await db.users.find({"negozio_id": negozio_id, "role": "venditore"}, {"id": 1, "_id": 0}).to_list(200)
+                ids = [c["id"] for c in colleagues]
+                q = {"$or": [{"venditore_id": {"$in": ids}}, {"negozio_id": negozio_id}, {"gestore_id": user["id"]}]}
+            else:
+                q = {"$or": [{"venditore_id": user["id"]}, {"gestore_id": user["id"]}]}
+        elif role == "user":
+            q = {"$or": [{"venditore_id": user["id"]}, {"gestore_id": user["id"]}]}
         else:
             raise HTTPException(403, "Non autorizzato")
         comms = await db.commesse.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
@@ -483,6 +517,64 @@ def build_round10_router(db, get_current_user, jwt_create_access):
                 if not av.get("convalidato")
             )
         return comms
+
+    # ============================================================
+    # INVITO SUBAPPALTATORE AL PORTALE (solo admin)
+    # ============================================================
+    class InvitoSubIn(BaseModel):
+        subappaltatore_id: str
+        email: EmailStr
+        durata_giorni: int = 365  # validità credenziali
+
+    @r.post("/subappaltatori-portal/invita")
+    async def invita_subappaltatore(body: InvitoSubIn, user=Depends(get_current_user)):
+        """Solo admin: genera credenziali temporanee per un subappaltatore e crea utenza role=subappaltatore."""
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo l'admin può invitare subappaltatori")
+        sub = await db.subappaltatori.find_one({"id": body.subappaltatore_id}, {"_id": 0})
+        if not sub:
+            raise HTTPException(404, "Subappaltatore non trovato")
+        # se utente già esiste con stessa email, aggiorna password e link al sub
+        existing = await db.users.find_one({"email": body.email.lower()}, {"_id": 0})
+        pwd = gen_pwd()
+        expires_at = (datetime.now(timezone.utc) + timedelta(days=body.durata_giorni)).isoformat()
+        if existing:
+            await db.users.update_one(
+                {"id": existing["id"]},
+                {"$set": {
+                    "password_hash": hash_password(pwd),
+                    "role": "subappaltatore",
+                    "subappaltatore_id": body.subappaltatore_id,
+                    "sub_portal_expires_at": expires_at,
+                    "updated_at": now_iso(),
+                }},
+            )
+            uid_ = existing["id"]
+        else:
+            uid_ = str(uuid.uuid4())
+            await db.users.insert_one({
+                "id": uid_,
+                "email": body.email.lower(),
+                "name": sub.get("ragione_sociale") or sub.get("nome") or body.email,
+                "password_hash": hash_password(pwd),
+                "role": "subappaltatore",
+                "subappaltatore_id": body.subappaltatore_id,
+                "sub_portal_expires_at": expires_at,
+                "created_at": now_iso(),
+            })
+        # log linkato al sub
+        await db.subappaltatori.update_one(
+            {"id": body.subappaltatore_id},
+            {"$set": {"portale_email": body.email.lower(), "portale_invitato_il": now_iso(), "updated_at": now_iso()}},
+        )
+        return {
+            "ok": True,
+            "user_id": uid_,
+            "email": body.email,
+            "password_temporanea": pwd,
+            "scadenza": expires_at,
+            "messaggio": "Comunica queste credenziali al subappaltatore. La password viene mostrata UNA SOLA VOLTA.",
+        }
 
     @r.put("/commesse/{cid}/assegna-gestore")
     async def assegna_gestore(cid: str, body: Dict[str, Any], user=Depends(get_current_user)):

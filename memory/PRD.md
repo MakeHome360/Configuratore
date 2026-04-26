@@ -68,7 +68,31 @@
 - **negozi / subappaltatori / impostazioni / dati_azienda**
 - **materials / projects** (CAD)
 
-## Changelog (Feb 2026 — round 13: UX hotfix CAD — drag demoliz., quote prospetti, catalogo applica-a-selezionato, scelta tipo piastrelle)
+## Changelog (Feb 2026 — round 14: HOTFIX critici pacchetto/piastrelle)
+
+**🔴 BUG-FIX P0 — Decorazione contata x4 nel pacchetto (segnalato dall'utente: "x4 rispetto alla metratura della casa")**
+- Bug: nel pacchetto, "Decorazione" inclusa con `qty_ratio: 1.0` × mq pavimento (es. 100m²), ma il CAD calcola `pittura_pareti = perimetro × altezza` (es. 280m² per casa 100m²). Risultato: 180m² extra contati come fuori pacchetto, quando la decorazione del pacchetto è in realtà FORFAIT (copre tutta la casa).
+- Fix: introdotto flag `fullCoverage: true` in `PACKAGE_VOCE_GROUPS` per voci pacchetto generiche/forfait. Quando `fullCoverage` è true, `includedMap[key] = qtyByKey[key]` (= consumo CAD effettivo, qualunque sia). Voci coperte: Decorazione, Pittura prima mano, Rasatura pareti, Posa massetto, Massetto cementizio, Massetto autolivellante, Posa pavimento ceramica, Posa rivestimento ceramica, Posa parquet, Posa Battiscopa, Demolizione e smaltimento. Verificato con test Node: casa 100m² + BASIC → pittura 108m² consumata, 108m² inclusa, **0 extra**.
+
+**🔴 BUG-FIX P0 — Cambio prezzo piastrelle non conta l'eccedenza come extra**
+- Bug: il vecchio approccio creava un `tilingLump` extra che bypassava completamente la logica `priceOverrides` + `refPriceMap` del pacchetto. L'eccedenza (es. Gres marmo 72€/m² vs pacchetto 41.58€/m²) NON veniva calcolata: o tutto extra o niente.
+- Fix: il tiling specifico ora produce un **prezzo medio ponderato per area** (`tilingAvgPrice`) che funziona come override automatico della voce `pavimento_piastrelle`. Il calcolo eccedenza (`price_delta_extra = (override - refPrice) × qty_inclusa`) ora opera correttamente. Il listino personalizzato dell'utente (`priceOverrides[voce.id]`) ha SEMPRE la precedenza sul tiling-avg.
+- Test verificato:
+  - Caso A: `tiling = Gres marmo 72€/m²`, pacchetto = 41.58€/m² → extra **3042€** (= 30.42 × 100m²) ✅
+  - Caso B: `priceOverrides[v-pp]=90€/m²` + tiling Gres 72€/m² → vince override, extra **4842€** ✅
+  - Caso C: senza pacchetto, override 90€/m² → totale **9000€** = 90 × 100m² ✅
+
+**🔴 BUG-FIX P0 — Schema piastrelle: applica a TUTTE le stanze in 1 click**
+- Bug: l'utente doveva cliccare in OGNI stanza per posare lo stesso tipo (causa discrepanze, errori, frustrazione: "rischio di avere discrepanze tra una stanza e l'altra").
+- Fix: nuovo bottone verde **"↗ Applica a TUTTE le stanze"** (data-testid `tile-apply-all-rooms`) nel pannello tool tiling. Click → propaga il tipo+formato+angolo a tutte le stanze del progetto, sostituendo eventuali tiling esistenti. Toast conferma il numero di stanze aggiornate.
+
+**Display migliorato**: nel computo metrico la voce `Piastrelle pavimento` ora mostra il nome della voce specifica scelta (es. "Gres porcellanato effetto marmo 60×120 (Cucina)") invece del generico, e usa il `voce_id` corretto per il salvataggio in preventivo.
+
+**Tests:** Backend 5/5 PASS. Test calcolo Node: 3 scenari pacchetto + override + tiling → tutti corretti. Lint pulito.
+
+---
+
+
 
 **🔴 BUG-FIX UX P0 — Demolizione muro PARZIALE con DRAG visivo**
 - Bug: l'utente lavorava SOLO con input numerici per definire da/a della demolizione parziale (richiesta: "voglio anche disegnare la demolizione disegnando").

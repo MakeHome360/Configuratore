@@ -725,7 +725,31 @@ export default function Editor() {
               </Select>
               <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Angolo (°)</Label>
               <Input type="number" value={tilingParams.angle} onChange={(e) => setTilingParams((p) => ({ ...p, angle: parseInt(e.target.value) || 0 }))} className="rounded-sm h-8 mono" data-testid="tile-angle" />
-              <div className="text-[10px] text-zinc-500 mono leading-tight">scegli il tipo di piastrella dal catalogo<br/>poi click in stanza per posare</div>
+              <button
+                type="button"
+                disabled={!tilingParams.voceId || !(project?.data?.rooms || []).length}
+                onClick={() => {
+                  const voce = (voci || []).find((x) => x.id === tilingParams.voceId);
+                  if (!voce) { toast.error("Scegli prima un tipo di piastrella"); return; }
+                  const rooms = project?.data?.rooms || [];
+                  setProjectData((d) => {
+                    const existing = d.tiling || [];
+                    const others = existing.filter((t) => !rooms.some((r) => r.id === t.roomId));
+                    const newTilings = rooms.map((r) => ({
+                      id: uid(), roomId: r.id, size: tilingParams.size, angle: tilingParams.angle,
+                      startPoint: { x: r.points[0].x, y: r.points[0].y },
+                      voceId: tilingParams.voceId, vocePrice: tilingParams.vocePrice, voceName: tilingParams.voceName,
+                    }));
+                    return { ...d, tiling: [...others, ...newTilings] };
+                  });
+                  toast.success(`✓ ${voce.name} applicato a tutte le ${rooms.length} stanze`);
+                }}
+                className="w-full rounded-sm h-8 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold disabled:bg-zinc-300 disabled:cursor-not-allowed"
+                data-testid="tile-apply-all-rooms"
+              >
+                ↗ Applica a TUTTE le stanze
+              </button>
+              <div className="text-[10px] text-zinc-500 mono leading-tight">scegli il tipo di piastrella dal catalogo<br/>poi click in stanza per posare,<br/>oppure il bottone qui sopra per tutta la casa</div>
             </div>
           )}
 

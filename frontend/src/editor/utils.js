@@ -153,17 +153,22 @@ export const NAME_TO_CAD_KEY = Object.fromEntries(
 // Voci PACCHETTO che coprono MULTIPLE CAD keys (con budget condiviso) o aliases.
 // shared=true significa che la qty_inclusa è un budget condiviso tra le keys (es. "Demolizione e smaltimento" copre muri+pavimento+riv. cumulati).
 // shared=false significa che la qty_inclusa va applicata a OGNI key separatamente (alias).
+// fullCoverage=true significa che la voce inclusa nel pacchetto COPRE INTERAMENTE la qty CAD effettiva
+// (per voci forfait pacchetto come "Decorazione" — è inclusa per tutta la casa, NON limitata da ratio×mq).
 export const PACKAGE_VOCE_GROUPS = {
-  "demolizione e smaltimento": { keys: ["demolizione_pavimento", "demolizione_muro", "demolizione_rivestimento", "demolizione_controsoffitto"], shared: true },
-  "decorazione": { keys: ["pittura_pareti"], shared: false },
-  "posa massetto": { keys: ["massetto"], shared: false },
-  "massetto cementizio": { keys: ["massetto"], shared: false },
-  "posa pavimento ceramica": { keys: ["posa_pavimento_piastrelle"], shared: false },
-  "posa piastrelle pavimento": { keys: ["posa_pavimento_piastrelle"], shared: false },
-  "posa rivestimento ceramica": { keys: ["posa_rivestimento_piastrelle"], shared: false },
-  "posa piastrelle rivestimento": { keys: ["posa_rivestimento_piastrelle"], shared: false },
-  "posa parquet": { keys: ["posa_pavimento_parquet"], shared: false },
-  "posa battiscopa": { keys: ["battiscopa"], shared: false },
+  "demolizione e smaltimento": { keys: ["demolizione_pavimento", "demolizione_muro", "demolizione_rivestimento", "demolizione_controsoffitto"], shared: true, fullCoverage: true },
+  "decorazione": { keys: ["pittura_pareti"], shared: false, fullCoverage: true },
+  "pittura prima mano": { keys: ["pittura_pareti"], shared: false, fullCoverage: true },
+  "rasatura pareti": { keys: ["pittura_pareti"], shared: false, fullCoverage: true },
+  "posa massetto": { keys: ["massetto"], shared: false, fullCoverage: true },
+  "massetto cementizio": { keys: ["massetto"], shared: false, fullCoverage: true },
+  "massetto autolivellante": { keys: ["massetto"], shared: false, fullCoverage: true },
+  "posa pavimento ceramica": { keys: ["posa_pavimento_piastrelle"], shared: false, fullCoverage: true },
+  "posa piastrelle pavimento": { keys: ["posa_pavimento_piastrelle"], shared: false, fullCoverage: true },
+  "posa rivestimento ceramica": { keys: ["posa_rivestimento_piastrelle"], shared: false, fullCoverage: true },
+  "posa piastrelle rivestimento": { keys: ["posa_rivestimento_piastrelle"], shared: false, fullCoverage: true },
+  "posa parquet": { keys: ["posa_pavimento_parquet"], shared: false, fullCoverage: true },
+  "posa battiscopa": { keys: ["battiscopa"], shared: false, fullCoverage: true },
 };
 
 /**
@@ -204,13 +209,17 @@ export function buildPackageRef(pkg, projectData) {
     // 1. Esatto match VOCE_MAP
     const exactKey = NAME_TO_CAD_KEY[nameLow];
     if (exactKey) {
-      voci_incluse.push({ keys: [exactKey], qty_inclusa, shared: false, name: it.name, voce_id: it.voce_id, ref_unit_price: it.unit_price_pkg || it.prezzo_rivendita || 0 });
+      // Anche le voci esatte come "Decorazione" / "Pittura prima mano" / "Massetto" devono essere fullCoverage
+      // se appaiono ANCHE nei PACKAGE_VOCE_GROUPS con quella flag.
+      const grpExact = PACKAGE_VOCE_GROUPS[nameLow];
+      const fc = grpExact?.fullCoverage === true;
+      voci_incluse.push({ keys: [exactKey], qty_inclusa, shared: false, fullCoverage: fc, name: it.name, voce_id: it.voce_id, ref_unit_price: it.unit_price_pkg || it.prezzo_rivendita || 0 });
       return;
     }
     // 2. Group/alias generico
     const grp = PACKAGE_VOCE_GROUPS[nameLow];
     if (grp) {
-      voci_incluse.push({ keys: grp.keys, qty_inclusa, shared: grp.shared, name: it.name, voce_id: it.voce_id, ref_unit_price: it.unit_price_pkg || it.prezzo_rivendita || 0 });
+      voci_incluse.push({ keys: grp.keys, qty_inclusa, shared: grp.shared, fullCoverage: grp.fullCoverage === true, name: it.name, voce_id: it.voce_id, ref_unit_price: it.unit_price_pkg || it.prezzo_rivendita || 0 });
     }
     // Sennò la voce è administrativa (CILA, APE, Direzione lavori) → ignorata sul CAD ma il forfait la copre.
   });
@@ -485,32 +494,30 @@ export function estimateProjectV2(project, voci, packageRef) {
   });
 
   // TILING CON VOCE SPECIFICA: se l'utente ha scelto una piastrella specifica dal catalogo
-  // tramite il tool "Schema piastrelle", sottraggo l'area dalla voce generica pavimento_piastrelle
-  // e creo una riga dedicata con il prezzo della voce scelta.
-  const tilingLumps = [];
+  // tramite il tool "Schema piastrelle", la trattiamo come override del prezzo della voce
+  // pavimento_piastrelle SENZA sottrarre l'area (così il pacchetto può includerla normalmente
+  // e l'eventuale eccedenza prezzo viene calcolata correttamente).
+  // Ricaviamo il prezzo medio ponderato per area del tiling specifico, e marchiamo nel
+  // priceOverrides la voce_id mapped (= voce di pavimento_piastrelle) con il prezzo voce scelto.
+  // Inoltre teniamo traccia della voce specifica per mostrarla in computo.
+  let tilingTotalAreaM2 = 0;
+  let tilingWeightedPrice = 0;
+  let tilingVoceLabels = [];
+  let tilingVoceIdSelected = null;
   (data.tiling || []).forEach((t) => {
     if (!t.voceId || !t.vocePrice) return;
     const r = (data.rooms || []).find((rr) => rr.id === t.roomId);
     if (!r) return;
     const areaM2 = polygonArea(r.points) / 10000;
     if (areaM2 <= 0) return;
-    // Sottraggo l'area dalla voce generica
-    qtyByKey.pavimento_piastrelle = Math.max(0, (qtyByKey.pavimento_piastrelle || 0) - areaM2);
-    // Aggiungo come lump
-    tilingLumps.push({
-      key: `tiling-${t.id}`,
-      name: `${t.voceName || "Piastrelle"} · stanza ${r.name || ""}`,
-      unit: "m²",
-      qty: round2(areaM2),
-      qty_inclusa: 0,
-      qty_extra: round2(areaM2),
-      unit_price: t.vocePrice,
-      total: round2(areaM2 * t.vocePrice),
-      voce_id: t.voceId,
-      category: "Pavimenti (specifico)",
-      tiling_specific: true,
-    });
+    tilingTotalAreaM2 += areaM2;
+    tilingWeightedPrice += areaM2 * t.vocePrice;
+    tilingVoceLabels.push(`${t.voceName || "piastrella"} (${r.name || ""})`);
+    tilingVoceIdSelected = t.voceId; // l'ultimo wins per il display
   });
+  // Se l'utente ha scelto piastrelle specifiche, override il prezzo della voce "Piastrelle pavimento"
+  // del pacchetto/standard usando il prezzo medio ponderato (quando ci sono tipi diversi per stanza).
+  const tilingAvgPrice = tilingTotalAreaM2 > 0 ? round2(tilingWeightedPrice / tilingTotalAreaM2) : 0;
 
   // Build itemized list
   const items = [];
@@ -523,6 +530,16 @@ export function estimateProjectV2(project, voci, packageRef) {
     packageRef.voci_incluse.forEach((vi) => {
       const keys = Array.isArray(vi.keys) ? vi.keys : (vi.key ? [vi.key] : []);
       const totalQty = vi.qty_inclusa || 0;
+      // FULL COVERAGE: la voce inclusa nel pacchetto copre INTERAMENTE il consumo CAD effettivo.
+      // Usato per voci forfait pacchetto come "Decorazione/Pittura/Massetto/Posa" che il pacchetto
+      // include "tutto" (NON limitato da ratio×mq pavimento).
+      if (vi.fullCoverage) {
+        keys.forEach((k) => {
+          includedMap[k] = qtyByKey[k] || 0;
+          if (vi.ref_unit_price) refPriceMap[k] = vi.ref_unit_price;
+        });
+        return;
+      }
       if (vi.shared) {
         // Budget condiviso: distribuisco nell'ordine delle keys consumando le quantità presenti
         let budget = totalQty;
@@ -555,7 +572,13 @@ export function estimateProjectV2(project, voci, packageRef) {
     const voce = findVoce(voci, voceName);
     if (!voce) return;
     const basePrice = priceOf(voce);
-    const overridePrice = priceOverrides[voce.id];
+    let overridePrice = priceOverrides[voce.id];
+    // TILING SPECIFICO: se l'utente ha scelto piastrelle dal catalogo nel CAD,
+    // usiamo il prezzo medio ponderato come override del prezzo della voce pavimento_piastrelle.
+    // Il listino personalizzato dell'utente (priceOverrides) ha PRECEDENZA se presente.
+    if (key === "pavimento_piastrelle" && tilingAvgPrice > 0 && !(typeof overridePrice === "number" && overridePrice > 0)) {
+      overridePrice = tilingAvgPrice;
+    }
     const useOverride = typeof overridePrice === "number" && overridePrice > 0;
     const unitPrice = useOverride ? overridePrice : basePrice;
     const inclusa = includedMap[key] || 0;
@@ -573,8 +596,15 @@ export function estimateProjectV2(project, voci, packageRef) {
     const incTotalRow = Math.min(qty, inclusa) * unitPrice;
     totalExtra += totalRow;
     totalIncluded += incTotalRow;
+    // Per pavimento_piastrelle con tiling-specific, mostriamo il nome della voce scelta
+    let displayName = voce.name;
+    if (key === "pavimento_piastrelle" && tilingVoceLabels.length > 0) {
+      displayName = tilingVoceLabels.length === 1
+        ? tilingVoceLabels[0]
+        : `Piastrelle pavimento (mix: ${tilingVoceLabels.length} tipi)`;
+    }
     const item = {
-      key, name: voce.name, unit: voce.unit, qty: round2(qty),
+      key, name: displayName, unit: voce.unit, qty: round2(qty),
       qty_inclusa: round2(inclusa),
       qty_extra: round2(extra),
       unit_price: round2(unitPrice),
@@ -582,7 +612,7 @@ export function estimateProjectV2(project, voci, packageRef) {
       price_override: useOverride ? round2(overridePrice) : null,
       price_delta_extra: priceDelta,
       total: round2(totalRow),
-      voce_id: voce.id,
+      voce_id: (key === "pavimento_piastrelle" && tilingVoceIdSelected) ? tilingVoceIdSelected : voce.id,
       category: voce.category,
     };
     items.push(item);
@@ -622,13 +652,6 @@ export function estimateProjectV2(project, voci, packageRef) {
   });
   lumpItems.forEach((it) => { totalExtra += it.total; });
   items.push(...lumpItems);
-
-  // Aggiungo le righe tiling-specific (sopra calcolate)
-  tilingLumps.forEach((it) => {
-    totalExtra += it.total;
-    items.push(it);
-    byCat[it.category] = (byCat[it.category] || 0) + it.total;
-  });
 
   return {
     items,

@@ -1,14 +1,22 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 16 — Feb 2026 - Bug Critici Quote/Tavole)
+- ✅ **JSX SVG bug fix**: i numeri nelle quote sx/dx/h dei Prospetti non erano visibili perché JSX `<text>sx {var}</text>` creava 2 text node figli che SVG renderizzava come un solo glyph. Convertito a template literal `{`sx ${var}`}` ovunque (Prospetti.jsx, Canvas2D.jsx)
+- ✅ **Auto-fit viewBox sulle Tavole**: nuovo prop `autoFit` su Canvas2D che calcola bbox di tutto il contenuto del progetto (rooms, walls, MEP) e dimensiona il viewBox per non tagliare nulla
+- ✅ **Quote interne su ogni segmento del poligono stanza**: ogni lato di ogni stanza ottiene un badge bianco con la sua misura (es. 4.00 m, 2.50 m), incluse pareti interne tra stanze
+- ✅ **Prospetti**: badge con padding dinamico (padBottom cresce in base ai punti MEP), offset verticale per ogni MEP point per evitare sovrapposizione tra badge sx/dx, font ingranditi (h=14, sx/dx=13)
+- ✅ **Tool change reset**: cambiando tool (es. wall→tiling), tutti i draft pendenti (wallDraft, roomDraft, demoAreaDraft, pendingClicks) vengono resettati per evitare creazione di muri/stanze fantasma
+- ✅ **Tile pattern visibility**: piastrelle ora hanno fillOpacity 0.55 e stroke #525252 più scuro, marker partenza più grande (r=7)
+- ✅ **GasSymbol r=16 + label "GAS"**, ElectricalSymbol/PlumbingSymbol enlarged con etichette tipo (PRESA/INT/LUCE/QUADRO/F/C/S)
+
 ## Recent Updates (Round 15 — Feb 2026)
-- ✅ X delete (cestino) per ogni voce del Preventivo Live + box "Voci rimosse · Ripristina tutte" (data-testid `computo-delete-{key}`, `restore-excluded-all`)
-- ✅ Punti Gas BEN VISIBILI sulla Tavola del Gas (cerchio r=16 con etichetta "GAS")
-- ✅ Quote dimensionali abilitate su tutte le tavole impianti (dimensions: true)
-- ✅ Wall Decoration UX: voce catalogo (decorazione/laminato/parquet/pittura) per parete singola + bottone "Applica a tutta la casa" + colore (`wall-decor-voce-select`, `wall-apply-house`)
-- ✅ Tile "Applica a TUTTE le stanze" ora copre anche stanze di "Stato di Fatto" senza progetto overrides
-- ✅ Impianto elettrico/idraulico/gas/hvac contati nel preventivo anche con phase "fatto" (rimosso filtro isProgetto)
-- ✅ Symbols enlarged: ElectricalSymbol/PlumbingSymbol/GasSymbol con etichette di tipo per leggibilità su tavole
-- ✅ window.__editorTest.setSelected esposto per testing E2E
+- ✅ X delete (cestino) per ogni voce del Preventivo Live + box "Voci rimosse · Ripristina tutte"
+- ✅ Punti Gas BEN VISIBILI sulla Tavola del Gas
+- ✅ Quote dimensionali abilitate su tutte le tavole impianti
+- ✅ Wall Decoration UX: voce catalogo + "Applica a tutta la casa"
+- ✅ Tile "Applica a TUTTE le stanze" copre anche stanze "Stato di Fatto"
+- ✅ Impianto elettrico/idraulico/gas/hvac contati sempre nel preventivo
+- ✅ window.__editorTest.setSelected esposto
 
 ## Original Problem Statement
 > "puoi costruire un programma di progettezione tipo cad che faccia anche rendering del risultato per preventivare e progettare ristrutturazioni?"

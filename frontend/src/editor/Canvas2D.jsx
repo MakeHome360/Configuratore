@@ -220,11 +220,11 @@ function TilingPattern({ t, room }) {
       </defs>
       <g clipPath={`url(#${clipId})`}>
         {tiles.map((c, i) => (
-          <polygon key={i} points={c.map((q) => `${q.x},${q.y}`).join(" ")} fill="none" stroke="#71717A" strokeWidth="1" opacity="0.8" />
+          <polygon key={i} points={c.map((q) => `${q.x},${q.y}`).join(" ")} fill="#FAFAF9" fillOpacity="0.55" stroke="#525252" strokeWidth="1.2" />
         ))}
       </g>
       {/* start point marker */}
-      <circle cx={sx} cy={sy} r={6} fill="#16A34A" stroke="white" strokeWidth="2" />
+      <circle cx={sx} cy={sy} r={7} fill="#16A34A" stroke="white" strokeWidth="2.5" />
     </g>
   );
 }
@@ -233,7 +233,7 @@ export default function Canvas2D({
   project, setProject, tool, setTool, selected, setSelected,
   selectedMaterial, catalog,
   doorParams, windowParams, electricalKind, plumbingKind, gasKind, hvacKind, tilingParams, stairsKind,
-  layers, viewMode,
+  layers, viewMode, autoFit,
 }) {
   const svgRef = useRef(null);
   const [wallDraft, setWallDraft] = useState(null);
@@ -246,6 +246,25 @@ export default function Canvas2D({
   const pendingRoomClickRef = useRef(null);
   const pendingWallClickRef = useRef(null);
 
+  // AUTO-FIT viewBox: per le tavole di anteprima/PDF, calcola un bbox attorno a tutto il contenuto
+  // e usa quello come viewBox (così non viene tagliato nemmeno se il progetto è grande).
+  const computedViewBox = useMemo(() => {
+    if (!autoFit || !project) return null;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const include = (x, y) => { if (x < minX) minX = x; if (y < minY) minY = y; if (x > maxX) maxX = x; if (y > maxY) maxY = y; };
+    (project.rooms || []).forEach((r) => (r.points || []).forEach((p) => include(p.x, p.y)));
+    (project.walls || []).forEach((w) => { include(w.x1, w.y1); include(w.x2, w.y2); });
+    (project.electrical || []).forEach((e) => include(e.x, e.y));
+    (project.plumbing || []).forEach((p) => include(p.x, p.y));
+    (project.gas || []).forEach((g) => include(g.x, g.y));
+    (project.hvac || []).forEach((h) => include(h.x, h.y));
+    if (!isFinite(minX)) return null;
+    // Pad per quote/etichette
+    const PAD = 220;
+    return { x: minX - PAD, y: minY - PAD, w: (maxX - minX) + PAD * 2, h: (maxY - minY) + PAD * 2 };
+  }, [autoFit, project]);
+  const effectiveViewBox = computedViewBox || viewBox;
+
   const catalogById = useMemo(() => Object.fromEntries((catalog || []).map((m) => [m.id, m])), [catalog]);
 
   const L = layers || { walls: true, doors: true, windows: true, rooms: true, items: true, electrical: true, plumbing: true, gas: true, hvac: true, demolitions: true, tiling: true, dimensions: true, floors: true };
@@ -255,6 +274,16 @@ export default function Canvas2D({
     if (pendingRoomClickRef.current) clearTimeout(pendingRoomClickRef.current);
     if (pendingWallClickRef.current) clearTimeout(pendingWallClickRef.current);
   }, []);
+
+  // Cambio di tool: reset di tutti i draft pendenti per evitare di creare elementi fantasma
+  // (es. l'utente passa da "wall" a "tiling" e un click pendente del wallDraft creava muri inattesi).
+  useEffect(() => {
+    if (pendingWallClickRef.current) { clearTimeout(pendingWallClickRef.current); pendingWallClickRef.current = null; }
+    if (pendingRoomClickRef.current) { clearTimeout(pendingRoomClickRef.current); pendingRoomClickRef.current = null; }
+    setWallDraft(null);
+    setRoomDraft([]);
+    setDemoAreaDraft([]);
+  }, [tool]);
 
   const toWorld = useCallback((evt) => {
     const svg = svgRef.current; if (!svg) return { x: 0, y: 0 };
@@ -803,7 +832,7 @@ export default function Canvas2D({
     <div className="relative w-full h-full bg-[#FAFAFA]">
       <svg
         ref={svgRef}
-        viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
+        viewBox={`${effectiveViewBox.x} ${effectiveViewBox.y} ${effectiveViewBox.w} ${effectiveViewBox.h}`}
         className="w-full h-full select-none"
         onMouseMove={onMouseMove}
         onMouseDown={onMouseDown}
@@ -834,7 +863,7 @@ export default function Canvas2D({
             <line x1={0} y1={0} x2={0} y2={10} stroke="#EAB308" strokeWidth="2" />
           </pattern>
         </defs>
-        <rect x={viewBox.x} y={viewBox.y} width={viewBox.w} height={viewBox.h} fill="url(#grid-big)" pointerEvents="none" />
+        <rect x={effectiveViewBox.x} y={effectiveViewBox.y} width={effectiveViewBox.w} height={effectiveViewBox.h} fill="url(#grid-big)" pointerEvents="none" />
 
         {/* QUOTE DIMENSIONALI ESTERNE (stile architettonico) — bbox totale */}
         {L.dimensions && rooms.length > 0 && (() => {
@@ -936,6 +965,30 @@ export default function Canvas2D({
               )}
               <text x={cx} y={cy - 6} fontSize="18" textAnchor="middle" fontFamily="Outfit" fill="#0A0A0A" fontWeight="700" letterSpacing="1.5" pointerEvents="none" style={{ textTransform: "uppercase" }}>{(r.name || "").toUpperCase()}</text>
               <text x={cx} y={cy + 14} fontSize="11" textAnchor="middle" fontFamily="JetBrains Mono" fill="#71717A" pointerEvents="none">{fmtNum(areaM2, 2)} m²</text>
+              {/* QUOTE INTERNE: ogni lato del poligono stanza ottiene la sua quota */}
+              {L.dimensions && r.points.map((pt, i) => {
+                const next = r.points[(i + 1) % r.points.length];
+                const dxs = next.x - pt.x, dys = next.y - pt.y;
+                const lenSeg = Math.hypot(dxs, dys);
+                if (lenSeg < 30) return null;
+                const mxs = (pt.x + next.x) / 2, mys = (pt.y + next.y) / 2;
+                // normal pointing INSIDE the room (verso il centroide)
+                const inside = { x: cx - mxs, y: cy - mys };
+                const dot = inside.x * (-dys) + inside.y * (dxs);
+                const dir = dot > 0 ? 1 : -1;
+                const nx = (-dys / (lenSeg || 1)) * dir;
+                const ny = ( dxs / (lenSeg || 1)) * dir;
+                const off = 22;
+                const lx = mxs + nx * off, ly = mys + ny * off;
+                const txt = `${(lenSeg / 100).toFixed(2)} m`;
+                const padX = 26, padY = 9;
+                return (
+                  <g key={`edge-q-${i}`} pointerEvents="none">
+                    <rect x={lx - padX} y={ly - padY} width={padX * 2} height={padY * 2} rx={4} fill="white" stroke="#16A34A" strokeWidth="1.2" opacity={0.95} />
+                    <text x={lx} y={ly + 5} textAnchor="middle" fontSize="13" fontFamily="JetBrains Mono" fontWeight="800" fill="#16A34A">{txt}</text>
+                  </g>
+                );
+              })}
               {r.controsoffitto && <text x={cx} y={cy + 28} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#0F766E" fontWeight="700" pointerEvents="none">CTRSF</text>}
               {isFullFloorDemolito && <text x={cx} y={cy + 28} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#DC2626" fontWeight="700" pointerEvents="none">DEMO PAV. TOTALE</text>}
               {isRivestDemolito && <text x={cx} y={cy + 42} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#F97316" fontWeight="700" pointerEvents="none">DEMO RIV. TOTALE</text>}
@@ -1329,7 +1382,7 @@ export default function Canvas2D({
         {(project.demolitions || []).filter((d) => d.kind === "pavimento" && d.polygon && d.polygon.length >= 3).map((d) => (
           <g key={`demo-poly-${d.id}`} pointerEvents="none">
             <polygon points={d.polygon.map((p) => `${p.x},${p.y}`).join(" ")} fill="url(#hatch-demo)" fillOpacity="0.55" stroke="#DC2626" strokeWidth="2" strokeDasharray="5,4" />
-            <text x={d.x} y={d.y} textAnchor="middle" fontSize="10" fontFamily="JetBrains Mono" fontWeight="700" fill="#DC2626">DEMO {fmtNum((polygonArea(d.polygon) / 10000), 2)} m²</text>
+            <text x={d.x} y={d.y} textAnchor="middle" fontSize="10" fontFamily="JetBrains Mono" fontWeight="700" fill="#DC2626">{`DEMO ${fmtNum((polygonArea(d.polygon) / 10000), 2)} m²`}</text>
           </g>
         ))}
 
@@ -1419,7 +1472,7 @@ export default function Canvas2D({
             style={{ cursor: isPlacementTool ? "crosshair" : "pointer" }}
             data-testid={`controsoffitto-area-${c.id}`}>
             <polygon points={(c.polygon || []).map((p) => `${p.x},${p.y}`).join(" ")} fill="url(#hatch-controsoff)" fillOpacity="0.55" stroke="#0EA5E9" strokeWidth="1.5" strokeDasharray="6,4" />
-            <text x={c.x} y={c.y} textAnchor="middle" fontSize="10" fontFamily="JetBrains Mono" fontWeight="700" fill="#0369A1">CONTROSOFF. {fmtNum(c.areaM2 || 0, 2)}m²</text>
+            <text x={c.x} y={c.y} textAnchor="middle" fontSize="10" fontFamily="JetBrains Mono" fontWeight="700" fill="#0369A1">{`CONTROSOFF. ${fmtNum(c.areaM2 || 0, 2)}m²`}</text>
           </g>
         ))}
 
@@ -1431,7 +1484,7 @@ export default function Canvas2D({
               const a = polygonArea(project.packageArea.polygon) / 10000;
               const cx = project.packageArea.polygon.reduce((s, p) => s + p.x, 0) / project.packageArea.polygon.length;
               const cy = project.packageArea.polygon.reduce((s, p) => s + p.y, 0) / project.packageArea.polygon.length;
-              return <text x={cx} y={cy} fontSize="11" fontFamily="JetBrains Mono" fontWeight="700" fill="#047857" textAnchor="middle">AREA PACCHETTO {a.toFixed(2)} m²</text>;
+              return <text x={cx} y={cy} fontSize="11" fontFamily="JetBrains Mono" fontWeight="700" fill="#047857" textAnchor="middle">{`AREA PACCHETTO ${a.toFixed(2)} m²`}</text>;
             })()}
           </g>
         )}

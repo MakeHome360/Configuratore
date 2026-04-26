@@ -2014,6 +2014,7 @@ function TavolaPreview({ tavola, project, catalog }) {
           doorParams={{}} windowParams={{}}
           electricalKind="presa" plumbingKind="acqua-fredda" hvacKind="split" tilingParams={{ size: "60x60", angle: 0 }}
           layers={tavola.layers} viewMode={tavola.viewMode}
+          autoFit={true}
         />
         <Legenda tavolaId={tavola.id} />
       </div>

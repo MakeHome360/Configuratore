@@ -68,8 +68,10 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
   const W = length, H = roomHeight || 270;
   const [dragging, setDragging] = useState(null);
   const svgRef = React.useRef(null);
-  // Bigger padding to host multiple dim chains
-  const padTop = 120, padBottom = 100, padSide = 80;
+  // Bigger padding to host multiple dim chains; padBottom cresce con il numero di MEP points
+  const padTop = 120;
+  const padSide = 80;
+  const padBottom = Math.max(150, 30 + (points?.length || 0) * 30 + 30);
 
   const onPointerMove = (e) => {
     if (!dragging || !svgRef.current) return;
@@ -127,7 +129,7 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
               <line x1="0" y1="0" x2="0" y2="10" stroke="#DC2626" strokeWidth="2" />
             </pattern>
             <rect x={xa} y={yDem} width={wDem} height={hDem} fill={`url(#hatch-demo-${wall.id})`} stroke="#DC2626" strokeWidth="2" strokeDasharray="6,4" opacity="0.85" />
-            <text x={xa + wDem / 2} y={yDem - 6} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="11" fontWeight="800" fill="#DC2626">DEMO MURO {Math.round(wDem)}×{Math.round(hDem)} cm</text>
+            <text x={xa + wDem / 2} y={yDem - 6} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="11" fontWeight="800" fill="#DC2626">{`DEMO MURO ${Math.round(wDem)}×${Math.round(hDem)} cm`}</text>
             {/* quote width sotto */}
             <DimLine x1={xa} y1={H + 50} x2={xb} y2={H + 50} label={`${Math.round(wDem)} cm`} color="#DC2626" />
           </g>
@@ -196,34 +198,54 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
       })}
 
       {/* MEP points */}
-      {points.map((p) => {
+      {points.map((p, idx) => {
         const x = p.t * W;
         const stdKey = p.type || p.kind;
         const stdH = STD_HEIGHTS[stdKey] ?? 110;
-        const h = heightOverrides?.[p.id] ?? stdH;
+        const ovr = heightOverrides?.[p.id];
+        const h = (typeof ovr === "number" && !isNaN(ovr)) ? ovr : stdH;
         const y = H - h;
         const color = COLORS[p.kind] || "#525252";
         const dxFromLeft = Math.round(p.t * W);
         const dxFromRight = Math.round((1 - p.t) * W);
+        // OFFSET VERTICALE per evitare sovrapposizione tra badge sx/dx di MEP point diversi
+        const ySxRow = H + 22 + idx * 26; // ogni punto ha la sua riga sx
+        const yDxRow = H + 22 + idx * 26 + 13; // dx leggermente più sotto
         return (
           <g key={p.id} style={{ cursor: editable ? "move" : "default" }}
              onPointerDown={editable ? (e) => { e.preventDefault(); e.stopPropagation(); setDragging(p.id); } : undefined}
              data-testid={`prospetto-point-${p.id}`}
           >
-            <line x1={x} y1={H} x2={x} y2={y} stroke={color} strokeWidth="1" strokeDasharray="3,3" opacity="0.5" />
-            <circle cx={x} cy={y} r="13" fill="white" stroke={color} strokeWidth="2.5" />
-            <text x={x} y={y + 4} textAnchor="middle" fontSize="11" fontWeight="800" fontFamily="JetBrains Mono" fill={color} pointerEvents="none">{symbolFor(p)}</text>
-            {/* quota verticale a destra */}
-            <text x={x + 16} y={y + 4} fontFamily="JetBrains Mono" fontSize="10" fontWeight="700" fill={color} pointerEvents="none">h={h}</text>
-            {/* quote orizzontali sotto pavimento */}
-            <text x={x} y={H + 78} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="9" fontWeight="700" fill="#16A34A" pointerEvents="none">←{dxFromLeft}</text>
-            <text x={x} y={H + 90} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="9" fontWeight="700" fill="#2563EB" pointerEvents="none">{dxFromRight}→</text>
+            <line x1={x} y1={H} x2={x} y2={y} stroke={color} strokeWidth="1.2" strokeDasharray="3,3" opacity="0.6" />
+            <circle cx={x} cy={y} r="14" fill="white" stroke={color} strokeWidth="2.5" />
+            <text x={x} y={y + 4} textAnchor="middle" fontSize="12" fontWeight="900" fontFamily="JetBrains Mono" fill={color} pointerEvents="none">{symbolFor(p)}</text>
+            {/* QUOTA H altezza dal pavimento — badge bianco a destra del simbolo */}
+            <g pointerEvents="none">
+              <rect x={x + 14} y={y - 11} width={64} height={22} rx={3} fill="white" stroke={color} strokeWidth="1.5" />
+              <text x={x + 46} y={y + 5} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="14" fontWeight="800" fill={color}>{`h=${h}`}</text>
+            </g>
+            {/* QUOTA SX: distanza dal bordo sinistro — riga unica per punto, su livelli scalati */}
+            <g pointerEvents="none">
+              <line x1={0} y1={ySxRow + 11} x2={x} y2={ySxRow + 11} stroke="#2563EB" strokeWidth="1" />
+              <line x1={0} y1={ySxRow + 5} x2={0} y2={ySxRow + 17} stroke="#2563EB" strokeWidth="1.5" />
+              <line x1={x} y1={ySxRow + 5} x2={x} y2={ySxRow + 17} stroke="#2563EB" strokeWidth="1.5" />
+              <rect x={Math.max(2, x / 2 - 38)} y={ySxRow} width={76} height={22} rx={3} fill="white" stroke="#2563EB" strokeWidth="1.5" />
+              <text x={Math.max(40, x / 2)} y={ySxRow + 16} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="13" fontWeight="800" fill="#2563EB">{`sx ${dxFromLeft}`}</text>
+            </g>
+            {/* QUOTA DX: distanza dal bordo destro — accanto al sx, su livelli scalati */}
+            <g pointerEvents="none">
+              <line x1={x} y1={yDxRow + 11} x2={W} y2={yDxRow + 11} stroke="#7C3AED" strokeWidth="1" />
+              <line x1={x} y1={yDxRow + 5} x2={x} y2={yDxRow + 17} stroke="#7C3AED" strokeWidth="1.5" />
+              <line x1={W} y1={yDxRow + 5} x2={W} y2={yDxRow + 17} stroke="#7C3AED" strokeWidth="1.5" />
+              <rect x={Math.min(W - 78, (x + W) / 2 - 38)} y={yDxRow} width={76} height={22} rx={3} fill="white" stroke="#7C3AED" strokeWidth="1.5" />
+              <text x={Math.min(W - 40, (x + W) / 2)} y={yDxRow + 16} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="13" fontWeight="800" fill="#7C3AED">{`dx ${dxFromRight}`}</text>
+            </g>
           </g>
         );
       })}
 
       {/* legend on top-left */}
-      <text x={0} y={-padTop + 18} fontFamily="Outfit" fontSize="13" fontWeight="700" fill="#0A0A0A">Parete · L={fmtNum(W / 100, 2)}m · H={fmtNum(H / 100, 2)}m</text>
+      <text x={0} y={-padTop + 18} fontFamily="Outfit" fontSize="13" fontWeight="700" fill="#0A0A0A">{`Parete · L=${fmtNum(W / 100, 2)}m · H=${fmtNum(H / 100, 2)}m`}</text>
       <text x={0} y={-padTop + 36} fontFamily="JetBrains Mono" fontSize="9" fill="#525252">quote in cm · sx/dx = distanze dai bordi parete · h = altezza da pavimento</text>
       {editable && <text x={W} y={-padTop + 18} textAnchor="end" fontFamily="JetBrains Mono" fontSize="10" fill="#16A34A">trascina i punti per posizione e altezza</text>}
     </svg>

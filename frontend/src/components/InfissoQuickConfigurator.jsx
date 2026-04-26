@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { X } from "lucide-react";
+import { toast } from "sonner";
 import { fmtEur2 } from "@/components/ui-kit";
 
 const COLOR_MAP = {
@@ -101,12 +102,15 @@ export function InfissoQuickConfigurator({ open, onClose, onConfirm }) {
 
   const upd = (i, k, v) => setItems((arr) => arr.map((it, j) => j === i ? { ...it, [k]: v } : it));
   const del = (i) => setItems((arr) => arr.filter((_, j) => j !== i));
-  const add = () => setItems([...items, {
-    tipologia_id: conf.tipologie[0]?.id, materiale_id: conf.materiali[0]?.id, vetro_id: conf.vetri[0]?.id,
-    larghezza: 120, altezza: 140, qty: 1, colore: "bianco",
-    ante: 2, tapparella: false, tapparella_colore: "antracite", tapparella_motorizzata: false,
-    zanzariera: false,
-  }]);
+  const add = () => {
+    if (!conf.tipologie?.length) { toast.error("Configurazione in caricamento, riprova"); return; }
+    setItems([...items, {
+      tipologia_id: conf.tipologie[0].id, materiale_id: conf.materiali[0]?.id, vetro_id: conf.vetri[0]?.id,
+      larghezza: 120, altezza: 140, qty: 1, colore: "bianco",
+      ante: 2, tapparella: false, tapparella_colore: "antracite", tapparella_motorizzata: false,
+      zanzariera: false,
+    }]);
+  };
 
   const totale = items.reduce((s, it) => s + calcPrice(it), 0);
 

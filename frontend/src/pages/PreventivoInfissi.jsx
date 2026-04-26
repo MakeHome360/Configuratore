@@ -54,12 +54,18 @@ export default function PreventivoInfissi() {
   const iva = afterSc * (ivaPct / 100);
   const totale = afterSc + iva;
 
-  const addItem = () => setItems([...items, {
-    tipologia_id: conf.tipologie[0]?.id, materiale_id: conf.materiali[0]?.id, vetro_id: conf.vetri[0]?.id,
-    larghezza: 100, altezza: 140, qty: 1, note: "", colore: "bianco",
-    ante: 1, tapparella: false, tapparella_colore: "antracite", tapparella_motorizzata: false,
-    zanzariera: false, zanzariera_tipo: "avvolgibile",
-  }]);
+  const addItem = () => {
+    if (!conf.tipologie?.length || !conf.materiali?.length || !conf.vetri?.length) {
+      toast.error("Configurazione infissi non ancora caricata. Attendi qualche secondo e riprova.");
+      return;
+    }
+    setItems([...items, {
+      tipologia_id: conf.tipologie[0].id, materiale_id: conf.materiali[0].id, vetro_id: conf.vetri[0].id,
+      larghezza: 100, altezza: 140, qty: 1, note: "", colore: "bianco",
+      ante: 1, tapparella: false, tapparella_colore: "antracite", tapparella_motorizzata: false,
+      zanzariera: false, zanzariera_tipo: "avvolgibile",
+    }]);
+  };
 
   const upd = (i, k, v) => { const c = [...items]; c[i][k] = v; setItems(c); };
 
@@ -91,7 +97,7 @@ export default function PreventivoInfissi() {
             <div className="bg-white border border-zinc-200 rounded-lg p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold">Infissi</h3>
-                <Button size="sm" onClick={addItem} data-testid="inf-add"><Plus className="h-4 w-4 mr-1" /> Aggiungi Infisso</Button>
+                <Button size="sm" onClick={addItem} disabled={!conf.tipologie?.length} data-testid="inf-add"><Plus className="h-4 w-4 mr-1" /> Aggiungi Infisso</Button>
               </div>
               <div className="space-y-3">
                 {items2.map((it, i) => {

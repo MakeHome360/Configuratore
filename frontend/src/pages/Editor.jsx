@@ -1354,16 +1354,21 @@ function ColorOverridePicker({ label, value, onChange, testid }) {
   );
 }
 
-// Mappa categoria backoffice → macro-gruppo CAD (Muratura/Impianti/Serramenti/Finiture)
+// Mappa categoria backoffice → macro-gruppo CAD (Muratura/Impianti/Serramenti/Finiture/Servizi)
 const CAT_TO_GRUPPO = {
   muratura: "Muratura", demolizioni: "Muratura", scale: "Muratura", strutture: "Muratura",
   impianto_elettrico: "Impianti", elettrico: "Impianti", idraulico: "Impianti", impianto_idraulico: "Impianti", gas: "Impianti", impianto_gas: "Impianti", termo_idraulico: "Impianti", clima: "Impianti", termoidraulico: "Impianti", riscaldamento: "Impianti",
   serramenti: "Serramenti", infissi: "Serramenti", porte: "Serramenti",
   finiture: "Finiture", pavimenti: "Finiture", rivestimenti: "Finiture", decorazione: "Finiture", pittura: "Finiture", sanitari: "Finiture", controsoffitto: "Finiture",
+  servizi: "Servizi", pratiche: "Servizi", oneri: "Servizi", professionali: "Servizi", direzione_lavori: "Servizi", sicurezza: "Servizi", documentazione: "Servizi",
 };
 function gruppoOf(voce) {
   const c = (voce.category || voce.categoria || "").toLowerCase();
-  return CAT_TO_GRUPPO[c] || "Finiture";
+  if (CAT_TO_GRUPPO[c]) return CAT_TO_GRUPPO[c];
+  // Fallback per nome voce: CILA/APE/Direzione/Sicurezza
+  const n = (voce.name || "").toLowerCase();
+  if (/cila|ape|direzione|sicurezza|pratica|oneri|notaio/.test(n)) return "Servizi";
+  return "Finiture";
 }
 
 function CatalogoVociPanel({ project, setProject, voci }) {
@@ -1391,12 +1396,15 @@ function CatalogoVociPanel({ project, setProject, voci }) {
     (acc[g] = acc[g] || []).push(v);
     return acc;
   }, {});
-  const groups = ["Muratura", "Impianti", "Serramenti", "Finiture"];
+  const groups = ["Muratura", "Impianti", "Serramenti", "Finiture", "Servizi"];
   const filtFn = (v) => !filter || (v.name || "").toLowerCase().includes(filter.toLowerCase());
   return (
     <div className="space-y-3">
       <div className="label-kicker">Catalogo voci backoffice</div>
       <div className="text-[10px] text-zinc-500 mono leading-relaxed">Aggiungi qualsiasi voce dal catalogo come riga del preventivo. Modifica quantità o prezzo dopo l'aggiunta.</div>
+      <div className="bg-blue-50 border border-blue-200 p-2 rounded text-[10px] mono text-blue-900 leading-relaxed">
+        💡 <b>Tip:</b> Una volta finalizzata la progettazione, aggiungi i <b>SERVIZI</b> (pratiche edilizie, CILA, direzione lavori, sicurezza). Se hai un pacchetto, controlla se sono già inclusi nel forfait.
+      </div>
       <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Cerca voce…" className="rounded-sm h-8 mono text-xs" data-testid="catalog-voci-search" />
       <div className="space-y-1">
         {groups.map((g) => {

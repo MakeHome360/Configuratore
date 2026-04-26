@@ -46,7 +46,8 @@ const TOOL_GROUPS = [
     { id: "package-area", icon: Square, label: "Area pacchetto" },
   ]},
   { id: "costruzioni", label: "Costruzioni", tools: [
-    { id: "controsoffitto", icon: Layers, label: "Controsoffitto" },
+    { id: "controsoffitto", icon: Layers, label: "Controsoffitto stanza" },
+    { id: "controsoffitto-area", icon: Layers, label: "Controsoffitto area" },
     { id: "tiling", icon: Grid3x3, label: "Schema piastrelle" },
   ]},
   { id: "elettrico", label: "Imp. elettrico", tools: [
@@ -1022,13 +1023,16 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
         <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Nome</Label><Input value={obj.name} onChange={(e) => updateObj({ name: e.target.value })} disabled={lockedFatto} className="rounded-sm h-9 mt-1.5" data-testid="room-name-input" /></div>
         <fieldset disabled={lockedFatto} className={lockedFatto ? "opacity-60 pointer-events-none" : ""}>
           <MaterialPickerWithApplyAll label="Pavimento (esistente)" category="floor" catalog={catalog} value={obj.floorMaterial} onChange={(v) => updateObj({ floorMaterial: v })} testid="room-floor-select" applyAll={() => applyMaterialAllRooms("floorMaterial", obj.floorMaterial)} />
+          <ColorOverridePicker label="Colore piastrelle pavimento" value={obj.floorTileColor} onChange={(v) => updateObj({ floorTileColor: v })} testid="room-floor-color" />
           <div className="h-3"></div>
           <MaterialPickerWithApplyAll label="Pareti (esistente)" category="wall" catalog={catalog} value={obj.wallMaterial} onChange={(v) => updateObj({ wallMaterial: v })} testid="room-wall-select" applyAll={() => applyMaterialAllRooms("wallMaterial", obj.wallMaterial)} />
+          <ColorOverridePicker label="Colore piastrelle/decorazione pareti" value={obj.wallTileColor} onChange={(v) => updateObj({ wallTileColor: v })} testid="room-wall-color" />
           <div className="h-3"></div>
           <MaterialPickerWithApplyAll label="Soffitto (esistente)" category="ceiling" catalog={catalog} value={obj.ceilingMaterial} onChange={(v) => updateObj({ ceilingMaterial: v })} testid="room-ceiling-select" applyAll={() => applyMaterialAllRooms("ceilingMaterial", obj.ceilingMaterial)} />
+          <ColorOverridePicker label="Colore soffitto" value={obj.ceilingPaintColor} onChange={(v) => updateObj({ ceilingPaintColor: v })} testid="room-ceiling-color" />
           <div className="flex items-center justify-between mt-3"><Label className="text-xs uppercase tracking-widest text-zinc-500">Imp. elettrico</Label><Switch checked={!!obj.electrical} onCheckedChange={(v) => updateObj({ electrical: v })} data-testid="room-electrical-switch" /></div>
           <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-zinc-500">Imp. idraulico</Label><Switch checked={!!obj.plumbing} onCheckedChange={(v) => updateObj({ plumbing: v })} data-testid="room-plumbing-switch" /></div>
-          <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-zinc-500">Controsoffitto</Label><Switch checked={!!obj.controsoffitto} onCheckedChange={(v) => updateObj({ controsoffitto: v })} data-testid="room-controsoff-switch" /></div>
+          <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-zinc-500">Controsoffitto totale</Label><Switch checked={!!obj.controsoffitto} onCheckedChange={(v) => updateObj({ controsoffitto: v })} data-testid="room-controsoff-switch" /></div>
         </fieldset>
         {/* MODIFICHE DI PROGETTO: visibili sempre per stanze fatto+progetto, modificabili in mode progetto */}
         {isProgettoMode && (
@@ -1066,6 +1070,16 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
           </div>
           <div className="mt-3"><Label className="text-xs uppercase tracking-widest text-zinc-500">Spessore (cm)</Label><Input type="number" value={obj.thickness || 10} onChange={(e) => updateObj({ thickness: parseInt(e.target.value) || 10 })} className="rounded-sm h-9 mt-1.5 mono" /></div>
         </fieldset>
+        <Separator />
+        <div className="bg-purple-50 border border-purple-200 p-2 space-y-2">
+          <Label className="text-xs uppercase tracking-widest text-purple-800">Decorazione · pittura parete</Label>
+          <div className="flex items-center gap-2">
+            <input type="color" value={obj.paintColor || "#FFFFFF"} onChange={(e) => updateObj({ paintColor: e.target.value })} className="w-10 h-9 rounded-sm border border-zinc-300 cursor-pointer" data-testid="wall-paint-color" />
+            <Input value={obj.paintColor || ""} placeholder="#FFFFFF" onChange={(e) => updateObj({ paintColor: e.target.value })} className="rounded-sm h-9 flex-1 mono text-xs" />
+            {obj.paintColor && <button onClick={() => updateObj({ paintColor: null })} className="text-[10px] text-rose-600 hover:underline">reset</button>}
+          </div>
+          <div className="text-[10px] text-zinc-500 mono">Colore visibile in 2D e applicato al rendering AI.</div>
+        </div>
         <Separator />
         <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-zinc-500">Demolisci tutto</Label><Switch checked={!!obj.demolito} onCheckedChange={(v) => updateObj({ demolito: v, demolito_partial: v ? null : obj.demolito_partial })} data-testid="wall-demolito-switch" /></div>
         {!obj.demolito && (
@@ -1273,6 +1287,7 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
 
 function MaterialSelect({ label, category, catalog, value, onChange, testid }) {
   const options = (catalog || []).filter((m) => m.category === category);
+  const showPrice = category !== "furniture";
   return (
     <div>
       <Label className="text-xs uppercase tracking-widest text-zinc-500">{label}</Label>
@@ -1283,7 +1298,7 @@ function MaterialSelect({ label, category, catalog, value, onChange, testid }) {
             <SelectItem key={o.id} value={o.id}>
               <span className="flex items-center gap-2">
                 <span className="w-3 h-3 border border-zinc-300" style={{ background: o.color }} />
-                {o.name} <span className="text-zinc-400 mono text-xs">· {fmtEuro(o.price)}</span>
+                {o.name} {showPrice && <span className="text-zinc-400 mono text-xs">· {fmtEuro(o.price)}</span>}
               </span>
             </SelectItem>
           ))}
@@ -1309,12 +1324,22 @@ function MaterialPickerWithApplyAll({ label, category, catalog, value, onChange,
             <SelectItem key={o.id} value={o.id}>
               <span className="flex items-center gap-2">
                 <span className="w-3 h-3 border border-zinc-300" style={{ background: o.color }} />
-                {o.name} <span className="text-zinc-400 mono text-xs">· {fmtEuro(o.price)}</span>
+                {o.name} {category !== "furniture" && <span className="text-zinc-400 mono text-xs">· {fmtEuro(o.price)}</span>}
               </span>
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
+    </div>
+  );
+}
+
+function ColorOverridePicker({ label, value, onChange, testid }) {
+  return (
+    <div className="mt-2 flex items-center gap-2">
+      <input type="color" value={value || "#FFFFFF"} onChange={(e) => onChange(e.target.value)} className="w-9 h-8 rounded-sm border border-zinc-300 cursor-pointer flex-shrink-0" data-testid={testid} title={label} />
+      <span className="text-[10px] mono text-zinc-500 flex-1 truncate">{label}: <b>{value || "default"}</b></span>
+      {value && <button onClick={() => onChange(null)} className="text-[10px] text-rose-600 hover:underline">×</button>}
     </div>
   );
 }
@@ -1332,7 +1357,7 @@ function CatalogPanel({ catalog, selectedMaterial, setSelectedMaterial }) {
         {items.map((m) => (
           <button key={m.id} onClick={() => setSelectedMaterial(m.id)} className={`w-full flex items-center gap-3 p-2 border text-left ${selectedMaterial === m.id ? "border-zinc-900 bg-zinc-50" : "border-zinc-200 hover:border-zinc-300"}`} data-testid={`catalog-item-${m.id}`}>
             <div className="w-10 h-10 border border-zinc-200" style={{ background: m.color }} />
-            <div className="flex-1 min-w-0"><div className="text-sm truncate">{m.name}</div><div className="text-xs text-zinc-500 mono">{fmtEuro(m.price)} / {m.unit}</div></div>
+            <div className="flex-1 min-w-0"><div className="text-sm truncate">{m.name}</div>{cat !== "furniture" && <div className="text-xs text-zinc-500 mono">{fmtEuro(m.price)} / {m.unit}</div>}</div>
           </button>
         ))}
       </div>

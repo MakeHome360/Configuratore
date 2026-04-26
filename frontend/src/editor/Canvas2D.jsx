@@ -466,6 +466,16 @@ export default function Canvas2D({
       });
       return;
     }
+    if (tool === "controsoffitto-area") {
+      // Controsoffitto AD AREA: disegna un poligono con click multipli, doppio click chiude
+      if (e.detail >= 2) return;
+      setDemoAreaDraft((arr) => {
+        const last = arr[arr.length - 1];
+        if (last && Math.hypot(p.x - last.x, p.y - last.y) < 8) return arr;
+        return [...arr, p];
+      });
+      return;
+    }
     if (tool === "package-area") {
       // Disegna l'area su cui calcolare il pacchetto: poligono libero, doppio click chiude.
       if (e.detail >= 2) return;
@@ -643,6 +653,21 @@ export default function Canvas2D({
       setDemoAreaDraft([]);
       return;
     }
+    if (tool === "controsoffitto-area") {
+      if (demoAreaDraft.length >= 3) {
+        const poly = demoAreaDraft.slice();
+        const areaM2 = polygonArea(poly) / 10000;
+        const cx = poly.reduce((s, p) => s + p.x, 0) / poly.length;
+        const cy = poly.reduce((s, p) => s + p.y, 0) / poly.length;
+        const r = findRoomAt({ x: cx, y: cy });
+        setProject((prj) => ({
+          ...prj,
+          controsoffitti: [...(prj.controsoffitti || []), { id: uid(), x: cx, y: cy, roomId: r?.id, areaM2, polygon: poly, phase: "progetto" }],
+        }));
+      }
+      setDemoAreaDraft([]);
+      return;
+    }
     if (tool === "package-area") {
       if (demoAreaDraft.length >= 3) {
         const poly = demoAreaDraft.slice();
@@ -700,7 +725,7 @@ export default function Canvas2D({
   };
 
   const isPlacementTool = ["door", "window", "wall", "wall-cartongesso", "room", "item", "text", "stairs",
-    "demolish-wall", "demolish-wall-partial", "demolish-floor", "demolish-floor-partial", "demolish-rivestimento", "controsoffitto",
+    "demolish-wall", "demolish-wall-partial", "demolish-floor", "demolish-floor-partial", "demolish-rivestimento", "controsoffitto", "controsoffitto-area",
     "electrical", "plumbing", "gas", "hvac", "tiling", "package-area"].includes(tool);
 
   const allWalls = project.walls || [];
@@ -865,8 +890,8 @@ export default function Canvas2D({
               style={{ cursor: isPlacementTool ? "crosshair" : "pointer" }}
               data-testid={`room-${r.id}`}
             >
-              {/* floor (default if no demolition) */}
-              <polygon points={pts} fill={showFloor ? (mat?.color || "#F5E9D8") : "#FAFAFA"} fillOpacity={isSel ? 0.65 : (showFloor ? 0.55 : 0.2)} stroke={isSel ? "#2563EB" : "transparent"} strokeWidth={isSel ? 2 : 0} />
+              {/* floor (default if no demolition) — override color se presente */}
+              <polygon points={pts} fill={showFloor ? (r.floorTileColor || mat?.color || "#F5E9D8") : "#FAFAFA"} fillOpacity={isSel ? 0.65 : (showFloor ? 0.55 : 0.2)} stroke={isSel ? "#2563EB" : "transparent"} strokeWidth={isSel ? 2 : 0} />
               {/* demolizione pavimento totale overlay (solo se TOTALE, non parziale/area) */}
               {isFullFloorDemolito && (
                 <>
@@ -964,6 +989,11 @@ export default function Canvas2D({
                 strokeDasharray={w.demolito ? "8,5" : (w.kind === "cartongesso" ? "12,4" : undefined)}
                 opacity={w.demolito ? 0.65 : 1}
               />
+              {/* paint color overlay (decorazione parete) */}
+              {w.paintColor && !w.demolito && (
+                <line x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2}
+                  stroke={w.paintColor} strokeWidth={(w.thickness || 10) - 3} strokeLinecap="round" opacity="0.85" />
+              )}
               {/* corner cap */}
               <circle cx={w.x1} cy={w.y1} r={(w.thickness || 10) / 2} fill={stroke} pointerEvents="none" />
               <circle cx={w.x2} cy={w.y2} r={(w.thickness || 10) / 2} fill={stroke} pointerEvents="none" />
@@ -1324,6 +1354,27 @@ export default function Canvas2D({
           </g>
         )}
 
+        {/* controsoffitto area draft */}
+        {tool === "controsoffitto-area" && demoAreaDraft.length > 0 && (
+          <g pointerEvents="none">
+            <polyline points={[...demoAreaDraft, cursor].map((p) => `${p.x},${p.y}`).join(" ")} fill="#0EA5E9" fillOpacity="0.18" stroke="#0EA5E9" strokeWidth="2" strokeDasharray="5,4" />
+            {demoAreaDraft.map((p, i) => (
+              <circle key={i} cx={p.x} cy={p.y} r="6" fill="#0EA5E9" stroke="white" strokeWidth="2" />
+            ))}
+          </g>
+        )}
+
+        {/* controsoffitti AD AREA persistenti */}
+        {(project.controsoffitti || []).map((c) => (
+          <g key={`ctrsf-${c.id}`}
+            onMouseDown={(ev) => { if (isPlacementTool) return; ev.stopPropagation(); handleElementClick("controsoffitti", c.id); }}
+            style={{ cursor: isPlacementTool ? "crosshair" : "pointer" }}
+            data-testid={`controsoffitto-area-${c.id}`}>
+            <polygon points={(c.polygon || []).map((p) => `${p.x},${p.y}`).join(" ")} fill="url(#hatch-controsoff)" fillOpacity="0.55" stroke="#0EA5E9" strokeWidth="1.5" strokeDasharray="6,4" />
+            <text x={c.x} y={c.y} textAnchor="middle" fontSize="10" fontFamily="JetBrains Mono" fontWeight="700" fill="#0369A1">CONTROSOFF. {fmtNum(c.areaM2 || 0, 2)}m²</text>
+          </g>
+        ))}
+
         {/* package area persistente */}
         {project.packageArea?.polygon && project.packageArea.polygon.length >= 3 && (
           <g pointerEvents="none">
@@ -1368,6 +1419,7 @@ export default function Canvas2D({
       {tool === "package-area" && <div className="absolute top-3 left-3 bg-emerald-700 text-white px-3 py-1.5 text-xs mono">area pacchetto · click vertici, doppio click chiude · ricalcola mq automatico</div>}
       {tool === "stairs" && <div className="absolute top-3 left-3 bg-amber-700 text-white px-3 py-1.5 text-xs mono">scala · {stairsKind || "muratura"} · click per posizionare</div>}
       {tool === "controsoffitto" && <div className="absolute top-3 left-3 bg-teal-700 text-white px-3 py-1.5 text-xs mono">controsoffitto · click su stanza per attivare/disattivare</div>}
+      {tool === "controsoffitto-area" && <div className="absolute top-3 left-3 bg-sky-700 text-white px-3 py-1.5 text-xs mono">controsoffitto area · click vertici, doppio click chiude</div>}
       {tool === "electrical" && <div className="absolute top-3 left-3 bg-purple-700 text-white px-3 py-1.5 text-xs mono">elettrico · {electricalKind || "presa"}</div>}
       {tool === "plumbing" && <div className="absolute top-3 left-3 bg-cyan-700 text-white px-3 py-1.5 text-xs mono">idraulico · {plumbingKind || "acqua-fredda"}</div>}
       {tool === "gas" && <div className="absolute top-3 left-3 bg-yellow-600 text-white px-3 py-1.5 text-xs mono">gas · click per posizionare</div>}

@@ -22,11 +22,12 @@ function buildScene(project, catalog) {
   grid.position.y = 0;
   root.add(grid);
 
-  // Room floors
+  // Room floors + ceilings (controsoffitto totale stanza)
   (project.rooms || []).forEach((r) => {
     if (!r.points || r.points.length < 3) return;
     const mat = byId[r.floorMaterial];
-    const color = new THREE.Color(mat?.color || "#E4E4E7");
+    const baseFloorColor = r.floorTileColor || mat?.color || "#E4E4E7";
+    const color = new THREE.Color(baseFloorColor);
     const shape = new THREE.Shape();
     r.points.forEach((p, i) => {
       const x = p.x * CM;
@@ -43,6 +44,40 @@ function buildScene(project, catalog) {
     mesh.position.y = 0.001;
     mesh.receiveShadow = true;
     root.add(mesh);
+
+    // Controsoffitto totale (riduce altezza utile a -30cm)
+    if (r.controsoffitto) {
+      const ceilGeom = new THREE.ShapeGeometry(shape);
+      const ceilColor = new THREE.Color(r.ceilingPaintColor || "#FAFAFA");
+      const ceil = new THREE.Mesh(ceilGeom, new THREE.MeshStandardMaterial({ color: ceilColor, roughness: 0.95, side: THREE.DoubleSide }));
+      ceil.rotation.x = Math.PI / 2;
+      ceil.position.y = (project.roomHeight || 270) * CM - 30 * CM;
+      root.add(ceil);
+    } else if (r.ceilingPaintColor) {
+      // colore soffitto anche senza controsoffitto
+      const ceilGeom = new THREE.ShapeGeometry(shape);
+      const ceil = new THREE.Mesh(ceilGeom, new THREE.MeshStandardMaterial({ color: new THREE.Color(r.ceilingPaintColor), roughness: 0.9, side: THREE.DoubleSide }));
+      ceil.rotation.x = Math.PI / 2;
+      ceil.position.y = (project.roomHeight || 270) * CM - 0.5;
+      root.add(ceil);
+    }
+  });
+
+  // Controsoffitti AD AREA (poligoni custom)
+  (project.controsoffitti || []).forEach((c) => {
+    if (!c.polygon || c.polygon.length < 3) return;
+    const shape = new THREE.Shape();
+    c.polygon.forEach((p, i) => {
+      const x = p.x * CM;
+      const z = p.y * CM;
+      if (i === 0) shape.moveTo(x, z);
+      else shape.lineTo(x, z);
+    });
+    const ceilGeom = new THREE.ShapeGeometry(shape);
+    const ceil = new THREE.Mesh(ceilGeom, new THREE.MeshStandardMaterial({ color: 0xfafafa, roughness: 0.9, side: THREE.DoubleSide }));
+    ceil.rotation.x = Math.PI / 2;
+    ceil.position.y = (project.roomHeight || 270) * CM - 30 * CM;
+    root.add(ceil);
   });
 
   // Walls with door/window holes
@@ -98,10 +133,11 @@ function buildScene(project, catalog) {
         shape.holes.push(hole);
       });
 
+    const wallColor = w.paintColor ? new THREE.Color(w.paintColor) : new THREE.Color(0xf4f4f5);
     const geom = new THREE.ExtrudeGeometry(shape, { depth: th, bevelEnabled: false });
     const mesh = new THREE.Mesh(
       geom,
-      new THREE.MeshStandardMaterial({ color: 0xf4f4f5, roughness: 0.85 })
+      new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.85 })
     );
     mesh.position.set(mx, 0, mz);
     mesh.rotation.y = -angle;

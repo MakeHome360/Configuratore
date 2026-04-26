@@ -455,6 +455,11 @@ export function estimateProjectV2(project, voci, packageRef) {
     if (it.materialId === "fix-toilet") add("sanitari_bagno", 1);
   });
 
+  // Controsoffitti AD AREA (poligoni custom)
+  (data.controsoffitti || []).forEach((c) => {
+    if (c.areaM2 > 0) add("controsoffitto", c.areaM2);
+  });
+
   // Build itemized list
   const items = [];
   const byCat = {};

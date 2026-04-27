@@ -157,7 +157,10 @@ export default function ConfiguratoreEsigenze() {
   const [aiLoading, setAiLoading] = useState(false);
 
   useEffect(() => {
-    api.get("/packages").then((r) => setPackagesDb(r.data || [])).catch(() => {});
+    api.get("/packages").then((r) => {
+      const pkgs = (r.data || []).slice().sort((a, b) => (a.price_per_m2 || 0) - (b.price_per_m2 || 0));
+      setPackagesDb(pkgs);
+    }).catch(() => {});
     api.get("/voci-backoffice").then((r) => setVoci(r.data || [])).catch(() => {});
   }, []);
 

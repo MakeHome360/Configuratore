@@ -70,7 +70,8 @@ export default function PreventivoPacchetto() {
         const [pk, op, bt] = await Promise.all([
           api.get("/packages"), api.get("/packages/optional"), api.get("/packages/bathroom-tiers"),
         ]);
-        setPackages(pk.data); setOptionals(op.data); setBathroomTiers(bt.data);
+        const pkgsSorted = (pk.data || []).slice().sort((a, b) => (a.price_per_m2 || 0) - (b.price_per_m2 || 0));
+        setPackages(pkgsSorted); setOptionals(op.data); setBathroomTiers(bt.data);
         if (!isNew) {
           const { data } = await api.get(`/preventivi/${id}`);
           setPrev({

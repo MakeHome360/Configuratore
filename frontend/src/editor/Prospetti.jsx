@@ -71,7 +71,7 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
   // Bigger padding to host multiple dim chains; padBottom cresce con il numero di MEP points
   const padTop = 120;
   const padSide = 80;
-  const padBottom = Math.max(150, 30 + (points?.length || 0) * 30 + 30);
+  const padBottom = Math.max(180, 80 + (points?.length || 0) * 30 + 30);
 
   const onPointerMove = (e) => {
     if (!dragging || !svgRef.current) return;
@@ -114,8 +114,25 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
       ))}
 
       {/* TOTAL DIMENSION CHAIN (top, far) + per-element dim chain (top, near) */}
-      <DimLine x1={0} y1={-90} x2={W} y2={-90} label={`L tot ${fmtNum(W / 100, 2)} m`} color="#16A34A" big />
-      <DimLineV x1={W + 50} y1={0} x2={W + 50} y2={H} label={`H ${fmtNum(H / 100, 2)} m`} color="#16A34A" big />
+      <DimLine x1={0} y1={-90} x2={W} y2={-90} label={`L tot ${fmtNum(W / 100, 2)} m`} color="#0A0A0A" big />
+      <DimLineV x1={W + 50} y1={0} x2={W + 50} y2={H} label={`H ${fmtNum(H / 100, 2)} m`} color="#0A0A0A" big />
+      {/* IMPIANTI PRESENTI: piccolo riepilogo in alto a dx */}
+      {(() => {
+        const kinds = {};
+        (points || []).forEach((p) => { kinds[p.kind] = (kinds[p.kind] || 0) + 1; });
+        const entries = Object.entries(kinds);
+        if (entries.length === 0) return null;
+        const labels = { electrical: "Elettrico", plumbing: "Idraulico", gas: "Gas", hvac: "Condiz." };
+        return (
+          <g pointerEvents="none">
+            <rect x={W - 180} y={-padTop + 4} width={180} height={22 + entries.length * 14} rx={2} fill="white" stroke="#0A0A0A" strokeWidth="1" />
+            <text x={W - 170} y={-padTop + 20} fontFamily="JetBrains Mono" fontSize="9" fontWeight="700" fill="#71717A" letterSpacing="1">IMPIANTI SU QUESTA PARETE</text>
+            {entries.map(([k, n], i) => (
+              <text key={k} x={W - 170} y={-padTop + 36 + i * 14} fontFamily="JetBrains Mono" fontSize="11" fontWeight="700" fill="#0A0A0A">{`• ${labels[k] || k}: ${n} punti`}</text>
+            ))}
+          </g>
+        );
+      })()}
 
       {/* PARTIAL WALL DEMOLITION (rendered inside wall) */}
       {partial && (() => {
@@ -184,14 +201,14 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
             {/* width dim sotto al pavimento */}
             <DimLine x1={x} y1={H + 30} x2={xR} y2={H + 30} label={`${Math.round(o.width)}`} color="#0A0A0A" />
             {/* sx dim (distance from left) */}
-            {distSx > 5 && <DimLine x1={0} y1={H + 60} x2={x} y2={H + 60} label={`sx ${distSx}`} color="#2563EB" small />}
+            {distSx > 5 && <DimLine x1={0} y1={H + 60} x2={x} y2={H + 60} label={`sx ${distSx}`} color="#0A0A0A" small />}
             {/* dx dim (distance from right) */}
-            {distDx > 5 && <DimLine x1={xR} y1={H + 60} x2={W} y2={H + 60} label={`dx ${distDx}`} color="#2563EB" small />}
+            {distDx > 5 && <DimLine x1={xR} y1={H + 60} x2={W} y2={H + 60} label={`dx ${distDx}`} color="#0A0A0A" small />}
             {/* opening height (vertical, RIGHT side) */}
             <DimLineV x1={x - 18} y1={yTop} x2={x - 18} y2={yTop + o.height} label={`H ${o.height}`} color="#0A0A0A" small />
             {/* sill height (vertical, from floor) */}
             {o.kind === "window" && o.sill > 0 && (
-              <DimLineV x1={xR + 18} y1={yTop + o.height} x2={xR + 18} y2={H} label={`par. ${o.sill}`} color="#7C3AED" small />
+              <DimLineV x1={xR + 18} y1={yTop + o.height} x2={xR + 18} y2={H} label={`par. ${o.sill}`} color="#0A0A0A" small />
             )}
           </g>
         );
@@ -208,9 +225,10 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
         const color = COLORS[p.kind] || "#525252";
         const dxFromLeft = Math.round(p.t * W);
         const dxFromRight = Math.round((1 - p.t) * W);
-        // OFFSET VERTICALE per evitare sovrapposizione tra badge sx/dx di MEP point diversi
-        const ySxRow = H + 22 + idx * 26; // ogni punto ha la sua riga sx
-        const yDxRow = H + 22 + idx * 26 + 13; // dx leggermente più sotto
+        // OFFSET VERTICALE: MEP quotes partono DOPO le quote door/window (sotto H+80) per evitare sovrapposizioni
+        const BASE = H + 90;
+        const ySxRow = BASE + idx * 28;
+        const yDxRow = BASE + idx * 28 + 14;
         return (
           <g key={p.id} style={{ cursor: editable ? "move" : "default" }}
              onPointerDown={editable ? (e) => { e.preventDefault(); e.stopPropagation(); setDragging(p.id); } : undefined}
@@ -221,24 +239,24 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
             <text x={x} y={y + 4} textAnchor="middle" fontSize="12" fontWeight="900" fontFamily="JetBrains Mono" fill={color} pointerEvents="none">{symbolFor(p)}</text>
             {/* QUOTA H altezza dal pavimento — badge bianco a destra del simbolo */}
             <g pointerEvents="none">
-              <rect x={x + 14} y={y - 11} width={64} height={22} rx={3} fill="white" stroke={color} strokeWidth="1.5" />
-              <text x={x + 46} y={y + 5} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="14" fontWeight="800" fill={color}>{`h=${h}`}</text>
+              <rect x={x + 14} y={y - 11} width={64} height={22} rx={2} fill="white" stroke="#0A0A0A" strokeWidth="1" />
+              <text x={x + 46} y={y + 5} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="13" fontWeight="700" fill="#0A0A0A">{`h=${h}`}</text>
             </g>
             {/* QUOTA SX: distanza dal bordo sinistro — riga unica per punto, su livelli scalati */}
             <g pointerEvents="none">
-              <line x1={0} y1={ySxRow + 11} x2={x} y2={ySxRow + 11} stroke="#2563EB" strokeWidth="1" />
-              <line x1={0} y1={ySxRow + 5} x2={0} y2={ySxRow + 17} stroke="#2563EB" strokeWidth="1.5" />
-              <line x1={x} y1={ySxRow + 5} x2={x} y2={ySxRow + 17} stroke="#2563EB" strokeWidth="1.5" />
-              <rect x={Math.max(2, x / 2 - 38)} y={ySxRow} width={76} height={22} rx={3} fill="white" stroke="#2563EB" strokeWidth="1.5" />
-              <text x={Math.max(40, x / 2)} y={ySxRow + 16} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="13" fontWeight="800" fill="#2563EB">{`sx ${dxFromLeft}`}</text>
+              <line x1={0} y1={ySxRow + 11} x2={x} y2={ySxRow + 11} stroke="#525252" strokeWidth="0.8" />
+              <line x1={0} y1={ySxRow + 5} x2={0} y2={ySxRow + 17} stroke="#525252" strokeWidth="1" />
+              <line x1={x} y1={ySxRow + 5} x2={x} y2={ySxRow + 17} stroke="#525252" strokeWidth="1" />
+              <rect x={Math.max(2, x / 2 - 38)} y={ySxRow} width={76} height={22} rx={2} fill="white" stroke="#0A0A0A" strokeWidth="1" />
+              <text x={Math.max(40, x / 2)} y={ySxRow + 16} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="13" fontWeight="700" fill="#0A0A0A">{`sx ${dxFromLeft}`}</text>
             </g>
             {/* QUOTA DX: distanza dal bordo destro — accanto al sx, su livelli scalati */}
             <g pointerEvents="none">
-              <line x1={x} y1={yDxRow + 11} x2={W} y2={yDxRow + 11} stroke="#7C3AED" strokeWidth="1" />
-              <line x1={x} y1={yDxRow + 5} x2={x} y2={yDxRow + 17} stroke="#7C3AED" strokeWidth="1.5" />
-              <line x1={W} y1={yDxRow + 5} x2={W} y2={yDxRow + 17} stroke="#7C3AED" strokeWidth="1.5" />
-              <rect x={Math.min(W - 78, (x + W) / 2 - 38)} y={yDxRow} width={76} height={22} rx={3} fill="white" stroke="#7C3AED" strokeWidth="1.5" />
-              <text x={Math.min(W - 40, (x + W) / 2)} y={yDxRow + 16} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="13" fontWeight="800" fill="#7C3AED">{`dx ${dxFromRight}`}</text>
+              <line x1={x} y1={yDxRow + 11} x2={W} y2={yDxRow + 11} stroke="#525252" strokeWidth="0.8" />
+              <line x1={x} y1={yDxRow + 5} x2={x} y2={yDxRow + 17} stroke="#525252" strokeWidth="1" />
+              <line x1={W} y1={yDxRow + 5} x2={W} y2={yDxRow + 17} stroke="#525252" strokeWidth="1" />
+              <rect x={Math.min(W - 78, (x + W) / 2 - 38)} y={yDxRow} width={76} height={22} rx={2} fill="white" stroke="#0A0A0A" strokeWidth="1" />
+              <text x={Math.min(W - 40, (x + W) / 2)} y={yDxRow + 16} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="13" fontWeight="700" fill="#0A0A0A">{`dx ${dxFromRight}`}</text>
             </g>
           </g>
         );

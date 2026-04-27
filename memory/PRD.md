@@ -18,6 +18,16 @@
 - ✅ Impianto elettrico/idraulico/gas/hvac contati sempre nel preventivo
 - ✅ window.__editorTest.setSelected esposto
 
+## Recent Updates (Round 17 — Feb 2026 — Quote professionali + Guard Preventivo)
+- ✅ **Quote professionali in nero/grigio** su Prospetti e Canvas (no più colori "da bambini")
+- ✅ **Pacchetti ordinati per prezzo crescente** in: Editor, AdminPacchetti, PreventivoPacchetto, ConfiguratoreEsigenze
+- ✅ **Doppio pulsante su ogni voce preventivo**: X (nascondi dal preventivo) + 🗑️ Trash2 (elimina anche dal progetto con conferma per porte, finestre, elettrico, idraulico, gas, muri cartongesso/mattone)
+- ✅ **Preventivo collegato in modalità GUARDIA**: avviso esplicito "il totale del preventivo NON si aggiorna automaticamente", bottoni "✓ Conferma extras e aggiorna preventivo" / "↓ Rimuovi opere che creano extras"
+- ✅ **Scala 1:100** badge su ogni Tavola + barra di riferimento 0-3 m
+- ✅ **Prospetti consolidati**: un solo prospetto per parete con header "IMPIANTI SU QUESTA PARETE" che elenca i tipi di impianto presenti (Elettrico, Idraulico, Gas, Condiz.) con conteggio punti
+- ✅ **Quote MEP spostate SOTTO le quote porte/finestre** per evitare sovrapposizioni
+- ✅ **Quote interne su ogni lato di ogni stanza** (ogni segmento polygon) con badge bianco nero bordato
+
 ## Original Problem Statement
 > "puoi costruire un programma di progettezione tipo cad che faccia anche rendering del risultato per preventivare e progettare ristrutturazioni?"
 > User explicitly requested a 1:1 functional replica of configuratore.base44.app with CAD as a plus feature.

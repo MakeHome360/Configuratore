@@ -4,7 +4,7 @@ import { snap, uid, polygonArea, polygonPerimeter, fmtNum, pointInPolygon, split
 const GRID = 10;
 const INITIAL_VIEW = { x: -300, y: -200, w: 2200, h: 1600 };
 
-function Measurement({ x1, y1, x2, y2, big = false, color = "#16A34A" }) {
+function Measurement({ x1, y1, x2, y2, big = false, color = "#0A0A0A" }) {
   const dx = x2 - x1, dy = y2 - y1;
   const len = Math.hypot(dx, dy);
   const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
@@ -981,11 +981,11 @@ export default function Canvas2D({
                 const off = 22;
                 const lx = mxs + nx * off, ly = mys + ny * off;
                 const txt = `${(lenSeg / 100).toFixed(2)} m`;
-                const padX = 26, padY = 9;
+                const padX = 28, padY = 10;
                 return (
                   <g key={`edge-q-${i}`} pointerEvents="none">
-                    <rect x={lx - padX} y={ly - padY} width={padX * 2} height={padY * 2} rx={4} fill="white" stroke="#16A34A" strokeWidth="1.2" opacity={0.95} />
-                    <text x={lx} y={ly + 5} textAnchor="middle" fontSize="13" fontFamily="JetBrains Mono" fontWeight="800" fill="#16A34A">{txt}</text>
+                    <rect x={lx - padX} y={ly - padY} width={padX * 2} height={padY * 2} rx={2} fill="white" stroke="#0A0A0A" strokeWidth="1" />
+                    <text x={lx} y={ly + 5} textAnchor="middle" fontSize="12" fontFamily="JetBrains Mono" fontWeight="700" fill="#0A0A0A">{txt}</text>
                   </g>
                 );
               })}

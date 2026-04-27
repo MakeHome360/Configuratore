@@ -20,7 +20,8 @@ export default function AdminPacchetti() {
 
   const load = async () => {
     const [p, v] = await Promise.all([api.get("/packages"), api.get("/voci-backoffice")]);
-    setPackages(p.data || []); setVoci(v.data || []);
+    const pkgs = (p.data || []).slice().sort((a, b) => (a.price_per_m2 || 0) - (b.price_per_m2 || 0));
+    setPackages(pkgs); setVoci(v.data || []);
   };
   useEffect(() => { load(); }, []);
 

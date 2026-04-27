@@ -223,7 +223,8 @@ export default function Editor() {
         setProject({ ...pr.data, data });
         setCatalog(cat.data);
         setVoci(vc.data || []);
-        setPackages(pk.data || []);
+        const pkgs = (pk.data || []).slice().sort((a, b) => (a.price_per_m2 || 0) - (b.price_per_m2 || 0));
+        setPackages(pkgs);
       } catch {
         toast.error("Progetto non trovato");
         nav("/dashboard");
@@ -819,7 +820,34 @@ export default function Editor() {
                 <CatalogPanel catalog={catalog} selectedMaterial={selectedMaterial} setSelectedMaterial={(id) => { setSelectedMaterial(id); setTool("item"); }} project={project.data} setProject={setProjectData} voci={voci} selected={selected} />
               </TabsContent>
               <TabsContent value="cost" className="p-0 overflow-auto flex-1 mt-0">
-                <CostPanelV2 estimate={estimateV2} packageRef={project.data?.packageRef} legacy={estimate} linkedPreventivo={linkedPreventivo} saveAsPreventivo={saveAsPreventivo} excludedKeys={project.data?.excluded_keys || []} setExcludedKeys={(keys) => setProjectData((d) => ({ ...d, excluded_keys: keys }))} />
+                <CostPanelV2 estimate={estimateV2} packageRef={project.data?.packageRef} legacy={estimate} linkedPreventivo={linkedPreventivo} saveAsPreventivo={saveAsPreventivo} excludedKeys={project.data?.excluded_keys || []} setExcludedKeys={(keys) => setProjectData((d) => ({ ...d, excluded_keys: keys }))} removeElementsForKey={(key) => {
+                  // Rimuove dal PROGETTO gli elementi associati alla voce
+                  const map = {
+                    "porta_interna": { arr: "doors", filter: (d) => d.phase === "progetto" && !(d.type || "").startsWith("blindata") },
+                    "porta_blindata_cl3": { arr: "doors", filter: (d) => d.phase === "progetto" && (d.type === "blindata" || d.type === "blindata-cl3") },
+                    "porta_blindata_cl4": { arr: "doors", filter: (d) => d.phase === "progetto" && d.type === "blindata-cl4" },
+                    "finestre_pvc": { arr: "windows", filter: (w) => w.phase === "progetto" && (w.material || "pvc") === "pvc" },
+                    "finestre_alluminio": { arr: "windows", filter: (w) => w.phase === "progetto" && w.material === "alluminio" },
+                    "finestre_legno": { arr: "windows", filter: (w) => w.phase === "progetto" && w.material === "legno" },
+                    "punto_presa": { arr: "electrical", filter: (e) => e.type === "presa" },
+                    "punto_interruttore": { arr: "electrical", filter: (e) => e.type === "interruttore" },
+                    "punto_luce": { arr: "electrical", filter: (e) => e.type === "luce" || e.type === "punto-luce" },
+                    "quadro_elettrico": { arr: "electrical", filter: (e) => e.type === "quadro" || e.type === "quadro-elettrico" },
+                    "punto_acqua": { arr: "plumbing", filter: (p) => p.type !== "scarico" },
+                    "punto_scarico": { arr: "plumbing", filter: (p) => p.type === "scarico" },
+                    "punto_gas": { arr: "gas", filter: () => true },
+                    "costruzione_muro_cartongesso": { arr: "walls", filter: (w) => w.kind === "cartongesso" },
+                    "costruzione_muro_mattone": { arr: "walls", filter: (w) => w.kind === "nuovo" },
+                  };
+                  const cfg = map[key];
+                  if (!cfg) return false; // non supportato → solo exclude
+                  const arr = (project.data || {})[cfg.arr] || [];
+                  const toRemove = arr.filter(cfg.filter);
+                  if (toRemove.length === 0) return false;
+                  if (!window.confirm(`Rimuovere ${toRemove.length} ${cfg.arr} dal progetto?`)) return false;
+                  setProjectData((d) => ({ ...d, [cfg.arr]: (d[cfg.arr] || []).filter((x) => !cfg.filter(x)) }));
+                  return true;
+                }} />
               </TabsContent>
             </Tabs>
           </aside>
@@ -1693,7 +1721,7 @@ function CatalogPanel({ catalog, selectedMaterial, setSelectedMaterial, project,
   );
 }
 
-function CostPanelV2({ estimate, packageRef, legacy, linkedPreventivo, saveAsPreventivo, excludedKeys = [], setExcludedKeys }) {
+function CostPanelV2({ estimate, packageRef, legacy, linkedPreventivo, saveAsPreventivo, excludedKeys = [], setExcludedKeys, removeElementsForKey }) {
   if (!estimate) return null;
   // Calcola scostamento vs budget preventivo approvato (se collegato)
   const budgetTotal = linkedPreventivo?.totale_iva_escl || linkedPreventivo?.total || 0;
@@ -1708,9 +1736,33 @@ function CostPanelV2({ estimate, packageRef, legacy, linkedPreventivo, saveAsPre
             <span className={linkedPreventivo.stato === "accettato" ? "px-1.5 py-0.5 bg-emerald-600 text-white" : "px-1.5 py-0.5 bg-zinc-300 text-zinc-700"}>{(linkedPreventivo.stato || "bozza").toUpperCase()}</span>
             <span>budget {fmtEuro(budgetTotal)}</span>
           </div>
+          <div className="mono text-[10px] text-zinc-600 mt-1 italic">
+            Il totale del preventivo <b>NON si aggiorna automaticamente</b>. Il "Preventivo live" qui sotto è solo una simulazione di cosa succederebbe se approvassi queste lavorazioni.
+          </div>
           {overBudget !== 0 && (
             <div className={`mono text-xs mt-1.5 font-medium ${overBudget > 0 ? "text-rose-700" : "text-emerald-700"}`} data-testid="budget-delta">
               {overBudget > 0 ? "⚠ SFORI budget" : "✓ Sotto budget"}: {overBudget > 0 ? "+" : ""}{fmtEuro(overBudget)} ({overPct.toFixed(1)}%)
+            </div>
+          )}
+          {overBudget > 0 && (
+            <div className="mt-2 flex gap-2 flex-wrap">
+              <button
+                onClick={() => {
+                  if (!window.confirm(`Confermi di aggiornare il preventivo con ${fmtEuro(overBudget)} di lavorazioni EXTRA?`)) return;
+                  saveAsPreventivo && saveAsPreventivo(true);
+                }}
+                className="rounded-sm px-2 py-1 bg-emerald-600 text-white text-[10px] font-semibold hover:bg-emerald-700"
+                data-testid="confirm-extras-btn"
+              >✓ Conferma extras e aggiorna preventivo</button>
+              <button
+                onClick={() => {
+                  toast.info("Scorri il Preventivo Live qui sotto: per rimuovere le opere extra usa il cestino rosso 🗑 accanto alla voce");
+                  // Scroll alla tabella
+                  document.querySelector('[data-testid^="computo-row-"]')?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+                className="rounded-sm px-2 py-1 bg-zinc-200 text-zinc-800 text-[10px] font-medium hover:bg-zinc-300"
+                data-testid="remove-extras-btn"
+              >↓ Rimuovi opere che creano extras</button>
             </div>
           )}
           {linkedPreventivo.stato === "accettato" && overBudget > 0 && (
@@ -1760,12 +1812,28 @@ function CostPanelV2({ estimate, packageRef, legacy, linkedPreventivo, saveAsPre
                         onClick={() => {
                           if (!setExcludedKeys) return;
                           setExcludedKeys([...(excludedKeys || []), it.key]);
-                          toast.success(`Riga "${it.name}" rimossa dal preventivo`);
+                          toast.success(`Riga "${it.name}" nascosta dal preventivo`);
                         }}
-                        className="mt-0.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded p-0.5"
-                        title="Rimuovi questa voce dal preventivo"
+                        className="mt-0.5 text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 rounded p-0.5"
+                        title="Nascondi questa voce solo dal preventivo"
                         data-testid={`computo-delete-${it.key}`}
                       ><X size={12} /></button>
+                      {removeElementsForKey && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const ok = removeElementsForKey(it.key);
+                            if (ok) {
+                              toast.success(`Elementi "${it.name}" eliminati dal progetto`);
+                            } else {
+                              toast.error("Non rimovibile automaticamente — elimina dal canvas o escludi dal preventivo");
+                            }
+                          }}
+                          className="mt-0.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded p-0.5"
+                          title="Elimina anche gli elementi corrispondenti dal PROGETTO"
+                          data-testid={`computo-remove-elements-${it.key}`}
+                        ><Trash2 size={12} /></button>
+                      )}
                       <div className="flex-1 min-w-0">
                         <div className="leading-tight">{it.name}</div>
                         <div className="text-[10px] text-zinc-400 mono">{it.category}</div>
@@ -2005,7 +2073,10 @@ function TavolaPreview({ tavola, project, catalog }) {
     <div className="bg-white border border-zinc-300 p-3" data-testid={`tavola-preview-${tavola.id}`}>
       <div className="flex items-center justify-between mb-2">
         <div className="font-semibold text-sm" style={{ fontFamily: "Outfit" }}>{tavola.title}</div>
-        <div className="text-[10px] mono text-zinc-400">{project.name}</div>
+        <div className="flex items-center gap-2">
+          <div className="text-[10px] mono px-1.5 py-0.5 bg-zinc-900 text-white tracking-widest">SCALA 1:100</div>
+          <div className="text-[10px] mono text-zinc-400">{project.name}</div>
+        </div>
       </div>
       <div className="aspect-video bg-zinc-50 border border-zinc-200 relative">
         <Canvas2D
@@ -2017,6 +2088,15 @@ function TavolaPreview({ tavola, project, catalog }) {
           autoFit={true}
         />
         <Legenda tavolaId={tavola.id} />
+        {/* Barra scala per riferimento visivo */}
+        <div className="absolute left-3 bottom-3 bg-white border border-zinc-900 px-2 py-1 flex items-center gap-1.5">
+          <div className="flex h-3">
+            <div className="w-6 bg-zinc-900" />
+            <div className="w-6 bg-white border-y border-zinc-900" />
+            <div className="w-6 bg-zinc-900" />
+          </div>
+          <span className="mono text-[10px] font-bold text-zinc-900">0—3 m</span>
+        </div>
       </div>
     </div>
   );

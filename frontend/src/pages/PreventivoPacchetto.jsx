@@ -181,8 +181,12 @@ export default function PreventivoPacchetto() {
 
   const totals = useMemo(() => {
     if (!pkg) return { base: 0, extras: 0, optional: 0, bagno: 0, subtotal: 0, sconto: 0, iva: 0, total: 0 };
+    // Voci ESCLUSE dal preventivo (rimosse dall'utente): non contano né come base né come extras
+    const activeItems = (prev.items || []).filter((it) => !it.excluded);
+    // Il forfait viene RIDOTTO proporzionalmente se l'utente ha escluso voci incluse (è giusto: ha tolto prestazioni)
+    // Semplificazione: il base resta al prezzo a m² del pacchetto intero (il pacchetto è un'offerta unica). Le esclusioni si riflettono SOLO in meno extras.
     const base = pkg.price_per_m2 * (prev.mq || 0);
-    const extras = (prev.items || []).reduce((s, it) => {
+    const extras = activeItems.reduce((s, it) => {
       const extra = Math.max(0, (it.qty_richiesta || 0) - (it.included_qty || 0));
       return s + extra * (it.unit_price || 0);
     }, 0);
@@ -364,27 +368,46 @@ export default function PreventivoPacchetto() {
                     return !isDemo && it.category === cat;
                   });
                   if (list.length === 0) return null;
+                  const activeList = list.filter((it) => !it.excluded);
+                  const excludedList = list.filter((it) => it.excluded);
                   const colorMap = { DEMOLIZIONI: "#DC2626", MURATURA: "#0F766E", IMPIANTI: "#2563EB", INFISSI: "#9333EA", SERVIZI: "#B45309", EXTRA: "#EA580C" };
                   const catLabel = cat === "EXTRA" ? "EXTRA · Configuratore Esigenze" : cat;
                   return (
                     <div key={cat} className="mb-6">
-                      <div className="text-xs uppercase tracking-widest font-bold mb-2" style={{ color: colorMap[cat] }}>{catLabel}</div>
+                      <div className="text-xs uppercase tracking-widest font-bold mb-2 flex items-center gap-2" style={{ color: colorMap[cat] }}>
+                        {catLabel}
+                        <span className="text-[10px] mono text-zinc-400 normal-case">{activeList.length} voci · {excludedList.length > 0 ? `${excludedList.length} rimosse` : ""}</span>
+                      </div>
                       <table className="w-full text-sm border border-zinc-200">
                         <thead className="bg-zinc-50 text-xs uppercase tracking-widest text-zinc-500">
                           <tr>
+                            <th className="w-8"></th>
                             <th className="text-left py-2 px-3 font-medium">Lavorazione</th>
                             <th className="text-right py-2 px-3 font-medium w-20">U.M.</th>
                             <th className="text-right py-2 px-3 font-medium w-28">Incluse</th>
                             <th className="text-right py-2 px-3 font-medium w-28">Richieste</th>
+                            <th className="text-right py-2 px-3 font-medium w-28">€ / unità</th>
                             <th className="text-right py-2 px-3 font-medium w-32">Extra a pagamento</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {list.map((it) => {
+                          {activeList.map((it) => {
                             const extra = Math.max(0, (it.qty_richiesta || 0) - (it.included_qty || 0));
                             const extraCost = extra * (it.unit_price || 0);
                             return (
                               <tr key={it.id} className="border-t border-zinc-100" data-testid={`lav-row-${it.id}`}>
+                                <td className="py-2 px-2 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setPrev((s) => ({ ...s, items: s.items.map((x) => x.id === it.id ? { ...x, excluded: true } : x) }));
+                                      toast.success(`"${it.name}" rimossa dal preventivo`);
+                                    }}
+                                    className="text-rose-600 hover:text-rose-800 hover:bg-rose-50 p-1 rounded"
+                                    title="Rimuovi questa voce dal preventivo"
+                                    data-testid={`lav-remove-${it.id}`}
+                                  ><span className="text-xs">✕</span></button>
+                                </td>
                                 <td className="py-2 px-3">{it.name}</td>
                                 <td className="py-2 px-3 text-right mono text-xs text-zinc-500">{it.unit}</td>
                                 <td className="py-2 px-3 text-right mono text-zinc-500">{fmtNum(it.included_qty, 2)}</td>
@@ -398,14 +421,40 @@ export default function PreventivoPacchetto() {
                                     data-testid={`lav-qty-${it.id}`}
                                   />
                                 </td>
+                                <td className="py-2 px-3 text-right">
+                                  <Input type="number" step="0.01" value={it.unit_price}
+                                    onChange={(e) => {
+                                      const v = parseFloat(e.target.value) || 0;
+                                      setPrev((s) => ({ ...s, items: s.items.map((x) => x.id === it.id ? { ...x, unit_price: v } : x) }));
+                                    }}
+                                    className="rounded-sm h-7 text-right mono text-xs w-20 ml-auto"
+                                    data-testid={`lav-price-${it.id}`}
+                                  />
+                                </td>
                                 <td className={`py-2 px-3 text-right mono text-xs ${extraCost > 0 ? "text-orange-600 font-semibold" : "text-zinc-400"}`}>
-                                  {extraCost > 0 ? <>+{fmtNum(extra, 2)} × {fmtEuro(it.unit_price)} = <strong>{fmtEuro(extraCost)}</strong></> : "—"}
+                                  {extraCost > 0 ? <>{`+${fmtNum(extra, 2)} × ${fmtEuro(it.unit_price)} = `}<strong>{fmtEuro(extraCost)}</strong></> : "—"}
                                 </td>
                               </tr>
                             );
                           })}
                         </tbody>
                       </table>
+                      {excludedList.length > 0 && (
+                        <div className="mt-2 bg-amber-50 border border-amber-300 p-2 text-[11px]" data-testid={`excluded-${cat}`}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="mono uppercase tracking-widest text-amber-800 text-[9px]">{excludedList.length} voci rimosse</span>
+                            <button onClick={() => setPrev((s) => ({ ...s, items: s.items.map((x) => x.excluded ? { ...x, excluded: false } : x) }))} className="text-amber-800 underline text-[10px]" data-testid={`restore-all-${cat}`}>Ripristina tutte</button>
+                          </div>
+                          <ul className="space-y-0.5 max-h-32 overflow-auto">
+                            {excludedList.map((it) => (
+                              <li key={it.id} className="flex items-center justify-between gap-2">
+                                <span className="text-amber-900 truncate">{it.name}</span>
+                                <button onClick={() => setPrev((s) => ({ ...s, items: s.items.map((x) => x.id === it.id ? { ...x, excluded: false } : x) }))} className="text-amber-700 hover:text-amber-900 text-[11px] underline" data-testid={`restore-${it.id}`}>ripristina</button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

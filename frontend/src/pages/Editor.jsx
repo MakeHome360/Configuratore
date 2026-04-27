@@ -503,12 +503,19 @@ export default function Editor() {
 
   const exportTavole = async (selectedTavole, prospettiInteresting, heightOverrides) => {
     if (!project) return;
-    const doc = new jsPDF({ unit: "mm", format: "a3", orientation: "landscape" });
-    const pageW = doc.internal.pageSize.getWidth();
-    const pageH = doc.internal.pageSize.getHeight();
-    const captureSvg = async (svgEl, w = 2200, h = 1400) => {
+    // SCALA 1:100 REALE — per ogni tavola calcoliamo le dimensioni di carta basate sul viewBox in cm
+    // 1:100 → 1 cm reale (1 unità viewBox) = 0,1 mm carta (10mm reali = 1mm carta → sbagliato)
+    // Convenzione architettonica: 1cm realtà = 0,01 m carta = 1mm carta su scala 1:10 (no)
+    // Correzione: 1:100 significa 1 unità disegno = 100 unità realtà. Se viewBox è in cm (1 unità = 1cm realtà)
+    // allora 1 cm realtà → 0,01 disegno carta → 0,1 mm carta. quindi paper_mm = viewBox_cm * 0.1 = viewBox_cm / 10
+    // In pratica: paperMm = viewBox_units / 10
+    const SCALE_DIVISOR = 10; // 1:100
+    const MARGIN_MM = 30; // margine laterale per intestazione/legenda
+    const TITLE_H_MM = 25;
+    const FOOT_H_MM = 20;
+    let doc = null;
+    const captureSvg = async (svgEl, w, h) => {
       try {
-        // Clona per evitare mutazioni e imposta dimensioni esplicite
         const cloned = svgEl.cloneNode(true);
         cloned.setAttribute("width", w);
         cloned.setAttribute("height", h);
@@ -520,9 +527,8 @@ export default function Editor() {
         img.crossOrigin = "anonymous";
         await new Promise((res, rej) => {
           img.onload = res;
-          img.onerror = (e) => rej(new Error("SVG load failed"));
+          img.onerror = () => rej(new Error("SVG load failed"));
           img.src = url;
-          // Timeout safety
           setTimeout(() => rej(new Error("SVG load timeout")), 8000);
         });
         const canvas = document.createElement("canvas");
@@ -537,55 +543,83 @@ export default function Editor() {
       }
     };
 
-    const renderTavola = (title, png) => {
-      doc.setFont("helvetica", "bold"); doc.setFontSize(20);
-      doc.text(title, 15, 15);
-      doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-      doc.text(`Progetto: ${project.name}  ·  Data: ${new Date().toLocaleDateString("it-IT")}  ·  Misure in metri`, 15, 22);
-      doc.addImage(png, "PNG", 15, 30, pageW - 30, pageH - 50);
-      doc.setFontSize(8); doc.setTextColor(100);
-      doc.text(`Tavola generata da CAD · ${title}`, 15, pageH - 8);
-      doc.setTextColor(0);
+    // Per ogni tavola: ricava viewBox (in cm reali), calcola dimensioni carta a scala 1:100
+    const buildPageForSvg = (svgEl) => {
+      const vbAttr = svgEl.getAttribute("viewBox") || "0 0 2200 1400";
+      const parts = vbAttr.split(/\s+/).map(Number);
+      const vbW = parts[2] || 2200;
+      const vbH = parts[3] || 1400;
+      // dimensioni disegno su carta in mm (scala 1:100)
+      const drawW = Math.max(60, vbW / SCALE_DIVISOR);
+      const drawH = Math.max(40, vbH / SCALE_DIVISOR);
+      // pagina = disegno + margini + intestazione + footer
+      const pageW = drawW + MARGIN_MM * 2;
+      const pageH = drawH + TITLE_H_MM + FOOT_H_MM;
+      return { vbW, vbH, drawW, drawH, pageW, pageH };
     };
 
-    let isFirst = true;
+    const drawFrame = (d, pageW, pageH, title, scaleNote = "SCALA 1:100") => {
+      // Cartiglio / frame
+      d.setLineWidth(0.3);
+      d.rect(MARGIN_MM - 5, TITLE_H_MM - 5, pageW - 2 * (MARGIN_MM - 5), pageH - TITLE_H_MM - FOOT_H_MM + 10);
+      d.setFont("helvetica", "bold"); d.setFontSize(14);
+      d.text(title, MARGIN_MM, 12);
+      d.setFont("helvetica", "normal"); d.setFontSize(8);
+      d.text(`Progetto: ${project.name}  ·  Data: ${new Date().toLocaleDateString("it-IT")}`, MARGIN_MM, 18);
+      // Scala — in basso a destra con barra graduata
+      const sbX = pageW - MARGIN_MM - 50, sbY = pageH - 10;
+      d.setFont("helvetica", "bold"); d.setFontSize(9);
+      d.text(scaleNote, sbX, sbY - 6);
+      // Barra scala: ogni segmento = 10 mm carta = 1 m reale
+      d.setLineWidth(0.3);
+      for (let i = 0; i < 3; i++) {
+        if (i % 2 === 0) d.setFillColor(0, 0, 0); else d.setFillColor(255, 255, 255);
+        d.rect(sbX + i * 10, sbY - 3, 10, 3, "FD");
+      }
+      d.setFontSize(7);
+      d.text("0", sbX - 1, sbY + 5);
+      d.text("1", sbX + 9, sbY + 5);
+      d.text("2", sbX + 19, sbY + 5);
+      d.text("3 m", sbX + 29, sbY + 5);
+      d.setFontSize(7);
+      d.text("Misure sulle quote: cm", MARGIN_MM, pageH - 5);
+    };
+
     let exported = 0;
-    // First: piante
+    // Piante
     for (const tav of selectedTavole) {
-      if (!isFirst) doc.addPage("a3", "landscape");
-      isFirst = false;
       const wrapper = document.querySelector(`[data-testid="tavola-preview-${tav.id}"]`);
       const svgEl = wrapper ? wrapper.querySelector('svg[data-testid="canvas-2d"]') : null;
-      const png = svgEl ? await captureSvg(svgEl) : null;
-      if (png) {
-        renderTavola(tav.title, png);
-        exported++;
-      } else {
-        doc.setFont("helvetica", "bold"); doc.setFontSize(14);
-        doc.text(tav.title, 15, 30);
-        doc.setFont("helvetica", "normal"); doc.setFontSize(10);
-        doc.text("Anteprima non disponibile. Apri la tavola dal modal e riprova.", 15, 40);
-      }
+      if (!svgEl) continue;
+      const { vbW, vbH, drawW, drawH, pageW, pageH } = buildPageForSvg(svgEl);
+      // PNG ad alta risoluzione (4x vbW/vbH) per stampa nitida
+      const png = await captureSvg(svgEl, Math.round(vbW * 2), Math.round(vbH * 2));
+      if (!png) continue;
+      if (!doc) doc = new jsPDF({ unit: "mm", format: [pageW, pageH], orientation: pageW > pageH ? "landscape" : "portrait" });
+      else doc.addPage([pageW, pageH], pageW > pageH ? "landscape" : "portrait");
+      drawFrame(doc, pageW, pageH, tav.title);
+      doc.addImage(png, "PNG", MARGIN_MM, TITLE_H_MM, drawW, drawH);
+      exported++;
     }
-    // Then: prospetti pareti
+    // Prospetti
     for (const ent of (prospettiInteresting || [])) {
       const svgEl = document.querySelector(`[data-testid="prospetto-svg-${ent.wall.id}"]`);
-      if (svgEl) {
-        if (!isFirst) doc.addPage("a3", "landscape");
-        isFirst = false;
-        const png = await captureSvg(svgEl, 2400, 1100);
-        if (png) {
-          renderTavola(`Prospetto Parete · ${fmtNum(ent.length / 100, 2)}m`, png);
-          exported++;
-        }
-      }
+      if (!svgEl) continue;
+      const { vbW, vbH, drawW, drawH, pageW, pageH } = buildPageForSvg(svgEl);
+      const png = await captureSvg(svgEl, Math.round(vbW * 2), Math.round(vbH * 2));
+      if (!png) continue;
+      if (!doc) doc = new jsPDF({ unit: "mm", format: [pageW, pageH], orientation: pageW > pageH ? "landscape" : "portrait" });
+      else doc.addPage([pageW, pageH], pageW > pageH ? "landscape" : "portrait");
+      drawFrame(doc, pageW, pageH, `Prospetto Parete · L=${fmtNum(ent.length / 100, 2)}m`);
+      doc.addImage(png, "PNG", MARGIN_MM, TITLE_H_MM, drawW, drawH);
+      exported++;
     }
-    if (exported === 0) {
+    if (!doc || exported === 0) {
       toast.error("Nessuna tavola esportabile. Assicurati di aver aperto il preview almeno una volta.");
       return;
     }
-    doc.save(`${project.name.replace(/[^a-z0-9]+/gi, "-")}-tavole.pdf`);
-    toast.success(`Tavole esportate (${exported})`);
+    doc.save(`${project.name.replace(/[^a-z0-9]+/gi, "-")}-tavole-scala-1-100.pdf`);
+    toast.success(`Tavole esportate (${exported}) in scala 1:100`);
   };
 
   const confirmaTavoleInCommessa = async (selectedTavole, prospettiInteresting, commessaId) => {

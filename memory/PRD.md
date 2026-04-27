@@ -18,15 +18,28 @@
 - ✅ Impianto elettrico/idraulico/gas/hvac contati sempre nel preventivo
 - ✅ window.__editorTest.setSelected esposto
 
-## Recent Updates (Round 17 — Feb 2026 — Quote professionali + Guard Preventivo)
-- ✅ **Quote professionali in nero/grigio** su Prospetti e Canvas (no più colori "da bambini")
-- ✅ **Pacchetti ordinati per prezzo crescente** in: Editor, AdminPacchetti, PreventivoPacchetto, ConfiguratoreEsigenze
-- ✅ **Doppio pulsante su ogni voce preventivo**: X (nascondi dal preventivo) + 🗑️ Trash2 (elimina anche dal progetto con conferma per porte, finestre, elettrico, idraulico, gas, muri cartongesso/mattone)
-- ✅ **Preventivo collegato in modalità GUARDIA**: avviso esplicito "il totale del preventivo NON si aggiorna automaticamente", bottoni "✓ Conferma extras e aggiorna preventivo" / "↓ Rimuovi opere che creano extras"
-- ✅ **Scala 1:100** badge su ogni Tavola + barra di riferimento 0-3 m
-- ✅ **Prospetti consolidati**: un solo prospetto per parete con header "IMPIANTI SU QUESTA PARETE" che elenca i tipi di impianto presenti (Elettrico, Idraulico, Gas, Condiz.) con conteggio punti
-- ✅ **Quote MEP spostate SOTTO le quote porte/finestre** per evitare sovrapposizioni
-- ✅ **Quote interne su ogni lato di ogni stanza** (ogni segmento polygon) con badge bianco nero bordato
+## Recent Updates (Round 18 — Feb 2026 — Pacchetto editabile + PDF scala 1:100)
+- ✅ **Pacchetto — voci editabili nel preventivo**: ogni voce pre-inclusa ha:
+  - ✕ rimozione dal preventivo (con box "N voci rimosse · ripristina")
+  - Input "€ / unità" per override prezzo per quella specifica voce
+  - Input "Richieste" per variare la qty
+  - Le voci escluse non contribuiscono agli extras
+- ✅ **Export PDF Tavole in scala 1:100 REALE**: 
+  - Per ogni tavola, computa dim. carta in base al viewBox (1 unità = 1 cm reale → 0,1 mm carta)
+  - Pagina PDF custom per ogni tavola (non più A3 fisso)
+  - Cartiglio professionale: titolo, data, frame, barra scala 0-3m, note "SCALA 1:100"
+  - Render SVG in PNG alla risoluzione 2x del viewBox per stampa nitida
+  - Filename: `<projetto>-tavole-scala-1-100.pdf`
+
+## Recent Updates (Round 17 — Feb 2026)
+- Quote professionali nero/grigio
+- Pacchetti ordinati per prezzo crescente
+- Doppio bottone su ogni voce Preventivo Live (X + Trash2)
+- Preventivo guard mode
+- Scala 1:100 badge sulle Tavole
+- Prospetti consolidati (IMPIANTI SU QUESTA PARETE)
+- Quote MEP sotto quote porte/finestre
+- Quote su ogni lato di ogni stanza
 
 ## Original Problem Statement
 > "puoi costruire un programma di progettezione tipo cad che faccia anche rendering del risultato per preventivare e progettare ristrutturazioni?"

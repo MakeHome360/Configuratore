@@ -85,6 +85,7 @@ DEFAULT_VOCI_BACKOFFICE = [
     {"id": "voce-cila", "category": "SERVIZI", "name": "Pratica CILA", "prezzo_acquisto": 500.0, "ricarico": 1.8, "unit": "forfait"},
     {"id": "voce-direzione-lavori", "category": "SERVIZI", "name": "Direzione lavori", "prezzo_acquisto": 900.0, "ricarico": 1.8, "unit": "forfait"},
     {"id": "voce-ape", "category": "SERVIZI", "name": "APE Attestato prestazione energetica", "prezzo_acquisto": 180.0, "ricarico": 1.8, "unit": "forfait"},
+    {"id": "voce-demolizione-smaltimento", "category": "MURATURA", "name": "Demolizione e smaltimento", "prezzo_acquisto": 17.0, "ricarico": 1.8, "unit": "m²", "note": "Voce unica per qualsiasi demolizione (pavimento, muri, rivestimenti, cartongesso) - 1 mq comprende rimozione e trasporto in discarica"},
     {"id": "voce-cert-impianti", "category": "SERVIZI", "name": "Certificazioni impianti", "prezzo_acquisto": 360.0, "ricarico": 1.8, "unit": "forfait"},
     {"id": "voce-sicurezza", "category": "SERVIZI", "name": "Sicurezza cantiere", "prezzo_acquisto": 450.0, "ricarico": 1.8, "unit": "forfait"},
     # NUOVE VOCI Round 19 — climatizzazione quadri, posa blindata, carta da parati, pellicolatura PVC, punto acqua composito

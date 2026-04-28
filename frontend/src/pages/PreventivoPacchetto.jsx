@@ -134,6 +134,7 @@ export default function PreventivoPacchetto() {
           included_qty: parseFloat(included.toFixed(2)),
           qty_richiesta: existing ? existing.qty_richiesta : parseFloat(included.toFixed(2)),
           modificabile_dal_venditore: it.modificabile_dal_venditore !== false, // default true se non specificato
+          unit_price_pkg: it.unit_price_pkg, // SOGLIA MAX coperto dal pacchetto (€/unità). Se null → prezzo_rivendita standard
           excluded: existing ? !!existing.excluded : false,
         };
       });
@@ -189,8 +190,19 @@ export default function PreventivoPacchetto() {
     // Semplificazione: il base resta al prezzo a m² del pacchetto intero (il pacchetto è un'offerta unica). Le esclusioni si riflettono SOLO in meno extras.
     const base = pkg.price_per_m2 * (prev.mq || 0);
     const extras = activeItems.reduce((s, it) => {
-      const extra = Math.max(0, (it.qty_richiesta || 0) - (it.included_qty || 0));
-      return s + extra * (it.unit_price || 0);
+      const incl = it.included_qty || 0;
+      const reqs = it.qty_richiesta || 0;
+      const extraQty = Math.max(0, reqs - incl);
+      const unitPrice = it.unit_price || 0;
+      // Extra QTY: paghi il costo pieno per l'eccedenza in quantità
+      const extraQtyCost = extraQty * unitPrice;
+      // Extra PREZZO (soglia pacchetto): paghi solo l'eccedenza di prezzo sulla quota INCLUSA
+      // se la voce è modificabile e la SOGLIA pacchetto unit_price_pkg è stata impostata in AdminPacchetti
+      const soglia = it.unit_price_pkg;
+      const extraPrezzoCost = (soglia != null && soglia > 0 && unitPrice > soglia)
+        ? (unitPrice - soglia) * incl
+        : 0;
+      return s + extraQtyCost + extraPrezzoCost;
     }, 0);
     const optional = (prev.optional || []).reduce((s, o) => s + (o.total || 0), 0);
     const bagno = prev.bathroom_surcharge || 0;
@@ -394,8 +406,12 @@ export default function PreventivoPacchetto() {
                         </thead>
                         <tbody>
                           {activeList.map((it) => {
-                            const extra = Math.max(0, (it.qty_richiesta || 0) - (it.included_qty || 0));
-                            const extraCost = extra * (it.unit_price || 0);
+                            const extraQty = Math.max(0, (it.qty_richiesta || 0) - (it.included_qty || 0));
+                            const extraQtyCost = extraQty * (it.unit_price || 0);
+                            const soglia = it.unit_price_pkg;
+                            const extraPrezzoUnit = (soglia != null && soglia > 0 && it.unit_price > soglia) ? (it.unit_price - soglia) : 0;
+                            const extraPrezzoCost = extraPrezzoUnit * (it.included_qty || 0);
+                            const extraCost = extraQtyCost + extraPrezzoCost;
                             return (
                               <tr key={it.id} className="border-t border-zinc-100" data-testid={`lav-row-${it.id}`}>
                                 <td className="py-2 px-2 text-center">
@@ -410,7 +426,12 @@ export default function PreventivoPacchetto() {
                                     data-testid={`lav-remove-${it.id}`}
                                   ><span className="text-xs">✕</span></button>
                                 </td>
-                                <td className="py-2 px-3">{it.name}</td>
+                                <td className="py-2 px-3">
+                                  {it.name}
+                                  {soglia != null && soglia > 0 && (
+                                    <div className="text-[10px] text-emerald-700 mono">Pacchetto copre fino a {fmtEuro(soglia)}/{it.unit}</div>
+                                  )}
+                                </td>
                                 <td className="py-2 px-3 text-right mono text-xs text-zinc-500">{it.unit}</td>
                                 <td className="py-2 px-3 text-right mono text-zinc-500">{fmtNum(it.included_qty, 2)}</td>
                                 <td className="py-2 px-3 text-right">
@@ -430,7 +451,7 @@ export default function PreventivoPacchetto() {
                                         const v = parseFloat(e.target.value) || 0;
                                         setPrev((s) => ({ ...s, items: s.items.map((x) => x.id === it.id ? { ...x, unit_price: v } : x) }));
                                       }}
-                                      className="rounded-sm h-7 text-right mono text-xs w-20 ml-auto"
+                                      className={`rounded-sm h-7 text-right mono text-xs w-20 ml-auto ${extraPrezzoUnit > 0 ? "border-orange-400 bg-orange-50" : ""}`}
                                       data-testid={`lav-price-${it.id}`}
                                     />
                                   ) : (
@@ -441,7 +462,13 @@ export default function PreventivoPacchetto() {
                                   )}
                                 </td>
                                 <td className={`py-2 px-3 text-right mono text-xs ${extraCost > 0 ? "text-orange-600 font-semibold" : "text-zinc-400"}`}>
-                                  {extraCost > 0 ? <>{`+${fmtNum(extra, 2)} × ${fmtEuro(it.unit_price)} = `}<strong>{fmtEuro(extraCost)}</strong></> : "—"}
+                                  {extraCost > 0 ? (
+                                    <div>
+                                      {extraQty > 0 && <div>{`+${fmtNum(extraQty, 2)} qty × ${fmtEuro(it.unit_price)} = ${fmtEuro(extraQtyCost)}`}</div>}
+                                      {extraPrezzoUnit > 0 && <div className="text-amber-700">{`+${fmtEuro(extraPrezzoUnit)}/${it.unit} × ${fmtNum(it.included_qty, 2)} (sopra soglia) = ${fmtEuro(extraPrezzoCost)}`}</div>}
+                                      <div className="font-bold mt-0.5">Tot. extra: {fmtEuro(extraCost)}</div>
+                                    </div>
+                                  ) : "—"}
                                 </td>
                               </tr>
                             );

@@ -589,6 +589,7 @@ def build_biz_router(db, get_current_user):
     class CommessaIn(BaseModel):
         model_config = ConfigDict(extra="allow")
         preventivo_id: str
+        fasi_attive_ids: Optional[List[str]] = None  # se None → usa tutte le fasi globali
 
     async def next_commessa_number() -> str:
         now = datetime.now(timezone.utc)
@@ -608,6 +609,10 @@ def build_biz_router(db, get_current_user):
         if not prev:
             raise HTTPException(404, "Preventivo non trovato")
         fasi = await db.fasi_commessa.find({}, {"_id": 0}).sort("order", 1).to_list(200)
+        # Cherry-pick: se l'utente ha specificato fasi_attive_ids, filtra solo quelle.
+        if body.fasi_attive_ids is not None and len(body.fasi_attive_ids) > 0:
+            attive_set = set(body.fasi_attive_ids)
+            fasi = [f for f in fasi if f["id"] in attive_set]
         checklist = [
             {"fase_id": f["id"], "order": f["order"], "name": f["name"], "description": f["description"],
              "has_doc": f.get("has_doc", False), "completata": False, "data_completamento": None}

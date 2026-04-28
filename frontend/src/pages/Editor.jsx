@@ -1454,6 +1454,15 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
         <div className="space-y-3">
           <div className="label-kicker">Demolizione · {obj.kind}</div>
           <div className="text-xs mono text-zinc-500">Area: {fmtNum(obj.areaM2 || 0, 2)} m²</div>
+          {obj.kind === "pavimento" && (
+            <div className="bg-orange-50 border border-orange-300 p-2 space-y-1.5" data-testid="demo-pavimento-massetto">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs uppercase tracking-widest text-orange-800">Includi rimozione massetto</Label>
+                <Switch checked={!!obj.with_massetto} onCheckedChange={(v) => updateObj({ with_massetto: v })} data-testid="demo-with-massetto" />
+              </div>
+              <div className="text-[10px] text-orange-700 mono">Se attivo: il computo conta 2× area (pavimento + sottostante massetto da rimuovere).</div>
+            </div>
+          )}
           <button onClick={() => setProject((p) => ({ ...p, demolitions: (p.demolitions || []).filter((x) => x.id !== selected.id) }))} className="text-xs text-rose-600 underline" data-testid="demo-delete">Rimuovi demolizione</button>
         </div>
       );

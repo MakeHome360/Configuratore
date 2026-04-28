@@ -50,6 +50,22 @@
 - ✅ **Carta da parati**: voci backoffice `voce-carta-parati-rimoz` (rimozione) e `voce-carta-parati-posa` (posa) con `cad_category="DECORAZIONE"`; selezionabili per parete singola via wall-decor-voce-select (già esistente)
 - ✅ **Voci backoffice nuove**: 9 voci aggiunte via `/api/voci-backoffice/seed-missing`
 
+## Recent Updates (Round 20 — Feb 2026 — Demolizione unificata + Soglia pacchetto + Fasi cherry-pick)
+- ✅ **Demolizione raggruppata**: tutte le demolizioni CAD (muri, pavimenti, rivestimenti, demo parziali) ora aggregate sotto la voce unica `voce-demolizione` "Demolizione e smaltimento" (€30.6/m²); le voci specifiche restano disponibili per casi puntuali (es. controsoffitto)
+- ✅ **Toggle "+ massetto" su demolizione pavimento**: switch nel pannello proprietà; se attivo conta 2× area (pavimento + sottostante massetto)
+- ✅ **Soglia max prezzo per pacchetto** (`unit_price_pkg` su pkg.items): nel PreventivoPacchetto, se l'utente sceglie una voce a prezzo > soglia, l'eccedenza × qty inclusa viene contata come EXTRA (mostrato in arancione + dettaglio); soglia configurabile in AdminPacchetti (UI già presente)
+- ✅ **Fasi commessa cherry-pick**: nuovo bottone 🔨 sulla pagina Preventivi che apre modal "Converti in Commessa"; checkbox per ogni fase (default tutte selezionate); seleziona/deseleziona tutte; backend `POST /api/commesse` accetta nuovo campo `fasi_attive_ids`; commessa creata contiene SOLO le fasi attive
+- ✅ **Endpoint corretto** `/fasi-commessa` (non `/fasi`)
+- ✅ Voce backoffice "Demolizione e smaltimento" già presente (id `voce-demolizione`)
+
+## Recent Updates (Round 19 — Feb 2026)
+- Climatizzatore Quadri-split (4+1)
+- Punto acqua composito (F+C+S)
+- Posa porta blindata default
+- Pellicolatura PVC + texture
+- Lock prezzo se !modificabile_dal_venditore
+- Carta da parati (rimoz + posa)
+
 ## Original Problem Statement
 > "puoi costruire un programma di progettezione tipo cad che faccia anche rendering del risultato per preventivare e progettare ristrutturazioni?"
 > User explicitly requested a 1:1 functional replica of configuratore.base44.app with CAD as a plus feature.

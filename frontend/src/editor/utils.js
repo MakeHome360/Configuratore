@@ -83,10 +83,11 @@ export function estimateProject(project, catalog) {
 // Map of CAD action key → matching voce_backoffice name (substring match)
 // This is the SOURCE OF TRUTH that links CAD geometry to live quote.
 export const VOCE_MAP = {
-  demolizione_muro: "Demolizione muri",
-  demolizione_pavimento: "Demolizione pavimento",
-  demolizione_rivestimento: "Demolizione rivestimento pareti",
-  demolizione_controsoffitto: "Demolizione controsoffitto",
+  demolizione_smaltimento: "Demolizione e smaltimento",
+  demolizione_muro: "Demolizione muri (specifica)",
+  demolizione_pavimento: "Demolizione pavimento (specifica)",
+  demolizione_rivestimento: "Demolizione rivestimento pareti (specifica)",
+  demolizione_controsoffitto: "Demolizione controsoffitto (specifica)",
   costruzione_muro_mattone: "Muro mattone",
   costruzione_muro_cartongesso: "Muro cartongesso",
   controsoffitto: "Controparete / controsoffitto",
@@ -411,13 +412,14 @@ export function estimateProjectV2(project, voci, packageRef) {
     const lenM = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) / 100;
     const aM2 = lenM * (height / 100);
     if (w.demolito) {
-      add("demolizione_muro", aM2);
+      // VOCE UNIFICATA "Demolizione e smaltimento" (mq) + voce specifica per dettaglio
+      add("demolizione_smaltimento", aM2);
       return;
     }
     if (w.demolito_partial && w.demolito_partial.to > w.demolito_partial.from) {
       const portionM = lenM * (w.demolito_partial.to - w.demolito_partial.from);
       const hM = (w.demolito_partial.height || height) / 100;
-      add("demolizione_muro", portionM * hM);
+      add("demolizione_smaltimento", portionM * hM);
     }
     // Se phase è settata e !== "progetto" → SKIP (è stato di fatto, non si fattura)
     if (w.phase && w.phase !== "progetto") return;
@@ -429,15 +431,22 @@ export function estimateProjectV2(project, voci, packageRef) {
     }
   });
 
-  // Demolizioni esplicite (sempre progetto)
+  // Demolizioni esplicite (sempre progetto) — VOCE UNIFICATA "Demolizione e smaltimento"
   (data.demolitions || []).forEach((d) => {
     let area = d.areaM2 || 0;
     // Se è poligono area free-form, ricalcola area dal polygon
     if (d.polygon && d.polygon.length >= 3) {
       area = polygonArea(d.polygon) / 10000;
     }
-    if (d.kind === "pavimento") add("demolizione_pavimento", area);
-    if (d.kind === "rivestimento") add("demolizione_rivestimento", area);
+    // Pavimento: opzione "solo pavimento" (1× area) vs "pavimento + massetto" (2× area, perché è doppio lavoro)
+    if (d.kind === "pavimento") {
+      const mult = d.with_massetto ? 2 : 1;
+      add("demolizione_smaltimento", area * mult);
+    } else if (d.kind === "rivestimento" || d.kind === "cartongesso" || d.kind === "controsoffitto") {
+      add("demolizione_smaltimento", area);
+    } else {
+      add("demolizione_smaltimento", area);
+    }
   });
 
   // Doors / Windows — solo nuovi (phase==="progetto")

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { Page, PageHeader, fmtEur, statoPreventivoBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
-import { FilePlus2, Eye, Trash2, Pencil } from "lucide-react";
+import { FilePlus2, Eye, Trash2, Pencil, Hammer } from "lucide-react";
 import { toast } from "sonner";
 
 const PKG_NAMES = { "pkg-basic": "BASIC", "pkg-smart": "SMART", "pkg-premium": "PREMIUM", "pkg-elite": "ELITE" };
@@ -13,16 +13,37 @@ const ROUTES = { pacchetto: "/preventivopacchetto", bagno: "/preventivobagno", c
 export default function Preventivi() {
   const [rows, setRows] = useState([]);
   const [filter, setFilter] = useState("");
+  const [commessaModal, setCommessaModal] = useState(null); // { preventivo, fasi, selected: Set }
+  const [allFasi, setAllFasi] = useState([]);
   const nav = useNavigate();
 
   const load = () => api.get("/preventivi").then((r) => setRows(r.data || [])).catch(() => {});
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); api.get("/fasi-commessa").then((r) => setAllFasi(r.data || [])).catch(() => {}); }, []);
 
   const del = async (id) => {
     if (!window.confirm("Eliminare questo preventivo?")) return;
     await api.delete(`/preventivi/${id}`);
     toast.success("Eliminato");
     load();
+  };
+
+  const openCommessaModal = (p) => {
+    if (p.stato !== "accettato") {
+      if (!window.confirm("Il preventivo non è ACCETTATO. Vuoi creare comunque la commessa?")) return;
+    }
+    setCommessaModal({ preventivo: p, selected: new Set(allFasi.map((f) => f.id)) });
+  };
+
+  const confirmCreateCommessa = async () => {
+    const { preventivo, selected } = commessaModal;
+    try {
+      await api.post("/commesse", { preventivo_id: preventivo.id, fasi_attive_ids: Array.from(selected) });
+      toast.success(`Commessa creata con ${selected.size} fasi`);
+      setCommessaModal(null);
+      nav("/commesse");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Errore creazione commessa");
+    }
   };
 
   const openOrCreateProgetto = async (p) => {
@@ -100,6 +121,9 @@ export default function Preventivi() {
                       <button className="p-1.5 rounded hover:bg-emerald-50" onClick={() => openOrCreateProgetto(p)} title={p.project_id ? "Apri progettazione collegata" : "Crea progettazione da questo preventivo"} data-testid={`prev-cad-${p.id}`}>
                         <Eye className={`h-4 w-4 ${p.project_id ? "text-emerald-600" : "text-zinc-400"}`} />
                       </button>
+                      <button className="p-1.5 rounded hover:bg-orange-50" onClick={() => openCommessaModal(p)} title="Converti in Commessa (cantiere)" data-testid={`prev-commessa-${p.id}`}>
+                        <Hammer className="h-4 w-4 text-orange-600" />
+                      </button>
                       <button className="p-1.5 rounded hover:bg-rose-50" onClick={() => del(p.id)} title="Elimina" data-testid={`prev-del-${p.id}`}>
                         <Trash2 className="h-4 w-4 text-rose-600" />
                       </button>
@@ -114,6 +138,49 @@ export default function Preventivi() {
           </table>
         </div>
       </Page>
+      {commessaModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setCommessaModal(null)} data-testid="commessa-modal">
+          <div className="bg-white w-full max-w-2xl rounded-lg flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b">
+              <h2 className="text-lg font-semibold">Converti in Commessa</h2>
+              <div className="text-xs text-zinc-500 mt-1">Preventivo {commessaModal.preventivo.numero} · {commessaModal.preventivo.cliente?.nome} {commessaModal.preventivo.cliente?.cognome}</div>
+            </div>
+            <div className="px-6 py-4 flex-1 overflow-auto">
+              <div className="text-sm font-semibold mb-2">Seleziona le fasi attive per questo cantiere</div>
+              <div className="text-xs text-zinc-500 mb-3">Solo le fasi selezionate verranno create nella commessa. Disabilita quelle non pertinenti per questo cantiere.</div>
+              <div className="flex gap-2 mb-3">
+                <button onClick={() => setCommessaModal((m) => ({ ...m, selected: new Set(allFasi.map((f) => f.id)) }))} className="text-xs underline text-emerald-700" data-testid="fasi-select-all">Seleziona tutte</button>
+                <button onClick={() => setCommessaModal((m) => ({ ...m, selected: new Set() }))} className="text-xs underline text-zinc-600" data-testid="fasi-clear-all">Deseleziona tutte</button>
+              </div>
+              <div className="space-y-1.5 max-h-[400px] overflow-auto border border-zinc-200 rounded">
+                {allFasi.map((f) => {
+                  const checked = commessaModal.selected.has(f.id);
+                  return (
+                    <label key={f.id} className="flex items-center gap-2 px-3 py-2 hover:bg-zinc-50 cursor-pointer border-b border-zinc-100 last:border-b-0" data-testid={`fase-row-${f.id}`}>
+                      <input type="checkbox" checked={checked} onChange={(e) => {
+                        const sel = new Set(commessaModal.selected);
+                        if (e.target.checked) sel.add(f.id); else sel.delete(f.id);
+                        setCommessaModal((m) => ({ ...m, selected: sel }));
+                      }} className="h-4 w-4" data-testid={`fase-check-${f.id}`} />
+                      <span className="font-mono text-xs text-zinc-400 w-8">{f.order || ""}</span>
+                      <span className="text-sm flex-1">{f.name}</span>
+                      <span className="text-xs text-zinc-400 mono">{f.tag || ""}</span>
+                    </label>
+                  );
+                })}
+                {!allFasi.length && (
+                  <div className="px-3 py-6 text-center text-zinc-500 text-sm">Nessuna fase configurata. Vai in Admin → Fasi Commessa per crearle.</div>
+                )}
+              </div>
+              <div className="text-xs text-emerald-700 mt-2 font-semibold" data-testid="fasi-selected-count">{commessaModal.selected.size} fasi attive su {allFasi.length}</div>
+            </div>
+            <div className="px-6 py-3 border-t flex justify-end gap-2 bg-zinc-50">
+              <Button variant="outline" onClick={() => setCommessaModal(null)}>Annulla</Button>
+              <Button onClick={confirmCreateCommessa} style={{ background: "var(--brand)", color: "white" }} data-testid="btn-create-commessa">Crea Commessa</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -160,7 +160,7 @@ export const NAME_TO_CAD_KEY = Object.fromEntries(
 // fullCoverage=true significa che la voce inclusa nel pacchetto COPRE INTERAMENTE la qty CAD effettiva
 // (per voci forfait pacchetto come "Decorazione" — è inclusa per tutta la casa, NON limitata da ratio×mq).
 export const PACKAGE_VOCE_GROUPS = {
-  "demolizione e smaltimento": { keys: ["demolizione_pavimento", "demolizione_muro", "demolizione_rivestimento", "demolizione_controsoffitto"], shared: true, fullCoverage: true },
+  "demolizione e smaltimento": { keys: ["demolizione_smaltimento", "demolizione_pavimento", "demolizione_muro", "demolizione_rivestimento", "demolizione_controsoffitto"], shared: true, fullCoverage: true },
   "decorazione": { keys: ["pittura_pareti"], shared: false, fullCoverage: true },
   "pittura prima mano": { keys: ["pittura_pareti"], shared: false, fullCoverage: true },
   "rasatura pareti": { keys: ["pittura_pareti"], shared: false, fullCoverage: true },

@@ -41,6 +41,15 @@
 - Quote MEP sotto quote porte/finestre
 - Quote su ogni lato di ogni stanza
 
+## Recent Updates (Round 19 — Feb 2026 — Multi-split, punto acqua composito, pellicolatura, lock prezzo)
+- ✅ **Climatizzatore Quadri-split**: nuovo HVAC kind con auto-piazzamento 4 split + 1 UE; banner "Posiziona Split N/4"; voce backoffice `voce-condiz-quadri`
+- ✅ **Punto acqua composito (F+C+S)**: tipo "punto-completo" con flag has_fredda/has_calda/has_scarico (qualsiasi sotto-insieme); il CAD mostra i cerchi delle sole tubazioni richieste; sempre conta come 1 punto acqua; switch toggle nel pannello proprietà
+- ✅ **Posa porta blindata default**: quando NON c'è pacchetto, ogni porta blindata aggiunge automaticamente la voce "Posa porta blindata"; nei pacchetti la posa è inclusa
+- ✅ **Pellicolatura PVC**: switch + texture text per ogni finestra PVC; calcola maggiorazione % (default 25%, configurabile dalle Voci Backoffice)
+- ✅ **Lock prezzo se !modificabile_dal_venditore**: nel PreventivoPacchetto il campo "€/unità" mostra 🔒 e prezzo read-only se voce non modificabile; modificabile_dal_venditore viene propagato da pkg.items → prev.items
+- ✅ **Carta da parati**: voci backoffice `voce-carta-parati-rimoz` (rimozione) e `voce-carta-parati-posa` (posa) con `cad_category="DECORAZIONE"`; selezionabili per parete singola via wall-decor-voce-select (già esistente)
+- ✅ **Voci backoffice nuove**: 9 voci aggiunte via `/api/voci-backoffice/seed-missing`
+
 ## Original Problem Statement
 > "puoi costruire un programma di progettezione tipo cad che faccia anche rendering del risultato per preventivare e progettare ristrutturazioni?"
 > User explicitly requested a 1:1 functional replica of configuratore.base44.app with CAD as a plus feature.

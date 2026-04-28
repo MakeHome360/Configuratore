@@ -108,6 +108,7 @@ export const VOCE_MAP = {
   quadro_elettrico: "Quadro elettrico",
   impianto_idraulico_mq: "Impianto idraulico completo",
   punto_acqua: "Punto acqua",
+  punto_acqua_completo: "Punto acqua completo (F+C+S)",
   punto_scarico: "Punto scarico",
   punto_gas: "Punto gas",
   riscaldamento_radiatori: "Impianto riscaldamento radiatori",
@@ -116,6 +117,7 @@ export const VOCE_MAP = {
   climatizzatore_mono: "Climatizzatore mono split",
   climatizzatore_dual: "Climatizzatore dual split",
   climatizzatore_trial: "Climatizzatore trial split",
+  climatizzatore_quadri: "Climatizzatore quadri-split (4 split + 1 UE)",
   climatizzatore_canalizzato: "Climatizzatore canalizzato (controsoffitto)",
   caldaia_condensazione: "Caldaia a condensazione",
   caldaia_ibrida: "Caldaia ibrida (pompa di calore)",
@@ -134,6 +136,7 @@ export const VOCE_MAP = {
   porta_blindata_cl3: "Porta blindata Classe 3",
   porta_blindata_cl4: "Porta blindata Classe 4",
   porta_blindata: "Pannello porta blindata",
+  posa_porta_blindata: "Posa porta blindata",
   finestre_pvc: "Infissi PVC bianchi (esterni)",
   finestre_alluminio: "Infissi alluminio taglio termico (esterni)",
   finestre_legno: "Infissi legno/alluminio (esterni)",
@@ -439,15 +442,29 @@ export function estimateProjectV2(project, voci, packageRef) {
 
   // Doors / Windows — solo nuovi (phase==="progetto")
   (data.doors || []).filter(isProgetto).forEach((d) => {
-    if (d.type === "blindata-cl4") add("porta_blindata_cl4", 1);
-    else if (d.type === "blindata-cl3" || d.type === "blindata") add("porta_blindata_cl3", 1);
-    else add("porta_interna", 1);
+    if (d.type === "blindata-cl4") {
+      add("porta_blindata_cl4", 1);
+      // POSA blindata aggiunta DI DEFAULT (a meno che il pacchetto la includa)
+      if (!packageRef) add("posa_porta_blindata", 1);
+    } else if (d.type === "blindata-cl3" || d.type === "blindata") {
+      add("porta_blindata_cl3", 1);
+      if (!packageRef) add("posa_porta_blindata", 1);
+    } else {
+      add("porta_interna", 1);
+    }
   });
   (data.windows || []).filter(isProgetto).forEach((w) => {
     const mat = w.material || "pvc";
     if (mat === "alluminio") add("finestre_alluminio", 1);
     else if (mat === "legno") add("finestre_legno", 1);
-    else add("finestre_pvc", 1);
+    else {
+      add("finestre_pvc", 1);
+      // PVC pellicolato: maggiorazione % se richiesta dall'utente
+      if (w.pellicolato) {
+        // La maggiorazione è una % del prezzo dell'infisso pvc → la mostriamo come riga separata
+        // Verrà calcolata in lump items dopo
+      }
+    }
   });
 
   // Impianti dettagliati — tutti contati per billing (anche se phase=fatto: l'impianto è sempre nuova fornitura)
@@ -459,15 +476,21 @@ export function estimateProjectV2(project, voci, packageRef) {
     else add("punto_luce", 1); // fallback per altri tipi
   });
   (data.plumbing || []).forEach((p) => {
-    if (p.type === "scarico" || p.type === "acqua-scarico") add("punto_scarico", 1);
-    else add("punto_acqua", 1);
+    if (p.type === "punto-completo" || p.type === "acqua-completo") {
+      add("punto_acqua_completo", 1);
+    } else if (p.type === "scarico" || p.type === "acqua-scarico") {
+      add("punto_scarico", 1);
+    } else {
+      add("punto_acqua", 1);
+    }
   });
   (data.gas || []).forEach(() => add("punto_gas", 1));
   (data.hvac || []).forEach((h) => {
     const t = h.type || "split";
-    // Per multi-split (gruppi): trial/dual sono fatturati una volta come "trial"/"dual" (sul UE).
-    // Gli split del gruppo non aggiungono ulteriore prezzo singolo (sono inclusi nel trial/dual).
+    // Per multi-split (gruppi): quadri/trial/dual sono fatturati una volta come voce-condiz-* (sul UE).
+    // Gli split del gruppo non aggiungono ulteriore prezzo singolo (sono inclusi nel pacchetto).
     if (h.group_id && h.group_kind && t === "split") return; // Split del gruppo: skip (già contato sull'UE)
+    if (h.group_id && h.group_kind === "quadri-split" && t === "esterna") { add("climatizzatore_quadri", 1); return; }
     if (h.group_id && h.group_kind === "trial-split" && t === "esterna") { add("climatizzatore_trial", 1); return; }
     if (h.group_id && h.group_kind === "dual-split" && t === "esterna") { add("climatizzatore_dual", 1); return; }
     if (t === "predisposizione") add("predisposizione_clima", 1);
@@ -689,6 +712,32 @@ export function estimateProjectV2(project, voci, packageRef) {
       voce_id: voceId, category: "Decorazioni pareti", manual: true,
     });
   });
+  // PELLICOLATURA INFISSI PVC — maggiorazione % per finestre con flag pellicolato=true
+  // Cerca la voce maggiorazione_pct nelle voci backoffice (fallback 25%)
+  const pellicolatura = (voci || []).find((v) => v.id === "voce-pellicolatura-pvc");
+  const pellicolaturaPct = (pellicolatura?.maggiorazione_pct ?? 25) / 100;
+  const pvcWindows = (data.windows || []).filter((w) => w.phase === "progetto" && (w.material || "pvc") === "pvc" && w.pellicolato);
+  if (pvcWindows.length > 0) {
+    const pvcVoce = (voci || []).find((v) => v.id === "voce-infissi-pvc");
+    const basePvcUnit = pvcVoce ? (pvcVoce.prezzo_acquisto * (pvcVoce.ricarico || 1.8)) : 504;
+    const groups = {};
+    pvcWindows.forEach((w) => {
+      const tex = (w.pellicolato_texture || "Standard").trim() || "Standard";
+      const k = `pellicolatura-${tex.replace(/\s+/g, "-").toLowerCase()}`;
+      if (!groups[k]) groups[k] = { texture: tex, count: 0 };
+      groups[k].count += 1;
+    });
+    Object.entries(groups).forEach(([k, info]) => {
+      const totalRow = round2(info.count * basePvcUnit * pellicolaturaPct);
+      lumpItems.push({
+        key: k, name: `Pellicolatura PVC ${pellicolaturaPct * 100}% · texture "${info.texture}"`,
+        unit: "pz",
+        qty: info.count, qty_inclusa: 0, qty_extra: info.count,
+        unit_price: round2(basePvcUnit * pellicolaturaPct), total: totalRow,
+        voce_id: "voce-pellicolatura-pvc", category: "INFISSI", manual: true,
+      });
+    });
+  }
   lumpItems.forEach((it) => { totalExtra += it.total; });
   items.push(...lumpItems);
 

@@ -695,6 +695,7 @@ export default function Editor() {
           {(activeGroup === "termo" || activeGroup === "impianti") && tool === "hvac" && (() => {
             const cadKindToHvacType = {
               "termo.mono_split": "split", "termo.dual_split": "dual-split", "termo.trial_split": "trial-split",
+              "termo.quadri_split": "quadri-split",
               "termo.unita_esterna": "esterna", "termo.canalizzato": "canalizzato", "termo.vmc": "vmc",
               "termo.predisposizione": "predisposizione", "termo.caldaia": "caldaia", "termo.caldaia_ibrida": "caldaia-ibrida",
               "termo.pompa_calore": "pompa-calore", "termo.scaldabagno": "scaldabagno", "termo.termoarredo": "termoarredo",
@@ -705,9 +706,17 @@ export default function Editor() {
               .filter(v => v.cad_category === "TERMO_IDRAULICO" && (v.active !== false))
               .filter(v => cadKindToHvacType[v.cad_kind])
               .map(v => ({ v: cadKindToHvacType[v.cad_kind], l: v.name }));
-            // Dedup by value
+            // Aggiungi sempre mono/dual/trial/quadri come fallback
+            const fallback = [
+              { v: "split", l: "Mono split" },
+              { v: "dual-split", l: "Dual split (2 split + UE)" },
+              { v: "trial-split", l: "Trial split (3 split + UE)" },
+              { v: "quadri-split", l: "Quadri split (4 split + UE)" },
+            ];
+            // Dedup by value preserving fallback order
             const seen = new Set();
-            const opts = dynamicOpts.filter(o => { if (seen.has(o.v)) return false; seen.add(o.v); return true; });
+            const merged = [...fallback, ...dynamicOpts].filter(o => { if (seen.has(o.v)) return false; seen.add(o.v); return true; });
+            const opts = merged;
             return opts.length > 0 ? (
               <SubKindPicker label="Elemento (da Backoffice)" value={hvacKind} onChange={setHvacKind} options={opts} testid="hvac-kind" />
             ) : (
@@ -724,9 +733,10 @@ export default function Editor() {
           )}
           {(activeGroup === "termo" || activeGroup === "impianti") && tool === "plumbing" && (
             <SubKindPicker label="Elemento" value={plumbingKind} onChange={setPlumbingKind} options={[
-              { v: "acqua-fredda", l: "Punto acqua fredda" },
-              { v: "acqua-calda", l: "Punto acqua calda" },
-              { v: "scarico", l: "Punto scarico" },
+              { v: "punto-completo", l: "Punto acqua COMPLETO (F+C+S)" },
+              { v: "acqua-fredda", l: "Solo acqua fredda" },
+              { v: "acqua-calda", l: "Solo acqua calda" },
+              { v: "scarico", l: "Solo scarico" },
               { v: "lavatrice", l: "Attacco lavatrice" },
               { v: "lavastoviglie", l: "Attacco lavastoviglie" },
             ]} testid="plumb-kind" />
@@ -1330,6 +1340,22 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
         <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Larghezza (cm)</Label><Input type="number" value={obj.width} onChange={(e) => updateObj({ width: parseInt(e.target.value) || 80 })} className="rounded-sm h-9 mt-1.5 mono" /></div>
         <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Altezza (cm)</Label><Input type="number" value={obj.height} onChange={(e) => updateObj({ height: parseInt(e.target.value) || 210 })} className="rounded-sm h-9 mt-1.5 mono" /></div>
         {!isDoor && (<div><Label className="text-xs uppercase tracking-widest text-zinc-500">Parapetto (cm)</Label><Input type="number" value={obj.sillHeight || 90} onChange={(e) => updateObj({ sillHeight: parseInt(e.target.value) || 90 })} className="rounded-sm h-9 mt-1.5 mono" /></div>)}
+        {/* PVC pellicolato: maggiorazione % per finestra */}
+        {!isDoor && (obj.material || "pvc") === "pvc" && (
+          <div className="bg-amber-50 border border-amber-300 p-2 space-y-1.5" data-testid="win-pellicolatura">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs uppercase tracking-widest text-amber-800">Pellicolatura PVC (+25%)</Label>
+              <Switch checked={!!obj.pellicolato} onCheckedChange={(v) => updateObj({ pellicolato: v })} data-testid="win-pellicolato-switch" />
+            </div>
+            {obj.pellicolato && (
+              <div>
+                <Label className="text-[10px] uppercase tracking-widest text-amber-800">Texture / finitura</Label>
+                <Input value={obj.pellicolato_texture || ""} placeholder="Es. Quercia chiara, Antracite RAL7016" onChange={(e) => updateObj({ pellicolato_texture: e.target.value })} className="rounded-sm h-8 mt-1 text-xs" data-testid="win-pellicolato-texture" />
+              </div>
+            )}
+            <div className="text-[10px] text-amber-700 mono">Il prezzo PVC bianco-massa viene maggiorato della % decisa dalle Voci Backoffice (default 25%).</div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1364,6 +1390,26 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
             </div>
           </div>
         )}
+        {/* Punto acqua composito: scegli quali tubazioni includere (F+C+S, sotto-insiemi) */}
+        {kind === "plumbing" && (obj.type === "punto-completo" || obj.type === "acqua-completo") && (
+          <div className="bg-cyan-50 border border-cyan-300 p-2 space-y-1.5" data-testid="plumb-completo-flags">
+            <Label className="text-xs uppercase tracking-widest text-cyan-800">Componenti del punto acqua</Label>
+            <div className="flex items-center justify-between text-xs">
+              <span><span className="inline-block w-3 h-3 rounded-full bg-sky-500 mr-1 align-middle"></span>F · acqua fredda</span>
+              <Switch checked={obj.has_fredda !== false} onCheckedChange={(v) => updateObj({ has_fredda: v })} data-testid="plumb-flag-fredda" />
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span><span className="inline-block w-3 h-3 rounded-full bg-rose-500 mr-1 align-middle"></span>C · acqua calda</span>
+              <Switch checked={obj.has_calda !== false} onCheckedChange={(v) => updateObj({ has_calda: v })} data-testid="plumb-flag-calda" />
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span><span className="inline-block w-3 h-3 rounded-full bg-cyan-700 mr-1 align-middle"></span>S · scarico</span>
+              <Switch checked={obj.has_scarico !== false} onCheckedChange={(v) => updateObj({ has_scarico: v })} data-testid="plumb-flag-scarico" />
+            </div>
+            <div className="text-[10px] text-cyan-700 mono mt-1">Resta sempre 1 punto acqua (per l'incidenza € pacchetto), ma il CAD mostra solo le tubazioni effettivamente richieste.</div>
+          </div>
+        )}
+        {/* Pellicolatura per finestre PVC: la mostra solo se kind=windows ma siamo in plumbing block, lasciato qui per compattezza... NO: rimosso */}
       </div>
     );
   }

@@ -130,9 +130,11 @@ export default function PreventivoPacchetto() {
         return {
           id: it.id, voce_id: it.voce_id || it.id, name: it.name, category: it.category, unit: it.unit,
           qty_mode: it.qty_mode, qty_ratio: it.qty_ratio, qty_value: it.qty_value,
-          unit_price: it.prezzo_rivendita || 0,
+          unit_price: existing && existing.unit_price != null ? existing.unit_price : (it.prezzo_rivendita || 0),
           included_qty: parseFloat(included.toFixed(2)),
           qty_richiesta: existing ? existing.qty_richiesta : parseFloat(included.toFixed(2)),
+          modificabile_dal_venditore: it.modificabile_dal_venditore !== false, // default true se non specificato
+          excluded: existing ? !!existing.excluded : false,
         };
       });
       // Preserve EXTRA rows aggiunte dal configuratore (from_configuratore=true)
@@ -422,14 +424,21 @@ export default function PreventivoPacchetto() {
                                   />
                                 </td>
                                 <td className="py-2 px-3 text-right">
-                                  <Input type="number" step="0.01" value={it.unit_price}
-                                    onChange={(e) => {
-                                      const v = parseFloat(e.target.value) || 0;
-                                      setPrev((s) => ({ ...s, items: s.items.map((x) => x.id === it.id ? { ...x, unit_price: v } : x) }));
-                                    }}
-                                    className="rounded-sm h-7 text-right mono text-xs w-20 ml-auto"
-                                    data-testid={`lav-price-${it.id}`}
-                                  />
+                                  {it.modificabile_dal_venditore ? (
+                                    <Input type="number" step="0.01" value={it.unit_price}
+                                      onChange={(e) => {
+                                        const v = parseFloat(e.target.value) || 0;
+                                        setPrev((s) => ({ ...s, items: s.items.map((x) => x.id === it.id ? { ...x, unit_price: v } : x) }));
+                                      }}
+                                      className="rounded-sm h-7 text-right mono text-xs w-20 ml-auto"
+                                      data-testid={`lav-price-${it.id}`}
+                                    />
+                                  ) : (
+                                    <div className="mono text-xs text-zinc-700 inline-flex items-center gap-1" title="Voce NON modificabile dal venditore (impostato in Voci Backoffice)">
+                                      <span className="lock-icon text-zinc-400">🔒</span>
+                                      <span>{fmtEuro(it.unit_price)}</span>
+                                    </div>
+                                  )}
                                 </td>
                                 <td className={`py-2 px-3 text-right mono text-xs ${extraCost > 0 ? "text-orange-600 font-semibold" : "text-zinc-400"}`}>
                                   {extraCost > 0 ? <>{`+${fmtNum(extra, 2)} × ${fmtEuro(it.unit_price)} = `}<strong>{fmtEuro(extraCost)}</strong></> : "—"}

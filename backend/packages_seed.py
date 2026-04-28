@@ -87,6 +87,15 @@ DEFAULT_VOCI_BACKOFFICE = [
     {"id": "voce-ape", "category": "SERVIZI", "name": "APE Attestato prestazione energetica", "prezzo_acquisto": 180.0, "ricarico": 1.8, "unit": "forfait"},
     {"id": "voce-cert-impianti", "category": "SERVIZI", "name": "Certificazioni impianti", "prezzo_acquisto": 360.0, "ricarico": 1.8, "unit": "forfait"},
     {"id": "voce-sicurezza", "category": "SERVIZI", "name": "Sicurezza cantiere", "prezzo_acquisto": 450.0, "ricarico": 1.8, "unit": "forfait"},
+    # NUOVE VOCI Round 19 — climatizzazione quadri, posa blindata, carta da parati, pellicolatura PVC, punto acqua composito
+    {"id": "voce-condiz-quadri", "category": "IMPIANTI", "name": "Climatizzatore quadri-split (4 split + 1 UE)", "prezzo_acquisto": 3300.0, "ricarico": 1.8, "unit": "pz", "cad_category": "CLIMA"},
+    {"id": "voce-posa-porta-blindata", "category": "INFISSI", "name": "Posa porta blindata", "prezzo_acquisto": 250.0, "ricarico": 1.8, "unit": "pz"},
+    {"id": "voce-carta-parati-rimoz", "category": "MURATURA", "name": "Rimozione carta da parati", "prezzo_acquisto": 9.0, "ricarico": 1.8, "unit": "m²", "cad_category": "DECORAZIONE"},
+    {"id": "voce-carta-parati-posa", "category": "MURATURA", "name": "Posa carta da parati", "prezzo_acquisto": 28.0, "ricarico": 1.8, "unit": "m²", "modificabile_dal_venditore": True, "cad_category": "DECORAZIONE"},
+    # Maggiorazione pellicolatura: l'utente può aggiungerla agli infissi PVC. La % si imposta nelle voci backoffice.
+    {"id": "voce-pellicolatura-pvc", "category": "INFISSI", "name": "Pellicolatura infissi PVC (maggiorazione)", "prezzo_acquisto": 0.0, "ricarico": 1.0, "unit": "%", "modificabile_dal_venditore": True, "maggiorazione_pct": 25.0, "note": "Imposta la % di maggiorazione applicata al prezzo degli infissi PVC quando si sceglie pellicolatura"},
+    # Punto acqua composito (fredda/calda/scarico) — un solo punto contato in qty
+    {"id": "voce-punto-acqua-completo", "category": "IMPIANTI", "name": "Punto acqua completo (F+C+S)", "prezzo_acquisto": 80.0, "ricarico": 1.8, "unit": "pz", "cad_category": "TERMO_IDRAULICO"},
 ]
 
 # ---------------- Pacchetti (BASIC / SMART / PREMIUM / ELITE) ----------------

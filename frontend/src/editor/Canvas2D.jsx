@@ -46,6 +46,30 @@ function ElectricalSymbol({ e, isSel }) {
 }
 
 function PlumbingSymbol({ p, isSel }) {
+  if (p.type === "punto-completo" || p.type === "acqua-completo") {
+    // Composite: 3 cerchi affiancati
+    const cF = isSel ? "#2563EB" : "#0EA5E9";
+    const cC = isSel ? "#2563EB" : "#DC2626";
+    const cS = isSel ? "#2563EB" : "#0891B2";
+    const items = [];
+    if (p.has_fredda !== false) items.push({ c: cF, lbl: "F" });
+    if (p.has_calda !== false) items.push({ c: cC, lbl: "C" });
+    if (p.has_scarico !== false) items.push({ c: cS, lbl: "S" });
+    const N = items.length || 3;
+    const W = 30;
+    const startX = -((N - 1) * W) / 2;
+    return (
+      <g>
+        {items.map((it, i) => (
+          <g key={i} transform={`translate(${startX + i * W}, 0)`}>
+            <circle cx={0} cy={0} r={11} fill="white" stroke={it.c} strokeWidth="2" />
+            <text x={0} y={4} fontSize="11" textAnchor="middle" fontWeight="900" fill={it.c}>{it.lbl}</text>
+          </g>
+        ))}
+        <text x={0} y={26} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill="#525252">PUNTO ACQUA</text>
+      </g>
+    );
+  }
   const c = isSel ? "#2563EB" : (p.type === "scarico" ? "#0891B2" : (p.type === "acqua-calda" ? "#DC2626" : "#0EA5E9"));
   const lbl = p.type === "scarico" ? "SCARICO" : (p.type === "acqua-calda" ? "C. CALDA" : "C. FREDDA");
   const sym = p.type === "scarico" ? "S" : (p.type === "acqua-calda" ? "C" : "F");
@@ -136,6 +160,9 @@ function HvacSymbol({ h, isSel }) {
   }
   if (t === "trial-split") {
     return <g><rect x={-34} y={-9} width={68} height={18} rx={3} fill="white" stroke={c} strokeWidth="1.5" /><text x={0} y={4} fontSize="10" textAnchor="middle" fontWeight="700" fill={c}>TRIAL SPL.</text></g>;
+  }
+  if (t === "quadri-split") {
+    return <g><rect x={-36} y={-9} width={72} height={18} rx={3} fill="white" stroke={c} strokeWidth="1.5" /><text x={0} y={4} fontSize="10" textAnchor="middle" fontWeight="700" fill={c}>QUADRI SPL.</text></g>;
   }
   // default split
   return <g><rect x={-30} y={-9} width={60} height={18} rx={3} fill="white" stroke={c} strokeWidth="1.5" /><text x={0} y={4} fontSize="10" textAnchor="middle" fontWeight="700" fill={c}>SPLIT</text></g>;
@@ -605,7 +632,10 @@ export default function Canvas2D({
     }
     if (tool === "plumbing") {
       const kind = plumbingKind || "acqua-fredda";
-      setProject((prj) => ({ ...prj, plumbing: [...(prj.plumbing || []), { id: uid(), type: kind, x: p.x, y: p.y, phase: VM }] }));
+      const extra = (kind === "punto-completo")
+        ? { has_fredda: true, has_calda: true, has_scarico: true }
+        : {};
+      setProject((prj) => ({ ...prj, plumbing: [...(prj.plumbing || []), { id: uid(), type: kind, x: p.x, y: p.y, phase: VM, ...extra }] }));
       return;
     }
     if (tool === "gas") {
@@ -614,10 +644,11 @@ export default function Canvas2D({
     }
     if (tool === "hvac") {
       const kind = hvacKind || "split";
-      // Multi-split: trial = 3 split, dual = 2 split. Posiziona uno alla volta.
+      // Multi-split: quadri = 4 split, trial = 3 split, dual = 2 split. Posiziona uno alla volta.
       // Conta gli split già piazzati appartenenti al gruppo corrente (group_id condiviso)
-      if (kind === "trial-split" || kind === "dual-split") {
-        const expected = kind === "trial-split" ? 3 : 2;
+      if (kind === "trial-split" || kind === "dual-split" || kind === "quadri-split") {
+        const expected = kind === "quadri-split" ? 4 : (kind === "trial-split" ? 3 : 2);
+        const labelPrefix = kind === "quadri-split" ? "Quadri" : (kind === "trial-split" ? "Trial" : "Dual");
         // Reset gruppo se ultimo gruppo è completo o non esiste
         const groupId = (() => {
           const all = (project.hvac || []).filter(h => h.group_kind === kind && h.phase === VM);
@@ -634,11 +665,11 @@ export default function Canvas2D({
           const splitsCount = sameGroup.filter(h => h.type === "split").length;
           // Primo click: crea UE
           if (!has_ue) {
-            return { ...prj, hvac: [...(prj.hvac || []), { id: uid(), type: "esterna", x: p.x, y: p.y, phase: VM, group_id: groupId, group_kind: kind, group_label: `${kind === "trial-split" ? "Trial" : "Dual"} - UE` }] };
+            return { ...prj, hvac: [...(prj.hvac || []), { id: uid(), type: "esterna", x: p.x, y: p.y, phase: VM, group_id: groupId, group_kind: kind, group_label: `${labelPrefix} - UE` }] };
           }
           // Click successivi: aggiungi split (fino a expected)
           if (splitsCount < expected) {
-            return { ...prj, hvac: [...(prj.hvac || []), { id: uid(), type: "split", x: p.x, y: p.y, phase: VM, group_id: groupId, group_kind: kind, group_label: `${kind === "trial-split" ? "Trial" : "Dual"} - Split ${splitsCount + 1}/${expected}` }] };
+            return { ...prj, hvac: [...(prj.hvac || []), { id: uid(), type: "split", x: p.x, y: p.y, phase: VM, group_id: groupId, group_kind: kind, group_label: `${labelPrefix} - Split ${splitsCount + 1}/${expected}` }] };
           }
           return prj;
         });
@@ -1527,15 +1558,16 @@ export default function Canvas2D({
       {tool === "hvac" && (() => {
         // Banner intelligente per multi-split
         const kind = hvacKind || "split";
-        if (kind === "trial-split" || kind === "dual-split") {
-          const expected = kind === "trial-split" ? 3 : 2;
+        if (kind === "trial-split" || kind === "dual-split" || kind === "quadri-split") {
+          const expected = kind === "quadri-split" ? 4 : (kind === "trial-split" ? 3 : 2);
+          const labelPrefix = kind === "quadri-split" ? "Quadri" : (kind === "trial-split" ? "Trial" : "Dual");
           const all = (project.hvac || []).filter(h => h.group_kind === kind && h.phase === VM);
           const lastGid = all.length ? all[all.length - 1].group_id : null;
           const sameGroup = all.filter(h => h.group_id === lastGid);
           const has_ue = sameGroup.some(h => h.type === "esterna");
           const splitsCount = sameGroup.filter(h => h.type === "split").length;
           const completed = sameGroup.length >= expected + 1;
-          const next = !has_ue ? "Posiziona Unità Esterna (UE)" : (completed ? `${kind} completato — click per nuovo gruppo` : `Posiziona Split ${splitsCount + 1}/${expected}`);
+          const next = !has_ue ? "Posiziona Unità Esterna (UE)" : (completed ? `${labelPrefix} completato — click per nuovo gruppo` : `Posiziona Split ${splitsCount + 1}/${expected}`);
           return <div className="absolute top-3 left-3 bg-teal-700 text-white px-3 py-1.5 text-xs mono">condizionamento · {kind} · {next}</div>;
         }
         return <div className="absolute top-3 left-3 bg-teal-700 text-white px-3 py-1.5 text-xs mono">condizionamento · {kind}</div>;

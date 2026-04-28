@@ -896,7 +896,7 @@ export default function Canvas2D({
         </defs>
         <rect x={effectiveViewBox.x} y={effectiveViewBox.y} width={effectiveViewBox.w} height={effectiveViewBox.h} fill="url(#grid-big)" pointerEvents="none" />
 
-        {/* QUOTE DIMENSIONALI ESTERNE (stile architettonico) — bbox totale */}
+        {/* QUOTE DIMENSIONALI ESTERNE (stile architettonico) — bbox totale su TUTTI i 4 lati */}
         {L.dimensions && rooms.length > 0 && (() => {
           const allPts = rooms.flatMap((r) => r.points || []);
           if (allPts.length < 2) return null;
@@ -905,50 +905,82 @@ export default function Canvas2D({
           const minY = Math.min(...allPts.map((p) => p.y));
           const maxY = Math.max(...allPts.map((p) => p.y));
           const off = 50;
-          // Larghezza totale (sotto)
-          const yQ = maxY + off;
-          // Altezza totale (sinistra)
-          const xQ = minX - off;
+          // Linea catena posizioni
+          const yBot = maxY + off; // catena sotto
+          const yTop = minY - off; // catena sopra
+          const xLeft = minX - off; // catena sinistra
+          const xRight = maxX + off; // catena destra
           const totW = (maxX - minX) / 100;
           const totH = (maxY - minY) / 100;
-          // Catena: punti X unici (ordinati) per quote parziali sopra
+          // Catena: punti X unici (ordinati) per quote parziali
           const xs = Array.from(new Set(allPts.map((p) => Math.round(p.x)))).sort((a, b) => a - b);
           const ys = Array.from(new Set(allPts.map((p) => Math.round(p.y)))).sort((a, b) => a - b);
           const stroke = "#1F2937", thin = 1;
           return (
             <g pointerEvents="none">
-              {/* Catena quote orizzontali (sotto la pianta) */}
-              <line x1={minX} y1={yQ} x2={maxX} y2={yQ} stroke={stroke} strokeWidth={thin} />
+              {/* === ORIZZONTALE — SOTTO === */}
+              <line x1={minX} y1={yBot} x2={maxX} y2={yBot} stroke={stroke} strokeWidth={thin} />
               {xs.map((x, i) => (
-                <g key={`xtick-${i}`}>
-                  <line x1={x} y1={yQ - 5} x2={x} y2={yQ + 5} stroke={stroke} strokeWidth={thin} />
-                  <line x1={x} y1={maxY + 5} x2={x} y2={yQ - 5} stroke={stroke} strokeWidth={0.5} strokeDasharray="2,2" opacity="0.4" />
+                <g key={`xtick-bot-${i}`}>
+                  <line x1={x} y1={yBot - 5} x2={x} y2={yBot + 5} stroke={stroke} strokeWidth={thin} />
+                  <line x1={x} y1={maxY + 5} x2={x} y2={yBot - 5} stroke={stroke} strokeWidth={0.5} strokeDasharray="2,2" opacity="0.4" />
                   {i < xs.length - 1 && (
-                    <text x={(x + xs[i + 1]) / 2} y={yQ + 18} textAnchor="middle" fontSize="11" fontFamily="JetBrains Mono" fill={stroke}>
+                    <text x={(x + xs[i + 1]) / 2} y={yBot + 18} textAnchor="middle" fontSize="11" fontFamily="JetBrains Mono" fill={stroke}>
                       {fmtNum((xs[i + 1] - x) / 100, 2)}
                     </text>
                   )}
                 </g>
               ))}
-              {/* Quota TOTALE orizzontale (sotto la catena) */}
-              <line x1={minX} y1={yQ + 32} x2={maxX} y2={yQ + 32} stroke={stroke} strokeWidth={thin + 0.5} markerStart="url(#tick)" markerEnd="url(#tick)" />
-              <text x={(minX + maxX) / 2} y={yQ + 48} textAnchor="middle" fontSize="13" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke}>{fmtNum(totW, 2)} m</text>
-              {/* Catena quote verticali (sinistra della pianta) */}
-              <line x1={xQ} y1={minY} x2={xQ} y2={maxY} stroke={stroke} strokeWidth={thin} />
+              <line x1={minX} y1={yBot + 32} x2={maxX} y2={yBot + 32} stroke={stroke} strokeWidth={thin + 0.5} />
+              <text x={(minX + maxX) / 2} y={yBot + 48} textAnchor="middle" fontSize="13" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke}>{fmtNum(totW, 2)} m</text>
+
+              {/* === ORIZZONTALE — SOPRA === */}
+              <line x1={minX} y1={yTop} x2={maxX} y2={yTop} stroke={stroke} strokeWidth={thin} />
+              {xs.map((x, i) => (
+                <g key={`xtick-top-${i}`}>
+                  <line x1={x} y1={yTop - 5} x2={x} y2={yTop + 5} stroke={stroke} strokeWidth={thin} />
+                  <line x1={x} y1={yTop + 5} x2={x} y2={minY - 5} stroke={stroke} strokeWidth={0.5} strokeDasharray="2,2" opacity="0.4" />
+                  {i < xs.length - 1 && (
+                    <text x={(x + xs[i + 1]) / 2} y={yTop - 8} textAnchor="middle" fontSize="11" fontFamily="JetBrains Mono" fill={stroke}>
+                      {fmtNum((xs[i + 1] - x) / 100, 2)}
+                    </text>
+                  )}
+                </g>
+              ))}
+              <line x1={minX} y1={yTop - 32} x2={maxX} y2={yTop - 32} stroke={stroke} strokeWidth={thin + 0.5} />
+              <text x={(minX + maxX) / 2} y={yTop - 38} textAnchor="middle" fontSize="13" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke}>{fmtNum(totW, 2)} m</text>
+
+              {/* === VERTICALE — SINISTRA === */}
+              <line x1={xLeft} y1={minY} x2={xLeft} y2={maxY} stroke={stroke} strokeWidth={thin} />
               {ys.map((y, i) => (
-                <g key={`ytick-${i}`}>
-                  <line x1={xQ - 5} y1={y} x2={xQ + 5} y2={y} stroke={stroke} strokeWidth={thin} />
-                  <line x1={xQ + 5} y1={y} x2={minX - 5} y2={y} stroke={stroke} strokeWidth={0.5} strokeDasharray="2,2" opacity="0.4" />
+                <g key={`ytick-l-${i}`}>
+                  <line x1={xLeft - 5} y1={y} x2={xLeft + 5} y2={y} stroke={stroke} strokeWidth={thin} />
+                  <line x1={xLeft + 5} y1={y} x2={minX - 5} y2={y} stroke={stroke} strokeWidth={0.5} strokeDasharray="2,2" opacity="0.4" />
                   {i < ys.length - 1 && (
-                    <text x={xQ - 10} y={(y + ys[i + 1]) / 2 + 4} textAnchor="end" fontSize="11" fontFamily="JetBrains Mono" fill={stroke}>
+                    <text x={xLeft - 10} y={(y + ys[i + 1]) / 2 + 4} textAnchor="end" fontSize="11" fontFamily="JetBrains Mono" fill={stroke}>
                       {fmtNum((ys[i + 1] - y) / 100, 2)}
                     </text>
                   )}
                 </g>
               ))}
-              {/* Quota TOTALE verticale (a sinistra della catena) */}
-              <line x1={xQ - 32} y1={minY} x2={xQ - 32} y2={maxY} stroke={stroke} strokeWidth={thin + 0.5} />
-              <text x={xQ - 48} y={(minY + maxY) / 2 + 4} textAnchor="middle" fontSize="13" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke} transform={`rotate(-90, ${xQ - 48}, ${(minY + maxY) / 2 + 4})`}>{fmtNum(totH, 2)} m</text>
+              <line x1={xLeft - 32} y1={minY} x2={xLeft - 32} y2={maxY} stroke={stroke} strokeWidth={thin + 0.5} />
+              <text x={xLeft - 48} y={(minY + maxY) / 2 + 4} textAnchor="middle" fontSize="13" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke} transform={`rotate(-90, ${xLeft - 48}, ${(minY + maxY) / 2 + 4})`}>{fmtNum(totH, 2)} m</text>
+
+              {/* === VERTICALE — DESTRA === */}
+              <line x1={xRight} y1={minY} x2={xRight} y2={maxY} stroke={stroke} strokeWidth={thin} />
+              {ys.map((y, i) => (
+                <g key={`ytick-r-${i}`}>
+                  <line x1={xRight - 5} y1={y} x2={xRight + 5} y2={y} stroke={stroke} strokeWidth={thin} />
+                  <line x1={maxX + 5} y1={y} x2={xRight - 5} y2={y} stroke={stroke} strokeWidth={0.5} strokeDasharray="2,2" opacity="0.4" />
+                  {i < ys.length - 1 && (
+                    <text x={xRight + 10} y={(y + ys[i + 1]) / 2 + 4} textAnchor="start" fontSize="11" fontFamily="JetBrains Mono" fill={stroke}>
+                      {fmtNum((ys[i + 1] - y) / 100, 2)}
+                    </text>
+                  )}
+                </g>
+              ))}
+              <line x1={xRight + 32} y1={minY} x2={xRight + 32} y2={maxY} stroke={stroke} strokeWidth={thin + 0.5} />
+              <text x={xRight + 48} y={(minY + maxY) / 2 + 4} textAnchor="middle" fontSize="13" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke} transform={`rotate(90, ${xRight + 48}, ${(minY + maxY) / 2 + 4})`}>{fmtNum(totH, 2)} m</text>
             </g>
           );
         })()}

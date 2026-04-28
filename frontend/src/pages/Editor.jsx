@@ -36,11 +36,11 @@ const TOOL_GROUPS = [
     { id: "delete", icon: Trash2, label: "Elimina" },
   ]},
   { id: "demolizioni", label: "Demolizioni", tools: [
-    { id: "demolish-wall", icon: Hammer, label: "Demolisci muro" },
-    { id: "demolish-wall-partial", icon: Hammer, label: "Muro parziale" },
-    { id: "demolish-floor", icon: Hammer, label: "Pavimento totale" },
-    { id: "demolish-floor-partial", icon: Hammer, label: "Pavimento area" },
-    { id: "demolish-rivestimento", icon: Hammer, label: "Rivestim. parete" },
+    { id: "demolish-wall", icon: Hammer, label: "Muro · click" },
+    { id: "demolish-wall-partial", icon: Hammer, label: "Muro parziale · drag" },
+    { id: "demolish-floor", icon: Hammer, label: "Pavimento · totale" },
+    { id: "demolish-floor-partial", icon: Hammer, label: "Pavimento · area" },
+    { id: "demolish-rivestimento", icon: Hammer, label: "Rivestim. · parziale" },
   ]},
   { id: "pacchetto", label: "Pacchetto", tools: [
     { id: "package-area", icon: Square, label: "Area pacchetto" },
@@ -817,6 +817,23 @@ export default function Editor() {
               <span className="label-kicker text-[10px]">Planimetria 2D</span>
               <span className="ml-auto mono text-xs text-zinc-500">{tool}</span>
             </div>
+            {/* Banner hint contestuale per i tool di demolizione */}
+            {(() => {
+              const HINTS = {
+                "demolish-wall": { color: "bg-rose-50 text-rose-900 border-rose-300", text: "🔨 DEMOLIZIONE MURO · Click su un muro intero per marcarlo come demolito (linea rossa tratteggiata)." },
+                "demolish-wall-partial": { color: "bg-rose-50 text-rose-900 border-rose-300", text: "🔨 DEMOLIZIONE MURO PARZIALE · Trascina sul muro per definire la porzione da demolire. Affina con maniglie/pannello." },
+                "demolish-floor": { color: "bg-orange-50 text-orange-900 border-orange-300", text: "🔨 DEMOLIZIONE PAVIMENTO TOTALE · Click sulla stanza per demolire tutto il pavimento (toggle, ri-click rimuove)." },
+                "demolish-floor-partial": { color: "bg-orange-50 text-orange-900 border-orange-300", text: "🔨 DEMOLIZIONE PAVIMENTO AD AREA · Click per i vertici del poligono, doppio click per chiudere l'area." },
+                "demolish-rivestimento": { color: "bg-amber-50 text-amber-900 border-amber-300", text: "🔨 DEMOLIZIONE RIVESTIMENTO PARZIALE · Click sulla parete; poi nel pannello proprietà imposta posizione (sx/dx) e altezza dell'area." },
+              };
+              const hint = HINTS[tool];
+              if (!hint) return null;
+              return (
+                <div className={`px-3 py-2 text-[11px] uppercase tracking-wider font-semibold border-b ${hint.color}`} data-testid={`tool-hint-${tool}`}>
+                  {hint.text}
+                </div>
+              );
+            })()}
             <div className="relative" style={{ height: "calc(100% - 2rem)" }}>
               {(tool === "door" || tool === "window") && (
                 <ToolParamsPanel tool={tool} doorParams={doorParams} setDoorParams={setDoorParams} windowParams={windowParams} setWindowParams={setWindowParams} />

@@ -1,313 +1,394 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
-import Navbar from '../components/Navbar';
-import { 
-  ArrowRight, 
-  CheckCircle2, 
-  Compass, 
-  Ruler, 
-  Layers, 
-  PenTool, 
-  MonitorPlay,
-  ShieldCheck,
-  Calculator,
-  HardHat,
-  Clock,
-  Euro
-} from 'lucide-react';
+import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import Navbar from "../components/Navbar";
+import {
+  ArrowRight, ShieldCheck, FileText, BadgeCheck, Sparkles, Hammer, Sofa, Home,
+  Lock, Clock, Phone, Mail, MapPin, Send, Star, ChevronDown, Check
+} from "lucide-react";
 
-const Landing = () => {
+// Brand palette
+// Verde brand: #1FAE52 · Verde scuro: #168540 · Nero: #0A0A0A · Off-white: #F5F5F2
+
+const HERO_IMG = "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1600&q=80";
+
+const SERVIZI = [
+  {
+    icon: Hammer,
+    title: "Ristrutturazioni chiavi in mano",
+    text: "Dalla pratica edilizia alla consegna delle chiavi. Un solo interlocutore, un solo prezzo, una sola firma.",
+    bullets: ["Pratiche e permessi inclusi", "Capitolato dettagliato", "Direzione lavori", "Cantiere certificato"],
+    img: "https://images.unsplash.com/photo-1581291518857-4e27b48ff24e?auto=format&fit=crop&w=900&q=80",
+    href: "#pacchetti",
+    cta: "Vedi pacchetti",
+  },
+  {
+    icon: Sofa,
+    title: "Arredamento su misura",
+    text: "Progettiamo e realizziamo l'arredo della tua casa. Cucine, bagni, camere, living: tutto coordinato.",
+    bullets: ["Progetto d'interni", "Anteprima fotorealistica", "Marchi selezionati", "Posa inclusa"],
+    img: "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=900&q=80",
+    href: "#arredamento",
+    cta: "Scopri di più",
+  },
+  {
+    icon: Home,
+    title: "Servizi per la casa a 360°",
+    text: "Pulizie post-cantiere, manutenzioni, gestione immobiliare, condomini: una sola squadra di fiducia.",
+    bullets: ["Manutenzioni programmate", "Pronto intervento", "Gestione affitti", "Property management"],
+    img: "https://images.unsplash.com/photo-1568605114967-8130f3a36994?auto=format&fit=crop&w=900&q=80",
+    href: "#servizi",
+    cta: "Richiedi consulenza",
+  },
+];
+
+const VALORI = [
+  { icon: FileText, title: "Preventivi chiari", text: "Voce per voce, materiale per materiale. Niente formule magiche, niente 'circa'." },
+  { icon: Lock, title: "Prezzo bloccato", text: "Quello che firmi è quello che paghi. Eventuali variazioni concordate per iscritto, sempre." },
+  { icon: BadgeCheck, title: "Qualità garantita", text: "Artigiani selezionati, marchi certificati, garanzia 5 anni sui lavori realizzati." },
+  { icon: ShieldCheck, title: "Processo trasparente", text: "Ogni fase tracciata, documenti firmabili online, accesso sempre attivo al tuo cantiere." },
+];
+
+const PACCHETTI = [
+  {
+    name: "BASIC", tag: "Standard di legge", price: 380, color: "#0A0A0A",
+    desc: "Tutto a norma con materiali affidabili. Perfetto per investimento o prima ristrutturazione.",
+    feats: ["Demolizioni e smaltimento", "Impianti certificati", "Pavimenti gres 30×60", "Sanitari filo muro", "Tinteggiatura bianca", "Porte interne laminate"],
+  },
+  {
+    name: "SMART", tag: "Il più scelto", price: 490, color: "#1FAE52", highlight: true,
+    desc: "Il giusto equilibrio qualità-prezzo. La scelta della maggior parte dei nostri clienti.",
+    feats: ["Tutto del Basic", "Pavimenti gres 60×60 effetto", "Porte laminato premium", "Infissi doppio vetro", "Controsoffitti design", "Domotica base predisposta"],
+  },
+  {
+    name: "PREMIUM", tag: "Lusso elegante", price: 790, color: "#0A0A0A",
+    desc: "Materiali e finiture di alta gamma per chi cerca eleganza senza compromessi.",
+    feats: ["Tutto dello Smart", "Parquet rovere 100% legno", "Sanitari sospesi design", "Infissi triplo vetro", "Domotica base attiva", "Illuminazione progettata"],
+  },
+  {
+    name: "ELITE", tag: "Senza compromessi", price: 1180, color: "#0A0A0A",
+    desc: "L'eccellenza assoluta. Materiali di pregio, design d'autore, esecuzione sartoriale.",
+    feats: ["Tutto del Premium", "Marmi e pietre naturali", "Domotica avanzata", "Progetto illuminotecnico", "Arredi su misura inclusi", "Concierge dedicato"],
+  },
+];
+
+const PROCESSO = [
+  { n: "01", title: "Sopralluogo gratuito", text: "Un tecnico viene a casa tua, prende le misure e ascolta le tue esigenze. Senza impegno." },
+  { n: "02", title: "Progetto + preventivo", text: "Riceverai un progetto su misura con preventivo dettagliato voce per voce. Bloccato per 30 giorni." },
+  { n: "03", title: "Cantiere monitorato", text: "Avanzamenti documentati, foto settimanali, accesso al portale cliente per vedere ogni dettaglio." },
+  { n: "04", title: "Consegna e garanzia", text: "Ti consegniamo casa pulita e collaudata. Garanzia 5 anni e assistenza post-cantiere inclusa." },
+];
+
+const PROGETTI = [
+  { src: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?auto=format&fit=crop&w=900&q=80", tag: "Living moderno · Milano", area: "85 m²" },
+  { src: "https://images.unsplash.com/photo-1600210492493-0946911123ea?auto=format&fit=crop&w=900&q=80", tag: "Bagno spa · Bergamo", area: "12 m²" },
+  { src: "https://images.unsplash.com/photo-1556909172-54557c7e4fb7?auto=format&fit=crop&w=900&q=80", tag: "Cucina open · Torino", area: "30 m²" },
+  { src: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=900&q=80", tag: "Camera padronale · Como", area: "22 m²" },
+  { src: "https://images.unsplash.com/photo-1600573472556-e636c2acda88?auto=format&fit=crop&w=900&q=80", tag: "Loft industriale · Brescia", area: "110 m²" },
+  { src: "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=900&q=80", tag: "Villa lago · Como", area: "260 m²" },
+  { src: "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=900&q=80", tag: "Trilocale chiavi in mano · Milano", area: "75 m²" },
+  { src: "https://images.unsplash.com/photo-1600585154526-990dced4db0d?auto=format&fit=crop&w=900&q=80", tag: "Bilocale + terrazzo · Monza", area: "55 m²" },
+];
+
+const TESTIMONIANZE = [
+  { name: "Marco R.", city: "Milano", stars: 5, text: "Preventivo chiarissimo, prezzo rispettato fino all'ultimo euro. Cantiere finito in 7 settimane esatte come promesso." },
+  { name: "Laura B.", city: "Bergamo", stars: 5, text: "Mi hanno mostrato il bagno in 3D prima dei lavori. Ho cambiato idea su 2 cose senza costi aggiuntivi. Fantastici." },
+  { name: "Famiglia G.", city: "Como", stars: 5, text: "Trasparenza totale: ogni settimana foto del cantiere e documenti firmati online. Mai vista una cosa così seria." },
+];
+
+const FAQ = [
+  { q: "Il preventivo è davvero bloccato?", a: "Sì. Il prezzo che firmi è quello che paghi. Eventuali variazioni richieste da te (cambio materiali, aggiunte) vengono concordate per iscritto prima dell'esecuzione, mai a sorpresa a fine cantiere." },
+  { q: "Posso sfruttare i bonus fiscali?", a: "Certo. Ti aiutiamo a ottenere ristrutturazione 50%, ecobonus, sismabonus e bonus mobili dove applicabili. Forniamo tutta la documentazione fiscale necessaria." },
+  { q: "Quanto dura un cantiere medio?", a: "Per un appartamento di 80 m² stimiamo 8-10 settimane lavorative. Per ristrutturazioni importanti (oltre 150 m²) 12-16 settimane. La data di consegna è contrattualmente vincolante." },
+  { q: "Cosa succede se trovate problemi imprevisti?", a: "Ti chiamiamo subito, fotografiamo, ti spieghiamo le opzioni con i relativi costi e tempi. Tu decidi. Mai lavori extra non autorizzati." },
+  { q: "Avete una garanzia?", a: "5 anni sui lavori edili, oltre alle garanzie di legge dei produttori sui materiali e sugli elettrodomestici. Assistenza post-cantiere inclusa per i primi 12 mesi." },
+  { q: "Come posso seguire il cantiere?", a: "Hai accesso al tuo Portale Cliente: SAL aggiornato, foto settimanali, documenti, fatture e firme online via OTP. Sempre attivo, sempre disponibile." },
+];
+
+function ServiceCard({ s, i }) {
+  const Icon = s.icon;
   return (
-    <div className="min-h-screen bg-[#F7F7F5] font-sans selection:bg-[#B34A31] selection:text-white">
+    <div className="group relative overflow-hidden bg-white border border-zinc-200 hover:border-[#1FAE52]/40 transition-all duration-500 hover:-translate-y-1 hover:shadow-xl" data-testid={`servizio-card-${i}`}>
+      <div className="relative h-56 overflow-hidden">
+        <img src={s.img} alt={s.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+        <div className="absolute top-4 left-4 w-11 h-11 bg-white flex items-center justify-center rounded-full shadow-lg">
+          <Icon size={20} className="text-[#1FAE52]" strokeWidth={2.2} />
+        </div>
+      </div>
+      <div className="p-6">
+        <h3 className="text-xl font-bold text-[#0A0A0A] mb-2" style={{ fontFamily: "Outfit" }}>{s.title}</h3>
+        <p className="text-[14px] text-zinc-600 leading-relaxed mb-4">{s.text}</p>
+        <ul className="space-y-1.5 mb-5">
+          {s.bullets.map((b) => (
+            <li key={b} className="flex items-center gap-2 text-[13px] text-zinc-700">
+              <Check size={14} className="text-[#1FAE52] flex-shrink-0" strokeWidth={3} /> {b}
+            </li>
+          ))}
+        </ul>
+        <a href={s.href} className="inline-flex items-center gap-2 text-[14px] font-semibold text-[#0A0A0A] group-hover:text-[#1FAE52] transition-colors">
+          {s.cta} <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function PackageCard({ p, i }) {
+  const isHi = p.highlight;
+  return (
+    <div className={`relative flex flex-col ${isHi ? 'bg-[#0A0A0A] text-white border-[#1FAE52]' : 'bg-white text-[#0A0A0A] border-zinc-200'} border-2 p-7 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl`} data-testid={`pacchetto-${p.name.toLowerCase()}`}>
+      {isHi && (
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#1FAE52] text-white text-[10px] tracking-widest font-bold px-3 py-1 rounded-full">
+          IL PIÙ SCELTO
+        </div>
+      )}
+      <div className="text-[10px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-2">{p.tag}</div>
+      <div className="text-3xl font-black tracking-tight mb-1" style={{ fontFamily: "Outfit" }}>{p.name}</div>
+      <p className={`text-[13px] leading-relaxed mb-5 ${isHi ? 'text-zinc-400' : 'text-zinc-600'}`}>{p.desc}</p>
+      <div className="border-t border-b border-zinc-200/30 py-4 mb-5">
+        <div className="flex items-baseline gap-1">
+          <span className={`text-[11px] uppercase tracking-wider mr-1 ${isHi ? 'text-zinc-500' : 'text-zinc-500'}`}>da</span>
+          <span className="text-4xl font-black" style={{ fontFamily: "Outfit" }}>{p.price}</span>
+          <span className="text-base font-bold">€</span>
+          <span className={`text-[12px] ${isHi ? 'text-zinc-500' : 'text-zinc-500'}`}>/m²</span>
+        </div>
+        <div className={`text-[11px] mt-1 ${isHi ? 'text-zinc-500' : 'text-zinc-500'}`}>chiavi in mano · IVA 10% inclusa</div>
+      </div>
+      <ul className="space-y-2 mb-6 flex-1">
+        {p.feats.map((f) => (
+          <li key={f} className="flex items-start gap-2 text-[13px]">
+            <Check size={14} className="mt-0.5 text-[#1FAE52] flex-shrink-0" strokeWidth={3} />
+            <span className={isHi ? 'text-zinc-300' : 'text-zinc-700'}>{f}</span>
+          </li>
+        ))}
+      </ul>
+      <a
+        href="#contatti"
+        className={`inline-flex items-center justify-center gap-2 py-3 rounded-full text-[14px] font-bold transition-all ${
+          isHi
+            ? 'bg-[#1FAE52] text-white hover:bg-[#168540]'
+            : 'bg-[#0A0A0A] text-white hover:bg-[#1FAE52]'
+        }`}
+        data-testid={`pacchetto-cta-${p.name.toLowerCase()}`}
+      >
+        Richiedi preventivo <ArrowRight size={14} />
+      </a>
+    </div>
+  );
+}
+
+function FaqItem({ q, a, i }) {
+  const [open, setOpen] = useState(i === 0);
+  return (
+    <div className="border-b border-zinc-200 py-5" data-testid={`faq-${i}`}>
+      <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between gap-6 text-left">
+        <span className="text-[16px] font-semibold text-[#0A0A0A]">{q}</span>
+        <ChevronDown size={18} className={`text-zinc-500 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && <p className="mt-3 text-[14px] text-zinc-600 leading-relaxed pr-10">{a}</p>}
+    </div>
+  );
+}
+
+export default function Landing() {
+  const [contactSent, setContactSent] = useState(false);
+  return (
+    <div className="bg-white text-[#0A0A0A]" data-testid="landing-page" style={{ fontFamily: "Outfit, system-ui, sans-serif" }}>
       <Navbar />
 
-      {/* HERO SECTION */}
-      <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-            {/* Typography & CTA */}
-            <div className="lg:col-span-6 lg:pr-8 space-y-8">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#EDEDE8] border border-[#E0DFD8]">
-                <span className="w-2 h-2 rounded-full bg-[#B34A31] animate-pulse"></span>
-                <span className="text-xs font-mono font-medium tracking-wider text-[#5C5C59] uppercase">
-                  Il primo studio edile Tech in Italia
-                </span>
-              </div>
-              
-              <h1 className="text-5xl sm:text-6xl lg:text-7xl font-serif text-[#1C1C1A] leading-[1.1] tracking-tight">
-                L'arte di <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#1C1C1A] to-[#6A6A64]">
-                  ristrutturare,
-                </span><br />
-                ingegnerizzata.
-              </h1>
-              
-              <p className="text-lg sm:text-xl text-[#5C5C59] max-w-lg leading-relaxed font-light">
-                Dall'idea al cantiere, con trasparenza totale. Visualizza la tua nuova casa in 3D fotorealistico prima ancora di iniziare, e ottieni un preventivo garantito al millimetro.
-              </p>
-              
-              <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                <Link 
-                  to="/configuratoreesigenze" 
-                  className="group flex justify-center items-center gap-2 bg-[#B34A31] text-white px-8 py-4 rounded hover:bg-[#963820] transition-colors text-base font-medium"
-                  data-testid="hero-primary-cta"
-                >
-                  Configura il tuo preventivo
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </Link>
-                <Link 
-                  to="/progetti" 
-                  className="flex justify-center items-center gap-2 bg-white text-[#1C1C1A] border border-[#E0DFD8] px-8 py-4 rounded hover:bg-[#EDEDE8] transition-colors text-base font-medium"
-                  data-testid="hero-secondary-cta"
-                >
-                  <MonitorPlay className="w-4 h-4" />
-                  Apri Editor Demo
-                </Link>
-              </div>
-              
-              <div className="flex items-center gap-4 pt-4">
-                <div className="flex -space-x-3">
-                  {[1, 2, 3].map((i) => (
-                    <img 
-                      key={i} 
-                      src={`https://i.pravatar.cc/100?img=${i + 10}`} 
-                      alt="Cliente" 
-                      className="w-10 h-10 rounded-full border-2 border-[#F7F7F5]" 
-                    />
-                  ))}
-                </div>
-                <div className="text-sm font-medium text-[#5C5C59]">
-                  Oltre <strong className="text-[#1C1C1A]">500+</strong> cantieri consegnati in tempo.
-                </div>
-              </div>
+      {/* HERO */}
+      <section className="relative overflow-hidden bg-[#F5F5F2]" data-testid="hero-section">
+        <div className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: `radial-gradient(circle at 1px 1px, #0A0A0A 1px, transparent 0)`, backgroundSize: '24px 24px' }} />
+        <div className="relative max-w-7xl mx-auto px-6 py-20 lg:py-28 grid lg:grid-cols-12 gap-10 items-center">
+          <div className="lg:col-span-6">
+            <div className="inline-flex items-center gap-2 bg-white border border-zinc-200 px-4 py-2 rounded-full mb-7" data-testid="hero-badge">
+              <span className="w-2 h-2 rounded-full bg-[#1FAE52] animate-pulse" />
+              <span className="text-[12px] font-medium tracking-wide">Studio di ristrutturazioni · dal 2014</span>
             </div>
-
-            {/* Hero Visuals */}
-            <div className="lg:col-span-6 relative">
-              <div className="relative rounded-2xl overflow-hidden shadow-2xl aspect-[4/5] sm:aspect-square lg:aspect-[4/5] bg-gray-200">
-                <img 
-                  src="https://images.unsplash.com/photo-1703867110051-a0eb1e77b967?crop=entropy&cs=srgb&fm=jpg&q=85" 
-                  alt="Modern Interior Design" 
-                  className="w-full h-full object-cover"
-                />
-                {/* Floating Tech Element */}
-                <div className="absolute bottom-6 left-6 right-6 bg-white/80 backdrop-blur-xl border border-white/40 p-5 rounded-xl shadow-xl flex items-start gap-4">
-                  <div className="bg-[#1C1C1A] text-white p-3 rounded-lg">
-                    <Layers className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h4 className="font-serif font-bold text-[#1C1C1A]">Rendering Live 3D</h4>
-                    <p className="text-sm font-sans text-[#5C5C59]">Calcolo computo metrico in tempo reale</p>
-                  </div>
-                </div>
+            <h1 className="text-[44px] sm:text-[56px] lg:text-[72px] leading-[0.95] font-black tracking-tight mb-6" style={{ fontFamily: "Outfit" }}>
+              Quando una casa
+              <span className="block italic font-light text-[#1FAE52]" style={{ fontFamily: "Georgia, serif" }}>Sa di Casa.</span>
+            </h1>
+            <p className="text-[17px] lg:text-[19px] text-zinc-700 leading-relaxed mb-9 max-w-xl">
+              Ristrutturazioni chiavi in mano, arredamento su misura e servizi per la casa. Tutto sotto un solo tetto, con preventivi chiari e prezzi bloccati.
+            </p>
+            <div className="flex flex-wrap items-center gap-3 mb-10">
+              <a href="#contatti" className="group inline-flex items-center gap-2 bg-[#1FAE52] hover:bg-[#168540] text-white px-7 py-4 rounded-full text-[15px] font-bold transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5" data-testid="hero-cta-primary">
+                Richiedi preventivo gratuito <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+              </a>
+              <a href="#processo" className="inline-flex items-center gap-2 text-[15px] font-bold text-[#0A0A0A] hover:text-[#1FAE52] transition-colors px-2 py-4" data-testid="hero-cta-secondary">
+                Come lavoriamo <ArrowRight size={16} />
+              </a>
+            </div>
+            <div className="grid grid-cols-3 gap-8 max-w-lg pt-6 border-t border-zinc-300">
+              <div>
+                <div className="text-3xl font-black" style={{ fontFamily: "Outfit" }}>500<span className="text-[#1FAE52]">+</span></div>
+                <div className="text-[12px] text-zinc-600 mt-1">Cantieri consegnati</div>
+              </div>
+              <div>
+                <div className="text-3xl font-black" style={{ fontFamily: "Outfit" }}>11<span className="text-[#1FAE52]">y</span></div>
+                <div className="text-[12px] text-zinc-600 mt-1">Anni di esperienza</div>
+              </div>
+              <div>
+                <div className="text-3xl font-black" style={{ fontFamily: "Outfit" }}>4,9<span className="text-[#1FAE52]">★</span></div>
+                <div className="text-[12px] text-zinc-600 mt-1">Recensioni Google</div>
               </div>
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* COSA FACCIAMO (SERVICES) */}
-      <section id="servizi" className="py-24 bg-white border-y border-[#E0DFD8]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16 space-y-4">
-            <h2 className="text-[#B34A31] font-mono tracking-widest text-sm uppercase">Cosa Facciamo</h2>
-            <h3 className="text-4xl sm:text-5xl font-serif text-[#1C1C1A]">I nostri servizi</h3>
-            <p className="text-[#5C5C59] text-lg">Soluzioni complete per valorizzare il tuo immobile, gestite da un unico interlocutore affidabile e tecnologico.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              {
-                title: "Ristrutturazioni Chiavi in Mano",
-                desc: "Gestiamo tutto noi: dalle pratiche edilizie, al progetto CAD 3D, fino alla consegna chiavi.",
-                img: "https://images.unsplash.com/photo-1680209667207-cae0f6cd8fa9?crop=entropy&cs=srgb&fm=jpg&q=85",
-                icon: HardHat
-              },
-              {
-                title: "Arredamento su Misura",
-                desc: "Progettazione d'interni con rendering AI fotorealistico. Scegli le finiture prima di comprare.",
-                img: "https://images.pexels.com/photos/33599113/pexels-photo-33599113.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-                icon: Compass
-              },
-              {
-                title: "Gestione Immobiliare",
-                desc: "Valorizzazione asset e property management per investitori che cercano rendite sicure.",
-                img: "https://images.pexels.com/photos/37175977/pexels-photo-37175977.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-                icon: Ruler
-              }
-            ].map((service, idx) => (
-              <div key={idx} className="group cursor-pointer">
-                <div className="relative overflow-hidden rounded-xl aspect-[4/3] mb-6">
-                  <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors z-10" />
-                  <img 
-                    src={service.img} 
-                    alt={service.title} 
-                    className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-700"
-                  />
-                  <div className="absolute bottom-4 left-4 z-20 bg-white p-3 rounded-full shadow-lg">
-                    <service.icon className="w-6 h-6 text-[#1C1C1A]" />
-                  </div>
-                </div>
-                <h4 className="text-2xl font-serif text-[#1C1C1A] mb-2 group-hover:text-[#B34A31] transition-colors">{service.title}</h4>
-                <p className="text-[#5C5C59]">{service.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* TECNOLOGIA (THE DIFFERENTIATOR) */}
-      <section id="tecnologia" className="py-24 bg-[#1C1C1A] text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-            <div className="space-y-8">
-              <h2 className="text-[#B34A31] font-mono tracking-widest text-sm uppercase">Il nostro vantaggio sleale</h2>
-              <h3 className="text-4xl sm:text-5xl font-serif leading-tight">
-                Non immaginiamo il tuo futuro, <span className="italic text-gray-400">lo calcoliamo.</span>
-              </h3>
-              
-              <div className="space-y-6">
-                {[
-                  {
-                    title: "Progettazione CAD 2D/3D Live",
-                    desc: "Il nostro editor proprietario ci permette di tracciare muri e impianti in tempo reale, restituendoti misure precise al millimetro.",
-                    icon: PenTool
-                  },
-                  {
-                    title: "Rendering AI Fotorealistico",
-                    desc: "Applica finiture, pavimenti e luci per vedere il risultato finale. Niente più brutte sorprese o materiali che non si abbinano.",
-                    icon: MonitorPlay
-                  },
-                  {
-                    title: "Portale Cliente & Firma Digitale",
-                    desc: "Accedi al tuo spazio privato per monitorare il cantiere, approvare il capitolato e firmare i documenti via OTP.",
-                    icon: ShieldCheck
-                  }
-                ].map((tech, i) => (
-                  <div key={i} className="flex gap-4 p-4 rounded-xl hover:bg-white/5 transition-colors border border-transparent hover:border-white/10">
-                    <div className="flex-shrink-0 bg-white/10 p-3 rounded-lg h-fit">
-                      <tech.icon className="w-6 h-6 text-[#B34A31]" />
-                    </div>
-                    <div>
-                      <h4 className="text-xl font-medium mb-1">{tech.title}</h4>
-                      <p className="text-gray-400 font-light leading-relaxed">{tech.desc}</p>
-                    </div>
-                  </div>
-                ))}
+          <div className="lg:col-span-6 relative">
+            <div className="relative aspect-[4/5] overflow-hidden rounded-sm">
+              <img src={HERO_IMG} alt="Soggiorno luminoso ristrutturato" className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+            </div>
+            {/* Floating card 1 */}
+            <div className="absolute -bottom-6 -left-6 lg:-left-10 bg-white shadow-2xl p-5 max-w-[280px] border-l-4 border-[#1FAE52]">
+              <div className="text-[11px] font-bold text-[#1FAE52] tracking-widest mb-1">PREVENTIVO BLOCCATO</div>
+              <div className="text-[14px] font-semibold text-[#0A0A0A] leading-snug">«Ho pagato esattamente quello che era scritto sul contratto. Niente sorprese.»</div>
+              <div className="flex items-center gap-1 mt-2">
+                {[1,2,3,4,5].map(n => <Star key={n} size={12} className="fill-[#1FAE52] text-[#1FAE52]" />)}
+                <span className="text-[11px] text-zinc-500 ml-1">— Marco, Milano</span>
               </div>
             </div>
-
-            <div className="relative">
-              {/* Abstract representation of CAD to Reality */}
-              <div className="aspect-square bg-[#2A2A28] rounded-2xl border border-white/10 p-2 overflow-hidden shadow-2xl relative group">
-                {/* Simulated Grid / CAD background */}
-                <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'linear-gradient(#404040 1px, transparent 1px), linear-gradient(90deg, #404040 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
-                
-                <img 
-                  src="https://images.unsplash.com/photo-1717445130372-e50b9b45a669?crop=entropy&cs=srgb&fm=jpg&q=85" 
-                  alt="Architectural Sketch" 
-                  className="w-full h-full object-cover rounded-xl mix-blend-luminosity opacity-80 group-hover:opacity-0 transition-opacity duration-1000 absolute top-2 left-2 right-2 bottom-2"
-                />
-                
-                <img 
-                  src="https://images.pexels.com/photos/34277650/pexels-photo-34277650.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940" 
-                  alt="Realistic Render" 
-                  className="w-full h-full object-cover rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-1000 absolute top-2 left-2 right-2 bottom-2 z-10"
-                />
-
-                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 bg-black/60 backdrop-blur-md px-6 py-2 rounded-full border border-white/20 text-sm font-mono tracking-widest text-white whitespace-nowrap">
-                  Hover to Render
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* PACCHETTI (PRICING) */}
-      <section id="pacchetti" className="py-24 bg-[#F7F7F5]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16 space-y-4">
-            <h2 className="text-[#B34A31] font-mono tracking-widest text-sm uppercase">Trasparenza Totale</h2>
-            <h3 className="text-4xl sm:text-5xl font-serif text-[#1C1C1A]">I nostri pacchetti</h3>
-            <p className="text-[#5C5C59] text-lg">Nessun costo nascosto. Scegli il livello di finitura più adatto alle tue esigenze e conosci subito il budget indicativo.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-            {[
-              { name: "BASIC", price: "380€", target: "Standard", features: ["Demolizioni essenziali", "Impianti a norma", "Pavimenti in gres", "Sanitari filo muro", "Tinteggiatura bianca"] },
-              { name: "SMART", price: "490€", target: "Qualità/Prezzo", popular: true, features: ["Tutto in Basic", "Pavimenti grandi formati", "Porte laminato premium", "Infissi doppio vetro", "Controsoffitti design"] },
-              { name: "PREMIUM", price: "790€", target: "Lusso Elegante", features: ["Tutto in Smart", "Parquet rovere", "Sanitari sospesi design", "Infissi triplo vetro", "Domotica base"] },
-              { name: "ELITE", price: "1180€", target: "Senza Compromessi", features: ["Tutto in Premium", "Materiali pregio (Marmo)", "Domotica avanzata", "Progetto illuminotecnico", "Arredi su misura inclusi"] }
-            ].map((pkg, i) => (
-              <div key={i} className={`relative bg-white rounded-xl border ${pkg.popular ? 'border-[#B34A31] shadow-xl relative -translate-y-2' : 'border-[#E0DFD8]'} p-8 flex flex-col`}>
-                {pkg.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#B34A31] text-white text-xs font-mono px-3 py-1 rounded-full uppercase tracking-wider">
-                    Più Scelto
-                  </div>
-                )}
-                <div className="mb-8">
-                  <h4 className="text-xl font-serif font-bold text-[#1C1C1A] mb-1">{pkg.name}</h4>
-                  <p className="text-sm text-[#5C5C59] mb-4">{pkg.target}</p>
-                  <div className="flex items-end gap-1">
-                    <span className="text-4xl font-light text-[#1C1C1A]">a partire da</span>
-                  </div>
-                  <div className="flex items-end gap-1 mt-2">
-                    <span className="text-4xl font-serif font-bold text-[#1C1C1A]">{pkg.price}</span>
-                    <span className="text-[#5C5C59] font-mono">/m²</span>
-                  </div>
-                </div>
-                
-                <ul className="space-y-4 mb-8 flex-grow">
-                  {pkg.features.map((feat, idx) => (
-                    <li key={idx} className="flex items-start gap-3">
-                      <CheckCircle2 className="w-5 h-5 text-[#B34A31] shrink-0 mt-0.5" />
-                      <span className="text-sm text-[#5C5C59] font-medium">{feat}</span>
-                    </li>
-                  ))}
-                </ul>
-                
-                <Link 
-                  to="/configuratoreesigenze" 
-                  className={`w-full py-3 px-4 rounded font-medium transition-colors text-center ${
-                    pkg.popular 
-                      ? 'bg-[#1C1C1A] text-white hover:bg-black' 
-                      : 'bg-[#EDEDE8] text-[#1C1C1A] hover:bg-[#E0DFD8]'
-                  }`}
-                  data-testid={`pkg-btn-${pkg.name.toLowerCase()}`}
-                >
-                  Calcola preventivo
-                </Link>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* PERCHÈ RISTRUTTURA.CAD (BENEFITS) */}
-      <section className="py-24 bg-white border-y border-[#E0DFD8]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <h3 className="text-3xl sm:text-4xl font-serif text-[#1C1C1A] mb-4">Perché scegliere noi</h3>
-            <p className="text-[#5C5C59]">Abbiamo eliminato le zone grigie delle ristrutturazioni classiche.</p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
-            {[
-              { title: "Trasparenza Prezzi", desc: "Ogni vite è inserita nel computo. Nessun aumento del budget in corso d'opera.", icon: Euro },
-              { title: "Capitolato Dettagliato", desc: "Schede tecniche, brand e modelli di ogni materiale scelto tramite l'editor.", icon: Layers },
-              { title: "Cantiere Monitorato", desc: "Aggiornamenti fotografici giornalieri direttamente sul tuo Portale Cliente.", icon: HardHat },
-              { title: "Garanzia 5 Anni", desc: "Siamo così sicuri dei nostri artigiani che estendiamo la garanzia di legge.", icon: ShieldCheck },
-              { title: "Tempi Certi", desc: "Penali a nostro carico per ogni giorno di ritardo sulla consegna concordata.", icon: Clock },
-              { title: "Preventivi Immediati", desc: "Grazie all'IA, ottieni una stima accurata in 5 minuti rispondendo a poche domande.", icon: Calculator }
-            ].map((benefit, i) => (
-              <div key={i} className="flex gap-4">
-                <div className="bg-[#F7F7F5] p-4 rounded-xl h-fit border border-[#E0DFD8]">
-                  <benefit.icon className="w-6 h-6 text-[#1C1C1A]" />
+            {/* Floating card 2 */}
+            <div className="hidden lg:block absolute -top-4 -right-6 bg-[#0A0A0A] text-white shadow-2xl p-4 rounded-sm">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-[#1FAE52] flex items-center justify-center">
+                  <ShieldCheck size={18} />
                 </div>
                 <div>
-                  <h4 className="text-lg font-bold text-[#1C1C1A] mb-2 font-serif">{benefit.title}</h4>
-                  <p className="text-sm text-[#5C5C59] leading-relaxed">{benefit.desc}</p>
+                  <div className="text-[11px] tracking-widest text-zinc-400 font-bold">GARANZIA</div>
+                  <div className="text-[15px] font-bold">5 anni sui lavori</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* VALORI */}
+      <section className="bg-white py-16 lg:py-24 border-b border-zinc-100" data-testid="valori-section">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-center max-w-2xl mx-auto mb-14">
+            <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-3">Quello che ci contraddistingue</div>
+            <h2 className="text-4xl lg:text-5xl font-black tracking-tight mb-4" style={{ fontFamily: "Outfit" }}>
+              Niente sorprese. <span className="italic font-light" style={{ fontFamily: "Georgia, serif" }}>Mai.</span>
+            </h2>
+            <p className="text-[16px] text-zinc-600 leading-relaxed">
+              Crediamo che ristrutturare casa debba essere un'esperienza serena. Per questo abbiamo costruito un metodo basato su quattro principi non negoziabili.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
+            {VALORI.map((v, i) => {
+              const Icon = v.icon;
+              return (
+                <div key={v.title} className="group p-7 bg-[#F5F5F2] border border-transparent hover:border-[#1FAE52] hover:bg-white transition-all duration-300" data-testid={`valore-${i}`}>
+                  <div className="w-12 h-12 bg-[#0A0A0A] flex items-center justify-center mb-5 rounded-full group-hover:bg-[#1FAE52] transition-colors">
+                    <Icon size={20} className="text-white" strokeWidth={2} />
+                  </div>
+                  <h3 className="text-lg font-bold mb-2" style={{ fontFamily: "Outfit" }}>{v.title}</h3>
+                  <p className="text-[13.5px] text-zinc-600 leading-relaxed">{v.text}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* SERVIZI */}
+      <section id="servizi" className="bg-[#F5F5F2] py-16 lg:py-24" data-testid="servizi-section">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between mb-12 gap-6">
+            <div className="max-w-2xl">
+              <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-3">I nostri servizi</div>
+              <h2 className="text-4xl lg:text-5xl font-black tracking-tight" style={{ fontFamily: "Outfit" }}>
+                Tutto quello che serve <span className="italic font-light" style={{ fontFamily: "Georgia, serif" }}>alla tua casa.</span>
+              </h2>
+            </div>
+            <p className="text-[15px] text-zinc-600 max-w-md leading-relaxed">
+              Un'unica squadra per tutte le esigenze della casa. Niente coordinamento di più aziende, niente palleggiamenti di responsabilità.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {SERVIZI.map((s, i) => <ServiceCard key={s.title} s={s} i={i} />)}
+          </div>
+        </div>
+      </section>
+
+      {/* PACCHETTI */}
+      <section id="pacchetti" className="bg-white py-16 lg:py-24" data-testid="pacchetti-section">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-center max-w-2xl mx-auto mb-14">
+            <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-3">Prezzi chiari, tutto incluso</div>
+            <h2 className="text-4xl lg:text-5xl font-black tracking-tight mb-4" style={{ fontFamily: "Outfit" }}>
+              Quattro pacchetti. <span className="italic font-light" style={{ fontFamily: "Georgia, serif" }}>Zero sorprese.</span>
+            </h2>
+            <p className="text-[16px] text-zinc-600 leading-relaxed">
+              Scegli il livello di finitura che preferisci. Tutti i pacchetti sono <strong>chiavi in mano</strong>: dalle pratiche alla pulizia finale, IVA 10% inclusa.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5 mb-12">
+            {PACCHETTI.map((p, i) => <PackageCard key={p.name} p={p} i={i} />)}
+          </div>
+          <div className="text-center text-[13px] text-zinc-500 max-w-2xl mx-auto leading-relaxed">
+            * Prezzo indicativo per ristrutturazione completa di abitazione esistente sopra i 60 m². Ti forniremo un preventivo dettagliato e bloccato dopo il sopralluogo gratuito.
+          </div>
+        </div>
+      </section>
+
+      {/* PROCESSO */}
+      <section id="processo" className="bg-[#0A0A0A] text-white py-16 lg:py-28 relative overflow-hidden" data-testid="processo-section">
+        <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: `radial-gradient(circle at 1px 1px, white 1px, transparent 0)`, backgroundSize: '24px 24px' }} />
+        <div className="max-w-7xl mx-auto px-6 relative">
+          <div className="max-w-2xl mb-14">
+            <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-3">Come lavoriamo</div>
+            <h2 className="text-4xl lg:text-5xl font-black tracking-tight mb-4" style={{ fontFamily: "Outfit" }}>
+              Quattro passaggi. <span className="italic font-light text-zinc-400" style={{ fontFamily: "Georgia, serif" }}>Mai uno di più.</span>
+            </h2>
+            <p className="text-[16px] text-zinc-400 leading-relaxed">
+              Un processo collaudato che porta dalla prima telefonata alle chiavi in mano in modo lineare e prevedibile.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-1">
+            {PROCESSO.map((step, i) => (
+              <div key={step.n} className="relative bg-[#0F0F0F] hover:bg-[#1A1A1A] transition-colors p-7 border border-zinc-900" data-testid={`processo-step-${i}`}>
+                <div className="text-[#1FAE52] text-5xl font-black mb-4" style={{ fontFamily: "Outfit" }}>{step.n}</div>
+                <h3 className="text-xl font-bold mb-3" style={{ fontFamily: "Outfit" }}>{step.title}</h3>
+                <p className="text-[13.5px] text-zinc-400 leading-relaxed">{step.text}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-12 flex flex-wrap items-center gap-4 justify-center">
+            <a href="#contatti" className="group inline-flex items-center gap-2 bg-[#1FAE52] hover:bg-[#168540] text-white px-7 py-4 rounded-full text-[15px] font-bold transition-all" data-testid="processo-cta">
+              Inizia con un sopralluogo gratuito <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+            </a>
+            <a href="tel:+390000000000" className="inline-flex items-center gap-2 text-zinc-300 hover:text-white text-[15px] font-semibold">
+              <Phone size={16} /> 800 123 456
+            </a>
+          </div>
+        </div>
+      </section>
+
+      {/* PROGETTI */}
+      <section id="progetti" className="bg-[#F5F5F2] py-16 lg:py-24" data-testid="progetti-section">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between mb-12 gap-6">
+            <div className="max-w-2xl">
+              <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-3">I nostri progetti</div>
+              <h2 className="text-4xl lg:text-5xl font-black tracking-tight" style={{ fontFamily: "Outfit" }}>
+                Le case che <span className="italic font-light" style={{ fontFamily: "Georgia, serif" }}>sanno di noi.</span>
+              </h2>
+            </div>
+            <p className="text-[15px] text-zinc-600 max-w-md leading-relaxed">
+              Una selezione dei lavori realizzati negli ultimi anni. Ogni casa è una storia diversa, con un solo standard di qualità.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {PROGETTI.map((p, i) => (
+              <div key={i} className="group relative aspect-square overflow-hidden bg-zinc-200" data-testid={`progetto-${i}`}>
+                <img src={p.src} alt={p.tag} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-4">
+                  <div className="text-[10px] font-bold tracking-widest text-[#1FAE52] mb-1">{p.area}</div>
+                  <div className="text-[14px] font-semibold text-white leading-tight">{p.tag}</div>
                 </div>
               </div>
             ))}
@@ -315,76 +396,202 @@ const Landing = () => {
         </div>
       </section>
 
-      {/* CALL TO ACTION */}
-      <section className="py-24 bg-[#B34A31] text-white">
-        <div className="max-w-4xl mx-auto px-4 text-center space-y-8">
-          <h2 className="text-4xl sm:text-5xl font-serif font-bold">Pronto a trasformare la tua casa?</h2>
-          <p className="text-xl opacity-90 font-light max-w-2xl mx-auto">
-            Usa il nostro configuratore AI per ottenere un preventivo dettagliato in meno di 5 minuti, senza alcun impegno.
-          </p>
-          <div className="pt-4 flex justify-center">
-            <Link 
-              to="/configuratoreesigenze" 
-              className="bg-white text-[#B34A31] px-10 py-5 rounded-lg font-bold text-lg hover:bg-[#F7F7F5] transition-colors shadow-2xl hover:-translate-y-1 transform duration-200"
-              data-testid="bottom-primary-cta"
-            >
-              Inizia la Configurazione Gratuita
-            </Link>
+      {/* TESTIMONIAL */}
+      <section className="bg-white py-16 lg:py-24" data-testid="testimonial-section">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-center max-w-2xl mx-auto mb-14">
+            <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-3">Cosa dicono di noi</div>
+            <h2 className="text-4xl lg:text-5xl font-black tracking-tight" style={{ fontFamily: "Outfit" }}>
+              4,9 stelle su Google. <span className="italic font-light" style={{ fontFamily: "Georgia, serif" }}>Non per caso.</span>
+            </h2>
           </div>
+          <div className="grid md:grid-cols-3 gap-6">
+            {TESTIMONIANZE.map((t, i) => (
+              <div key={i} className="bg-[#F5F5F2] p-7 border-t-4 border-[#1FAE52]" data-testid={`testimonial-${i}`}>
+                <div className="flex gap-1 mb-4">
+                  {Array.from({ length: t.stars }).map((_, n) => <Star key={n} size={16} className="fill-[#1FAE52] text-[#1FAE52]" />)}
+                </div>
+                <p className="text-[15px] text-zinc-800 leading-relaxed mb-5 italic">«{t.text}»</p>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-[#0A0A0A] text-white flex items-center justify-center font-bold text-sm">
+                    {t.name.charAt(0)}
+                  </div>
+                  <div>
+                    <div className="text-[14px] font-bold">{t.name}</div>
+                    <div className="text-[12px] text-zinc-500">{t.city}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section className="bg-[#F5F5F2] py-16 lg:py-24" data-testid="faq-section">
+        <div className="max-w-4xl mx-auto px-6">
+          <div className="text-center mb-12">
+            <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-3">Domande frequenti</div>
+            <h2 className="text-4xl lg:text-5xl font-black tracking-tight" style={{ fontFamily: "Outfit" }}>
+              Quello che <span className="italic font-light" style={{ fontFamily: "Georgia, serif" }}>tutti chiedono.</span>
+            </h2>
+          </div>
+          <div>
+            {FAQ.map((f, i) => <FaqItem key={f.q} q={f.q} a={f.a} i={i} />)}
+          </div>
+        </div>
+      </section>
+
+      {/* CONTATTI */}
+      <section id="contatti" className="bg-white py-16 lg:py-24 border-y border-zinc-100" data-testid="contatti-section">
+        <div className="max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-12">
+          <div>
+            <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-3">Parliamone</div>
+            <h2 className="text-4xl lg:text-5xl font-black tracking-tight mb-5" style={{ fontFamily: "Outfit" }}>
+              Pronto a ristrutturare?
+              <span className="block italic font-light" style={{ fontFamily: "Georgia, serif" }}>Iniziamo da un caffè.</span>
+            </h2>
+            <p className="text-[16px] text-zinc-600 mb-8 leading-relaxed">
+              Compila il form: ti richiamiamo entro 24h per fissare un sopralluogo gratuito senza alcun impegno. Oppure chiamaci direttamente.
+            </p>
+            <div className="space-y-4">
+              <a href="tel:+390000000000" className="flex items-center gap-4 group" data-testid="contact-phone">
+                <div className="w-12 h-12 bg-[#0A0A0A] group-hover:bg-[#1FAE52] flex items-center justify-center rounded-full transition-colors">
+                  <Phone size={18} className="text-white" />
+                </div>
+                <div>
+                  <div className="text-[12px] text-zinc-500 font-medium">Chiamaci subito</div>
+                  <div className="text-[18px] font-bold">800 123 456</div>
+                </div>
+              </a>
+              <a href="mailto:info@sadicasa.it" className="flex items-center gap-4 group" data-testid="contact-email">
+                <div className="w-12 h-12 bg-[#0A0A0A] group-hover:bg-[#1FAE52] flex items-center justify-center rounded-full transition-colors">
+                  <Mail size={18} className="text-white" />
+                </div>
+                <div>
+                  <div className="text-[12px] text-zinc-500 font-medium">Scrivici</div>
+                  <div className="text-[16px] font-semibold">info@sadicasa.it</div>
+                </div>
+              </a>
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-[#0A0A0A] flex items-center justify-center rounded-full">
+                  <MapPin size={18} className="text-white" />
+                </div>
+                <div>
+                  <div className="text-[12px] text-zinc-500 font-medium">Vieni in showroom</div>
+                  <div className="text-[16px] font-semibold">Via Roma 123, Milano</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <form
+            onSubmit={(e) => { e.preventDefault(); setContactSent(true); }}
+            className="bg-[#F5F5F2] p-8 lg:p-10"
+            data-testid="contact-form"
+          >
+            {contactSent ? (
+              <div className="text-center py-12" data-testid="contact-success">
+                <div className="w-16 h-16 mx-auto bg-[#1FAE52] rounded-full flex items-center justify-center mb-5">
+                  <Check size={28} className="text-white" strokeWidth={3} />
+                </div>
+                <h3 className="text-2xl font-black mb-2" style={{ fontFamily: "Outfit" }}>Richiesta ricevuta</h3>
+                <p className="text-[15px] text-zinc-600">Ti ricontattiamo entro 24 ore. Grazie per averci scelto.</p>
+              </div>
+            ) : (
+              <>
+                <h3 className="text-2xl font-black mb-2" style={{ fontFamily: "Outfit" }}>Richiedi preventivo gratuito</h3>
+                <p className="text-[14px] text-zinc-600 mb-6">Risposta garantita entro 24 ore lavorative.</p>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <input type="text" required placeholder="Nome" className="w-full px-4 py-3.5 bg-white border border-zinc-200 focus:border-[#1FAE52] focus:outline-none text-[14px] transition-colors" data-testid="contact-nome" />
+                    <input type="text" required placeholder="Cognome" className="w-full px-4 py-3.5 bg-white border border-zinc-200 focus:border-[#1FAE52] focus:outline-none text-[14px] transition-colors" data-testid="contact-cognome" />
+                  </div>
+                  <input type="email" required placeholder="Email" className="w-full px-4 py-3.5 bg-white border border-zinc-200 focus:border-[#1FAE52] focus:outline-none text-[14px] transition-colors" data-testid="contact-email-input" />
+                  <input type="tel" required placeholder="Telefono" className="w-full px-4 py-3.5 bg-white border border-zinc-200 focus:border-[#1FAE52] focus:outline-none text-[14px] transition-colors" data-testid="contact-telefono" />
+                  <select className="w-full px-4 py-3.5 bg-white border border-zinc-200 focus:border-[#1FAE52] focus:outline-none text-[14px] transition-colors" data-testid="contact-servizio">
+                    <option>Cosa ti serve?</option>
+                    <option>Ristrutturazione completa</option>
+                    <option>Solo bagno / cucina</option>
+                    <option>Arredamento</option>
+                    <option>Manutenzione / Servizi casa</option>
+                    <option>Altro</option>
+                  </select>
+                  <textarea rows={4} placeholder="Raccontaci il tuo progetto (mq, città, tempi…)" className="w-full px-4 py-3.5 bg-white border border-zinc-200 focus:border-[#1FAE52] focus:outline-none text-[14px] transition-colors resize-none" data-testid="contact-messaggio" />
+                  <label className="flex items-start gap-2 text-[12px] text-zinc-600">
+                    <input type="checkbox" required className="mt-1 accent-[#1FAE52]" data-testid="contact-privacy" />
+                    <span>Ho letto e accetto la <a href="#" className="underline">privacy policy</a> e autorizzo il trattamento dei miei dati per essere ricontattato.</span>
+                  </label>
+                  <button type="submit" className="w-full inline-flex items-center justify-center gap-2 bg-[#1FAE52] hover:bg-[#168540] text-white py-4 rounded-full text-[15px] font-bold transition-all hover:shadow-lg" data-testid="contact-submit">
+                    Invia richiesta <Send size={16} />
+                  </button>
+                </div>
+              </>
+            )}
+          </form>
         </div>
       </section>
 
       {/* FOOTER */}
-      <footer className="bg-[#1C1C1A] text-gray-400 py-16 border-t border-white/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-4 gap-12">
-          <div className="space-y-4">
-            <span className="font-serif text-2xl font-bold tracking-tight text-white block">
-              Ristruttura<span className="text-[#B34A31]">.CAD</span>
-            </span>
-            <p className="text-sm leading-relaxed">
-              Piattaforma tecnologica per ristrutturazioni chiavi in mano. Design, tecnologia ed esecuzione perfetta.
+      <footer className="bg-[#0A0A0A] text-white" data-testid="footer">
+        <div className="max-w-7xl mx-auto px-6 py-16 grid md:grid-cols-2 lg:grid-cols-4 gap-10">
+          <div>
+            <img src="/brand/sadicasa-dark.png" alt="Sa di Casa" className="h-14 w-auto mb-4" />
+            <p className="text-[13px] text-zinc-400 leading-relaxed mb-5">
+              Ristrutturazioni chiavi in mano, arredamento su misura e servizi per la casa. Dal 2014 trasformiamo le case dei nostri clienti con preventivi chiari e prezzi bloccati.
             </p>
+            <div className="flex items-center gap-2 text-[12px] text-zinc-500">
+              <ShieldCheck size={14} className="text-[#1FAE52]" /> Garanzia 5 anni · IVA 10% inclusa
+            </div>
           </div>
-          
           <div>
-            <h5 className="text-white font-bold mb-4 font-sans uppercase text-sm tracking-wider">Azienda</h5>
-            <ul className="space-y-3 text-sm">
-              <li><a href="#" className="hover:text-white transition-colors">Chi Siamo</a></li>
-              <li><a href="#" className="hover:text-white transition-colors">Progetti</a></li>
-              <li><a href="#" className="hover:text-white transition-colors">Tecnologia</a></li>
-              <li><a href="#" className="hover:text-white transition-colors">Contatti</a></li>
+            <div className="text-[11px] font-bold tracking-widest text-zinc-500 mb-4">SERVIZI</div>
+            <ul className="space-y-2.5 text-[14px]">
+              <li><a href="#servizi" className="text-zinc-300 hover:text-[#1FAE52] transition-colors">Ristrutturazioni chiavi in mano</a></li>
+              <li><a href="#arredamento" className="text-zinc-300 hover:text-[#1FAE52] transition-colors">Arredamento su misura</a></li>
+              <li><a href="#servizi" className="text-zinc-300 hover:text-[#1FAE52] transition-colors">Servizi per la casa 360°</a></li>
+              <li><a href="#pacchetti" className="text-zinc-300 hover:text-[#1FAE52] transition-colors">I nostri pacchetti</a></li>
+              <li><a href="#progetti" className="text-zinc-300 hover:text-[#1FAE52] transition-colors">Progetti realizzati</a></li>
             </ul>
           </div>
-
           <div>
-            <h5 className="text-white font-bold mb-4 font-sans uppercase text-sm tracking-wider">Servizi</h5>
-            <ul className="space-y-3 text-sm">
-              <li><Link to="/configuratoreesigenze" className="hover:text-white transition-colors">Configuratore Preventivi</Link></li>
-              <li><a href="#" className="hover:text-white transition-colors">Ristrutturazioni Complete</a></li>
-              <li><a href="#" className="hover:text-white transition-colors">Interior Design 3D</a></li>
+            <div className="text-[11px] font-bold tracking-widest text-zinc-500 mb-4">AZIENDA</div>
+            <ul className="space-y-2.5 text-[14px]">
+              <li><a href="#processo" className="text-zinc-300 hover:text-[#1FAE52] transition-colors">Come lavoriamo</a></li>
+              <li><a href="#" className="text-zinc-300 hover:text-[#1FAE52] transition-colors">Chi siamo</a></li>
+              <li><a href="#" className="text-zinc-300 hover:text-[#1FAE52] transition-colors">Blog & Guide</a></li>
+              <li><a href="#contatti" className="text-zinc-300 hover:text-[#1FAE52] transition-colors">Contatti</a></li>
+              <li><Link to="/login" className="text-zinc-300 hover:text-[#1FAE52] transition-colors">Area riservata</Link></li>
             </ul>
           </div>
-
           <div>
-            <h5 className="text-white font-bold mb-4 font-sans uppercase text-sm tracking-wider">Contatti</h5>
-            <ul className="space-y-3 text-sm">
-              <li>info@ristrutturacad.it</li>
-              <li>800 123 456</li>
-              <li>Via Milano 10, Roma (IT)</li>
+            <div className="text-[11px] font-bold tracking-widest text-zinc-500 mb-4">CONTATTI</div>
+            <ul className="space-y-3 text-[14px]">
+              <li className="flex items-start gap-3 text-zinc-300">
+                <Phone size={14} className="mt-1 text-[#1FAE52]" /> 800 123 456
+              </li>
+              <li className="flex items-start gap-3 text-zinc-300">
+                <Mail size={14} className="mt-1 text-[#1FAE52]" /> info@sadicasa.it
+              </li>
+              <li className="flex items-start gap-3 text-zinc-300">
+                <MapPin size={14} className="mt-1 text-[#1FAE52]" /> Via Roma 123<br />20100 Milano
+              </li>
+              <li className="flex items-start gap-3 text-zinc-300">
+                <Clock size={14} className="mt-1 text-[#1FAE52]" /> Lun–Sab 9.00–19.00
+              </li>
             </ul>
           </div>
         </div>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-16 pt-8 border-t border-white/10 text-xs flex flex-col sm:flex-row justify-between items-center gap-4">
-          <p>&copy; {new Date().getFullYear()} Ristruttura.CAD srl. Tutti i diritti riservati. P.IVA 01234567890</p>
-          <div className="flex gap-4">
-            <a href="#" className="hover:text-white">Privacy Policy</a>
-            <a href="#" className="hover:text-white">Cookie Policy</a>
-            <a href="#" className="hover:text-white">Termini di Servizio</a>
+        <div className="border-t border-zinc-900">
+          <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col md:flex-row items-center justify-between gap-4 text-[12px] text-zinc-500">
+            <div>© {new Date().getFullYear()} Sa di Casa S.r.l. · P.IVA 01234567890 · Tutti i diritti riservati</div>
+            <div className="flex gap-5">
+              <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
+              <a href="#" className="hover:text-white transition-colors">Cookie Policy</a>
+              <a href="#" className="hover:text-white transition-colors">Termini di servizio</a>
+            </div>
           </div>
         </div>
       </footer>
     </div>
   );
-};
-
-export default Landing;
+}

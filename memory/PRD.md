@@ -1,5 +1,16 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 21 — Feb 2026 — Quote 2D 4 lati + UX Demolizioni)
+- ✅ **Quote dimensionali sulla Pianta 2D su tutti i 4 lati** (`Canvas2D.jsx`): catena ticks + quote parziali + quote totali su SOPRA, SOTTO, SINISTRA e DESTRA del bbox progetto. Stile architettonico professionale (JetBrains Mono 11/13px, stroke #1F2937).
+- ✅ **Quote interne ai poligoni stanza**: ogni lato di ogni stanza ha un badge bianco bordato nero con la sua misura (es. `4,00 m`). Format coerente con virgola IT via `fmtNum`.
+- ✅ **Banner hint contestuali per i tool Demolizioni**: 5 banner colorati (rosa muri, arancio pavimenti, ambra rivestimenti) sopra il canvas con istruzioni chiare per ogni tool: `data-testid="tool-hint-demolish-{wall|wall-partial|floor|floor-partial|rivestimento}"`.
+- ✅ **Label Demolizioni più espressive**: "Muro · click", "Muro parziale · drag", "Pavimento · totale", "Pavimento · area", "Rivestim. · parziale". Mappatura UX:
+  - Pavimento area = poligono drawing (click vertici, doppio click chiude)
+  - Muri = click sul muro intero (toggle demolito)
+  - Muro parziale = drag sulla parete + maniglie/pannello per affinare
+  - Rivestimento = click parete + sx/dx/h da pannello proprietà
+- ✅ **Tutti i tool demolizione confluiscono in un'unica voce "Demolizione e smaltimento"** (Round 20) con calcolo m² preciso
+
 ## Recent Updates (Round 16 — Feb 2026 - Bug Critici Quote/Tavole)
 - ✅ **JSX SVG bug fix**: i numeri nelle quote sx/dx/h dei Prospetti non erano visibili perché JSX `<text>sx {var}</text>` creava 2 text node figli che SVG renderizzava come un solo glyph. Convertito a template literal `{`sx ${var}`}` ovunque (Prospetti.jsx, Canvas2D.jsx)
 - ✅ **Auto-fit viewBox sulle Tavole**: nuovo prop `autoFit` su Canvas2D che calcola bbox di tutto il contenuto del progetto (rooms, walls, MEP) e dimensiona il viewBox per non tagliare nulla

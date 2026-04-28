@@ -1043,7 +1043,7 @@ export default function Canvas2D({
                 const ny = ( dxs / (lenSeg || 1)) * dir;
                 const off = 22;
                 const lx = mxs + nx * off, ly = mys + ny * off;
-                const txt = `${(lenSeg / 100).toFixed(2)} m`;
+                const txt = `${fmtNum(lenSeg / 100, 2)} m`;
                 const padX = 28, padY = 10;
                 return (
                   <g key={`edge-q-${i}`} pointerEvents="none">

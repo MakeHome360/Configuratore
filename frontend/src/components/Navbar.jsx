@@ -1,70 +1,123 @@
-import React from "react";
-import { Link, useNavigate, useLocation } from "react-router-dom";
-import { useAuth } from "../contexts/AuthContext";
-import { Button } from "./ui/button";
-import { Ruler, LogOut, FolderOpen, Package, Receipt, LayoutDashboard } from "lucide-react";
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { Menu, X, ArrowRight } from 'lucide-react';
 
-export default function Navbar({ compact = false }) {
-  const { user, logout } = useAuth();
-  const nav = useNavigate();
-  const { pathname } = useLocation();
+const Navbar = () => {
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const linkCls = (active) =>
-    `text-sm px-3 py-1.5 transition-colors flex items-center gap-1.5 ${active ? "text-zinc-900" : "text-zinc-500 hover:text-zinc-900"}`;
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 20);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const navLinks = [
+    { name: 'Home', path: '/' },
+    { name: 'Ristrutturazioni', path: '#servizi' },
+    { name: 'Pacchetti', path: '#pacchetti' },
+    { name: 'Progetti', path: '#progetti' },
+    { name: 'Tecnologia', path: '#tecnologia' },
+  ];
 
   return (
     <header
-      className={`w-full border-b border-zinc-200 bg-white/90 backdrop-blur-xl ${compact ? "h-14" : "h-16"} flex items-center px-6 z-30`}
-      data-testid="app-navbar"
+      className={`fixed top-0 left-0 w-full z-50 transition-all duration-300 ${
+        isScrolled
+          ? 'bg-white/80 backdrop-blur-xl border-b border-[#E0DFD8] py-3 shadow-sm'
+          : 'bg-transparent py-5'
+      }`}
     >
-      <Link to={user ? "/dashboard" : "/"} className="flex items-center gap-2 mr-8" data-testid="logo-link">
-        <div className="w-8 h-8 bg-zinc-900 text-white flex items-center justify-center">
-          <Ruler size={16} strokeWidth={2.4} />
-        </div>
-        <span className="font-semibold tracking-tight text-zinc-900" style={{ fontFamily: "Outfit" }}>
-          Ristruttura<span className="text-blue-600">.</span>CAD
-        </span>
-      </Link>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center">
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-2" data-testid="nav-logo">
+            <span className="font-serif text-2xl font-bold tracking-tight text-[#1C1C1A]">
+              Ristruttura<span className="text-[#B34A31]">.CAD</span>
+            </span>
+          </Link>
 
-      {user && (
-        <nav className="flex items-center gap-1">
-          <Link to="/dashboard" className={linkCls(pathname === "/dashboard" || pathname.startsWith("/editor"))} data-testid="nav-dashboard">
-            <LayoutDashboard size={14} /> Progetti
-          </Link>
-          <Link to="/preventivi" className={linkCls(pathname.startsWith("/preventivi"))} data-testid="nav-preventivi">
-            <Receipt size={14} /> Preventivi
-          </Link>
-          <Link to="/materials" className={linkCls(pathname.startsWith("/materials"))} data-testid="nav-materials">
-            <Package size={14} /> Catalogo
-          </Link>
-        </nav>
-      )}
+          {/* Desktop Nav */}
+          <nav className="hidden lg:flex items-center gap-8">
+            {navLinks.map((link) => (
+              <a
+                key={link.name}
+                href={link.path}
+                className="font-sans text-[15px] font-medium text-[#5C5C59] hover:text-[#1C1C1A] transition-colors"
+                data-testid={`nav-link-${link.name.toLowerCase()}`}
+              >
+                {link.name}
+              </a>
+            ))}
+          </nav>
 
-      <div className="ml-auto flex items-center gap-3">
-        {user ? (
-          <>
-            <div className="text-right hidden sm:block">
-              <div className="text-xs text-zinc-500">{user.email}</div>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-sm"
-              onClick={async () => { await logout(); nav("/"); }}
-              data-testid="logout-button"
+          {/* Actions */}
+          <div className="hidden lg:flex items-center gap-4">
+            <Link
+              to="/login"
+              className="font-sans text-[15px] font-medium text-[#1C1C1A] hover:text-[#B34A31] transition-colors"
+              data-testid="nav-login-btn"
             >
-              <LogOut size={14} className="mr-1.5" /> Esci
-            </Button>
-          </>
-        ) : (
-          <>
-            <Link to="/login" className="text-sm text-zinc-700 hover:text-zinc-900 px-3" data-testid="nav-login">Accedi</Link>
-            <Link to="/register" data-testid="nav-register">
-              <Button className="rounded-sm bg-zinc-900 hover:bg-zinc-800">Inizia gratis</Button>
+              Accedi
             </Link>
-          </>
-        )}
+            <Link
+              to="/configuratoreesigenze"
+              className="group flex items-center gap-2 bg-[#1C1C1A] text-white px-5 py-2.5 rounded hover:bg-[#B34A31] transition-colors font-sans text-[15px] font-medium"
+              data-testid="nav-cta-btn"
+            >
+              Preventivo gratuito
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </Link>
+          </div>
+
+          {/* Mobile Menu Toggle */}
+          <button
+            className="lg:hidden text-[#1C1C1A] p-2"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            data-testid="mobile-menu-toggle"
+          >
+            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
+        </div>
       </div>
+
+      {/* Mobile Menu */}
+      {mobileMenuOpen && (
+        <div className="lg:hidden absolute top-full left-0 w-full bg-white border-b border-[#E0DFD8] shadow-lg">
+          <div className="flex flex-col p-4 space-y-4">
+            {navLinks.map((link) => (
+              <a
+                key={link.name}
+                href={link.path}
+                className="font-sans text-lg font-medium text-[#1C1C1A] py-2 border-b border-gray-100"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                {link.name}
+              </a>
+            ))}
+            <div className="flex flex-col gap-3 pt-4">
+              <Link
+                to="/login"
+                className="text-center font-sans font-medium text-[#1C1C1A] border border-[#E0DFD8] py-3 rounded"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Accedi
+              </Link>
+              <Link
+                to="/configuratoreesigenze"
+                className="text-center bg-[#B34A31] text-white py-3 rounded font-sans font-medium"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Configura Preventivo
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
-}
+};
+
+export default Navbar;

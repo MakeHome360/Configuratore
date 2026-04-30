@@ -220,18 +220,18 @@ export default function Landing() {
                 Come lavoriamo <ArrowRight size={16} />
               </a>
             </div>
-            <div className="grid grid-cols-3 gap-8 max-w-lg pt-6 border-t border-zinc-300">
-              <div>
-                <div className="text-3xl font-black" style={{ fontFamily: "Outfit" }}>500<span className="text-[#1FAE52]">+</span></div>
-                <div className="text-[12px] text-zinc-600 mt-1">Cantieri consegnati</div>
+            <div className="flex flex-wrap items-center gap-x-8 gap-y-3 pt-6 border-t border-zinc-300 text-[13px] text-zinc-700">
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={16} className="text-[#1FAE52]" />
+                <span><strong>Garanzia 5 anni</strong> sui lavori</span>
               </div>
-              <div>
-                <div className="text-3xl font-black" style={{ fontFamily: "Outfit" }}>11<span className="text-[#1FAE52]">y</span></div>
-                <div className="text-[12px] text-zinc-600 mt-1">Anni di esperienza</div>
+              <div className="flex items-center gap-2">
+                <Lock size={16} className="text-[#1FAE52]" />
+                <span><strong>Preventivo bloccato</strong>, nessun extra</span>
               </div>
-              <div>
-                <div className="text-3xl font-black" style={{ fontFamily: "Outfit" }}>4,9<span className="text-[#1FAE52]">★</span></div>
-                <div className="text-[12px] text-zinc-600 mt-1">Recensioni Google</div>
+              <div className="flex items-center gap-2">
+                <BadgeCheck size={16} className="text-[#1FAE52]" />
+                <span>IVA <strong>10%</strong> inclusa</span>
               </div>
             </div>
           </div>

@@ -4,7 +4,7 @@ import { Menu, X, ArrowRight, Phone } from 'lucide-react';
 
 const NAV = [
   { name: 'Ristrutturazioni', href: '#servizi' },
-  { name: 'Arredamento', href: '#arredamento' },
+  { name: 'Arredamento', href: '#servizi' },
   { name: 'Pacchetti', href: '#pacchetti' },
   { name: 'Progetti', href: '#progetti' },
   { name: 'Come funziona', href: '#processo' },

@@ -299,6 +299,57 @@ async def refresh_endpoint(request: Request, response: Response):
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
+@api.post("/auth/admin-reseed")
+async def admin_reseed(body: Dict[str, Any]):
+    """Ricrea/aggiorna l'utente admin usando ADMIN_EMAIL/ADMIN_PASSWORD dall'env.
+    Protetto dalla ADMIN_PASSWORD stessa (chi la conosce, può riparare)."""
+    env_email = os.environ.get("ADMIN_EMAIL", "").lower().strip()
+    env_password = os.environ.get("ADMIN_PASSWORD", "").strip()
+    if not env_email or not env_password:
+        raise HTTPException(status_code=500, detail="ADMIN_EMAIL/ADMIN_PASSWORD non configurate")
+    if body.get("password") != env_password:
+        raise HTTPException(status_code=403, detail="Password master non valida")
+    existing = await db.users.find_one({"email": env_email})
+    if not existing:
+        uid = str(uuid.uuid4())
+        await db.users.insert_one({
+            "id": uid,
+            "email": env_email,
+            "name": "Admin",
+            "role": "admin",
+            "password_hash": hash_password(env_password),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        await seed_user_catalog(uid)
+        action = "created"
+    else:
+        await db.users.update_one({"email": env_email}, {"$set": {
+            "password_hash": hash_password(env_password),
+            "role": "admin",
+        }})
+        action = "updated"
+    # Pulisce brute-force locks (così se eri bloccato, si sblocca)
+    cleared = await db.login_attempts.delete_many({})
+    return {"status": "ok", "action": action, "email": env_email, "brute_force_cleared": cleared.deleted_count}
+
+
+@api.get("/auth/admin-status")
+async def admin_status():
+    """Debug: verifica se l'admin email dell'env esiste e quanti lock brute-force ci sono."""
+    env_email = os.environ.get("ADMIN_EMAIL", "").lower().strip()
+    has_env_email = bool(env_email)
+    has_env_password = bool(os.environ.get("ADMIN_PASSWORD", "").strip())
+    user = await db.users.find_one({"email": env_email}) if env_email else None
+    attempts = await db.login_attempts.count_documents({})
+    return {
+        "env_admin_email_set": has_env_email,
+        "env_admin_password_set": has_env_password,
+        "admin_exists": bool(user),
+        "admin_role": user.get("role") if user else None,
+        "brute_force_locks": attempts,
+    }
+
+
 # ---------------- Projects ----------------
 @api.get("/projects")
 async def list_projects(user: Dict[str, Any] = Depends(get_current_user)):

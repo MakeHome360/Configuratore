@@ -985,8 +985,10 @@ async def on_startup():
     await db.preventivi.create_index([("user_id", 1), ("created_at", -1)])
     await db.preventivi.create_index("id", unique=True)
     # seed admin
+    import logging as _log
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@example.com").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
+    _log.warning(f"[ADMIN_SEED] Starting seed — ADMIN_EMAIL env set: {bool(os.environ.get('ADMIN_EMAIL'))}, ADMIN_PASSWORD env set: {bool(os.environ.get('ADMIN_PASSWORD'))}, target email: {admin_email}")
     existing = await db.users.find_one({"email": admin_email})
     if not existing:
         uid = str(uuid.uuid4())
@@ -999,8 +1001,16 @@ async def on_startup():
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
         await seed_user_catalog(uid)
+        _log.warning(f"[ADMIN_SEED] CREATED admin user {admin_email}")
     elif not verify_password(admin_password, existing["password_hash"]):
-        await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
+        await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password), "role": "admin"}})
+        _log.warning(f"[ADMIN_SEED] UPDATED password for existing admin {admin_email}")
+    else:
+        _log.warning(f"[ADMIN_SEED] OK — admin {admin_email} exists with correct password")
+    # Pulisce brute-force locks al boot per evitare che lock stale bloccano dopo un redeploy
+    cleared = await db.login_attempts.delete_many({})
+    if cleared.deleted_count > 0:
+        _log.warning(f"[ADMIN_SEED] Cleared {cleared.deleted_count} stale brute-force locks")
 
 
 @app.on_event("shutdown")

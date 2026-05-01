@@ -51,7 +51,7 @@ export default function Navbar() {
               <img
                 src="/brand/sadicasa-light.png"
                 alt="Sa di Casa"
-                className="h-12 w-auto"
+                className="h-20 lg:h-24 w-auto"
               />
             </Link>
 

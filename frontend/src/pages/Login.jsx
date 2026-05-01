@@ -60,7 +60,7 @@ export default function Login() {
           <Link to="/register" className="text-zinc-900 underline underline-offset-4" data-testid="goto-register-link">Crea un account</Link>
         </div>
         <div className="mt-10 p-4 border border-zinc-200 text-xs text-zinc-500 mono" data-testid="demo-credentials">
-          demo · admin@ristruttura.app / Admin12345!
+          Accesso riservato · area amministrativa
         </div>
       </main>
     </div>

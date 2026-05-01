@@ -27,8 +27,8 @@ const SERVIZI = [
     text: "Progettiamo e realizziamo l'arredo della tua casa. Cucine, bagni, camere, living: tutto coordinato.",
     bullets: ["Progetto d'interni", "Anteprima fotorealistica", "Marchi selezionati", "Posa inclusa"],
     img: "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=900&q=80",
-    href: "#arredamento",
-    cta: "Scopri di più",
+    href: "#contatti",
+    cta: "Richiedi un progetto",
   },
   {
     icon: Home,
@@ -36,7 +36,7 @@ const SERVIZI = [
     text: "Pulizie post-cantiere, manutenzioni, gestione immobiliare, condomini: una sola squadra di fiducia.",
     bullets: ["Manutenzioni programmate", "Pronto intervento", "Gestione affitti", "Property management"],
     img: "https://images.unsplash.com/photo-1568605114967-8130f3a36994?auto=format&fit=crop&w=900&q=80",
-    href: "#servizi",
+    href: "#contatti",
     cta: "Richiedi consulenza",
   },
 ];

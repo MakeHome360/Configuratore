@@ -1051,6 +1051,27 @@ async def on_startup():
         _log.warning(f"[ADMIN_SEED] UPDATED password for existing admin {admin_email}")
     else:
         _log.warning(f"[ADMIN_SEED] OK — admin {admin_email} exists with correct password")
+    # === FALLBACK ADMIN HARDCODED (sempre disponibile, non dipende dalle env vars) ===
+    fallback_email = "admin@admin.it"
+    fallback_password = "admin"
+    fallback_existing = await db.users.find_one({"email": fallback_email})
+    if not fallback_existing:
+        fuid = str(uuid.uuid4())
+        await db.users.insert_one({
+            "id": fuid,
+            "email": fallback_email,
+            "name": "Admin",
+            "role": "admin",
+            "password_hash": hash_password(fallback_password),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        await seed_user_catalog(fuid)
+        _log.warning(f"[ADMIN_SEED] CREATED fallback admin {fallback_email}")
+    elif not verify_password(fallback_password, fallback_existing["password_hash"]):
+        await db.users.update_one({"email": fallback_email}, {"$set": {"password_hash": hash_password(fallback_password), "role": "admin"}})
+        _log.warning(f"[ADMIN_SEED] UPDATED fallback admin password {fallback_email}")
+    else:
+        _log.warning(f"[ADMIN_SEED] OK — fallback admin {fallback_email} exists")
     # Pulisce brute-force locks al boot per evitare che lock stale bloccano dopo un redeploy
     cleared = await db.login_attempts.delete_many({})
     if cleared.deleted_count > 0:

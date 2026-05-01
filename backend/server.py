@@ -333,6 +333,50 @@ async def admin_reseed(body: Dict[str, Any]):
     return {"status": "ok", "action": action, "email": env_email, "brute_force_cleared": cleared.deleted_count}
 
 
+@api.post("/auth/emergency-admin-setup")
+async def emergency_admin_setup(body: Dict[str, Any], response: Response):
+    """ENDPOINT DI EMERGENZA — bypassa tutto per far entrare l'owner.
+    Autorizzazione: serve la MASTER_KEY (env EMERGENCY_KEY) o in fallback ADMIN_PASSWORD env.
+    Body: {master_key, new_email, new_password}
+    Azioni: elimina vecchio admin, crea nuovo con credenziali fornite, logga dentro setting cookie.
+    """
+    master_env = (os.environ.get("EMERGENCY_KEY") or os.environ.get("ADMIN_PASSWORD") or "").strip()
+    provided = (body.get("master_key") or "").strip()
+    if not master_env or not provided or provided != master_env:
+        raise HTTPException(status_code=403, detail="master_key errata o non configurata")
+    new_email = (body.get("new_email") or "").lower().strip()
+    new_password = (body.get("new_password") or "").strip()
+    if not new_email or "@" not in new_email:
+        raise HTTPException(status_code=400, detail="new_email non valida")
+    if len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="new_password minimo 6 caratteri")
+    # Clean slate: pulisce brute-force, elimina utente esistente con stessa email, crea nuovo
+    await db.login_attempts.delete_many({})
+    await db.users.delete_many({"email": new_email})
+    uid = str(uuid.uuid4())
+    await db.users.insert_one({
+        "id": uid,
+        "email": new_email,
+        "name": "Admin",
+        "role": "admin",
+        "password_hash": hash_password(new_password),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    await seed_user_catalog(uid)
+    # Login immediato
+    access = create_access_token(uid, new_email)
+    refresh = create_refresh_token(uid)
+    set_auth_cookies(response, access, refresh)
+    return {
+        "ok": True,
+        "message": f"Admin {new_email} ricreato e loggato.",
+        "email": new_email,
+        "role": "admin",
+        "access_token": access,
+        "refresh_token": refresh,
+    }
+
+
 @api.get("/auth/admin-status")
 async def admin_status():
     """Debug: verifica se l'admin email dell'env esiste e quanti lock brute-force ci sono."""

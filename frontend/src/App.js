@@ -9,6 +9,7 @@ import { Toaster } from "@/components/ui/sonner";
 import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
+import CambiaPassword from "@/pages/CambiaPassword";
 import Dashboard from "@/pages/Dashboard";
 import Editor from "@/pages/Editor";
 import Materials from "@/pages/Materials";
@@ -70,6 +71,9 @@ function App() {
             <Route path="/" element={<RootRedirect />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/cambia-password" element={
+              <ProtectedRoute><CambiaPassword /></ProtectedRoute>
+            } />
             {/* Main */}
             <Route path="/dashboard" element={P(Dashboard)} />
             <Route path="/dashboardcliente" element={P(DashboardCliente)} />

@@ -114,6 +114,9 @@ class RegisterReq(BaseModel):
     email: EmailStr
     password: str
     name: str
+    requested_role: str = "cliente"  # cliente, venditore, subappaltatore, gestore
+    phone: Optional[str] = None
+    message: Optional[str] = None
 
 
 class LoginReq(BaseModel):
@@ -125,7 +128,38 @@ class UserOut(BaseModel):
     id: str
     email: str
     name: str
-    role: str = "user"
+    role: str = "cliente"
+
+
+# Allowed roles in the system
+ALLOWED_ROLES = ("admin", "venditore", "subappaltatore", "cliente", "gestore")
+# Default account expiry (days) per role; None = no expiry
+DEFAULT_EXPIRY_DAYS = {
+    "cliente": 180,
+    "subappaltatore": 365,
+    "venditore": None,
+    "gestore": None,
+    "admin": None,
+}
+
+
+def compute_expires_at(role: str, override_iso: Optional[str] = None) -> Optional[str]:
+    if override_iso:
+        return override_iso
+    days = DEFAULT_EXPIRY_DAYS.get(role)
+    if days is None:
+        return None
+    return (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
+
+
+def _user_is_expired(user: Dict[str, Any]) -> bool:
+    exp = user.get("expires_at")
+    if not exp:
+        return False
+    try:
+        return datetime.fromisoformat(exp) < datetime.now(timezone.utc)
+    except Exception:
+        return False
 
 
 class ProjectIn(BaseModel):
@@ -216,27 +250,34 @@ DEFAULT_CATALOG: List[Dict[str, Any]] = [
 
 # ---------------- Auth routes ----------------
 @api.post("/auth/register")
-async def register(body: RegisterReq, response: Response):
+async def register(body: RegisterReq):
     email = body.email.lower()
     existing = await db.users.find_one({"email": email})
     if existing:
         raise HTTPException(status_code=400, detail="Email già registrata")
+    requested_role = (body.requested_role or "cliente").lower()
+    if requested_role not in ALLOWED_ROLES or requested_role == "admin":
+        raise HTTPException(status_code=400, detail="Ruolo richiesto non valido")
     user_id = str(uuid.uuid4())
     doc = {
         "id": user_id,
         "email": email,
         "name": body.name,
-        "role": "user",
+        "role": "pending",
+        "status": "pending",
+        "requested_role": requested_role,
+        "phone": body.phone or "",
+        "message": body.message or "",
         "password_hash": hash_password(body.password),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.users.insert_one(doc)
-    access = create_access_token(user_id, email)
-    refresh = create_refresh_token(user_id)
-    set_auth_cookies(response, access, refresh)
-    # seed default catalog for user
-    await seed_user_catalog(user_id)
-    return {"id": user_id, "email": email, "name": body.name, "role": "user", "access_token": access, "refresh_token": refresh}
+    # NON fa auto-login: deve attendere approvazione admin
+    return {
+        "ok": True,
+        "status": "pending",
+        "message": "Richiesta ricevuta. L'amministratore ti contatterà dopo l'approvazione.",
+    }
 
 
 @api.post("/auth/login")
@@ -262,16 +303,62 @@ async def login(body: LoginReq, response: Response, request: Request):
             upsert=True,
         )
         raise HTTPException(status_code=401, detail="Credenziali non valide")
+    # Check status — account workflow pending/approval
+    status = user.get("status", "active")
+    if status == "pending":
+        raise HTTPException(status_code=403, detail="Account in attesa di approvazione dall'amministratore.")
+    if status == "rejected":
+        raise HTTPException(status_code=403, detail="Richiesta di accesso rifiutata. Contatta l'amministratore.")
+    if status == "expired" or _user_is_expired(user):
+        if not _user_is_expired(user) and status != "expired":
+            pass
+        else:
+            await db.users.update_one({"id": user["id"]}, {"$set": {"status": "expired"}})
+            raise HTTPException(status_code=403, detail="Il tuo accesso è scaduto. Contatta l'amministratore per un rinnovo.")
     await db.login_attempts.delete_one({"identifier": ident})
     access = create_access_token(user["id"], email)
     refresh = create_refresh_token(user["id"])
     set_auth_cookies(response, access, refresh)
-    return {"id": user["id"], "email": user["email"], "name": user["name"], "role": user.get("role", "user"), "access_token": access, "refresh_token": refresh}
+    return {
+        "id": user["id"],
+        "email": user["email"],
+        "name": user["name"],
+        "role": user.get("role", "cliente"),
+        "must_change_password": bool(user.get("must_change_password")),
+        "expires_at": user.get("expires_at"),
+        "venditore_level": user.get("venditore_level"),
+        "access_token": access,
+        "refresh_token": refresh,
+    }
 
 
 @api.post("/auth/logout")
 async def logout(response: Response):
     clear_auth_cookies(response)
+    return {"ok": True}
+
+
+class ChangePasswordReq(BaseModel):
+    current_password: Optional[str] = None
+    new_password: str
+
+
+@api.post("/auth/change-password")
+async def change_password(body: ChangePasswordReq, user: Dict[str, Any] = Depends(get_current_user)):
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="La nuova password deve essere di almeno 6 caratteri")
+    full = await db.users.find_one({"id": user["id"]})
+    if not full:
+        raise HTTPException(status_code=404, detail="Utente non trovato")
+    # Se NON è un primo-accesso forzato, chiediamo la password attuale
+    if not full.get("must_change_password"):
+        if not body.current_password or not verify_password(body.current_password, full["password_hash"]):
+            raise HTTPException(status_code=403, detail="Password attuale errata")
+    await db.users.update_one({"id": user["id"]}, {"$set": {
+        "password_hash": hash_password(body.new_password),
+        "must_change_password": False,
+        "password_changed_at": datetime.now(timezone.utc).isoformat(),
+    }})
     return {"ok": True}
 
 
@@ -1028,7 +1115,7 @@ async def update_stato(prev_id: str, body: Dict[str, Any], user: Dict[str, Any] 
 app.include_router(api)
 
 # Business/CRM/Commesse router
-_biz = build_biz_router(db, get_current_user)
+_biz = build_biz_router(db, get_current_user, hash_password=hash_password, seed_user_catalog=seed_user_catalog, compute_expires_at=compute_expires_at)
 app.include_router(_biz, prefix="/api")
 _r10 = build_round10_router(db, get_current_user, create_access_token)
 app.include_router(_r10, prefix="/api")

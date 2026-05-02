@@ -27,8 +27,8 @@ export function AuthProvider({ children }) {
     try {
       const { data } = await api.post("/auth/login", { email, password });
       if (data.access_token) setToken(data.access_token);
-      setUser({ id: data.id, email: data.email, name: data.name, role: data.role });
-      return { ok: true };
+      setUser({ id: data.id, email: data.email, name: data.name, role: data.role, must_change_password: !!data.must_change_password, expires_at: data.expires_at, venditore_level: data.venditore_level });
+      return { ok: true, must_change_password: !!data.must_change_password };
     } catch (e) {
       return { ok: false, error: formatApiErrorDetail(e.response?.data?.detail) };
     }
@@ -50,11 +50,19 @@ export function AuthProvider({ children }) {
     if (u) setUser(u);
   };
 
-  const register = async (name, email, password) => {
+  const register = async ({ name, email, password, requested_role, phone, message }) => {
     try {
-      const { data } = await api.post("/auth/register", { name, email, password });
-      if (data.access_token) setToken(data.access_token);
-      setUser({ id: data.id, email: data.email, name: data.name, role: data.role });
+      const { data } = await api.post("/auth/register", { name, email, password, requested_role, phone, message });
+      // Nessun auto-login: l'utente è in stato pending
+      return { ok: true, status: data.status, message: data.message };
+    } catch (e) {
+      return { ok: false, error: formatApiErrorDetail(e.response?.data?.detail) };
+    }
+  };
+
+  const changePassword = async ({ current_password, new_password }) => {
+    try {
+      await api.post("/auth/change-password", { current_password, new_password });
       return { ok: true };
     } catch (e) {
       return { ok: false, error: formatApiErrorDetail(e.response?.data?.detail) };
@@ -68,7 +76,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, loginCliente, register, logout, setUserAndToken }}>
+    <AuthContext.Provider value={{ user, loading, login, loginCliente, register, changePassword, logout, setUserAndToken }}>
       {children}
     </AuthContext.Provider>
   );

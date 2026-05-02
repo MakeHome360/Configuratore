@@ -23,6 +23,7 @@ export default function Login() {
     setLoading(false);
     if (!res.ok) { setErr(res.error); toast.error(res.error); return; }
     toast.success("Benvenuto!");
+    if (res.must_change_password) { nav("/cambia-password"); return; }
     nav("/dashboard");
   };
 

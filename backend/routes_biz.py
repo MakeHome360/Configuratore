@@ -3,12 +3,13 @@ Business routes: leads, commesse, fasi, subappaltatori, negozi, voci backoffice,
 dati azienda, impostazioni, template email, solo bagno, composite, infissi, dashboard.
 Attached to the existing `api` router in server.py.
 """
+import secrets
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 from packages_seed import (
     DEFAULT_VOCI_BACKOFFICE, DEFAULT_FASI_COMMESSA, DEFAULT_TEMPLATE_EMAIL,
@@ -22,8 +23,17 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def build_biz_router(db, get_current_user):
+def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog=None, compute_expires_at=None):
     r = APIRouter()
+    # Fallback defaults if deps not provided (keeps backward compat)
+    if hash_password is None:
+        from passlib.context import CryptContext
+        _pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        def hash_password(pwd): return _pwd.hash(pwd)  # noqa
+    if seed_user_catalog is None:
+        async def seed_user_catalog(_uid): return  # noqa
+    if compute_expires_at is None:
+        def compute_expires_at(_role, override=None): return override  # noqa
 
     # ---------- Seeds helpers ----------
     async def ensure_global_seeds():
@@ -548,7 +558,14 @@ def build_biz_router(db, get_current_user):
     async def list_users(user=Depends(get_current_user)):
         if user.get("role") != "admin":
             raise HTTPException(403, "Solo admin")
-        return await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(500)
+        users = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(500)
+        return users
+
+    @r.get("/users/pending")
+    async def list_pending_users(user=Depends(get_current_user)):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        return await db.users.find({"status": "pending"}, {"_id": 0, "password_hash": 0}).to_list(500)
 
     class UserRoleUpdate(BaseModel):
         role: str
@@ -557,7 +574,7 @@ def build_biz_router(db, get_current_user):
     async def set_role(user_id: str, body: UserRoleUpdate, user=Depends(get_current_user)):
         if user.get("role") != "admin":
             raise HTTPException(403, "Solo admin")
-        if body.role not in ("admin", "venditore", "gestore", "cliente", "subappaltatore", "user"):
+        if body.role not in ("admin", "venditore", "gestore", "cliente", "subappaltatore"):
             raise HTTPException(400, "Ruolo non valido")
         await db.users.update_one({"id": user_id}, {"$set": {"role": body.role}})
         return {"ok": True}
@@ -566,11 +583,168 @@ def build_biz_router(db, get_current_user):
     async def update_user_attrs(user_id: str, body: dict, user=Depends(get_current_user)):
         if user.get("role") != "admin":
             raise HTTPException(403, "Solo admin")
-        allowed = {k: v for k, v in (body or {}).items() if k in ("name", "negozio_id", "subappaltatore_id", "phone", "active")}
+        allowed = {k: v for k, v in (body or {}).items() if k in (
+            "name", "negozio_id", "negozi_ids", "subappaltatore_id", "phone",
+            "active", "venditore_level", "expires_at", "status", "role",
+        )}
+        # validazioni semplici
+        if "role" in allowed and allowed["role"] not in ("admin", "venditore", "gestore", "cliente", "subappaltatore"):
+            raise HTTPException(400, "Ruolo non valido")
+        if "status" in allowed and allowed["status"] not in ("pending", "active", "rejected", "expired"):
+            raise HTTPException(400, "Status non valido")
+        if "venditore_level" in allowed and allowed["venditore_level"] not in (None, "", "semplice", "responsabile", "area_manager"):
+            raise HTTPException(400, "Livello venditore non valido")
         if not allowed:
             return {"ok": True}
         await db.users.update_one({"id": user_id}, {"$set": allowed})
         return {"ok": True, "updated": list(allowed.keys())}
+
+    # --- Approve / Reject pending user ---
+    class ApproveUserReq(BaseModel):
+        role: str
+        expires_at: Optional[str] = None  # ISO datetime, None = no expiry (or default)
+        venditore_level: Optional[str] = None
+        negozio_id: Optional[str] = None
+        negozi_ids: Optional[List[str]] = None
+        subappaltatore_id: Optional[str] = None
+
+    @r.post("/users/{user_id}/approve")
+    async def approve_user(user_id: str, body: ApproveUserReq, user=Depends(get_current_user)):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        if body.role not in ("venditore", "gestore", "cliente", "subappaltatore", "admin"):
+            raise HTTPException(400, "Ruolo non valido")
+        target = await db.users.find_one({"id": user_id})
+        if not target:
+            raise HTTPException(404, "Utente non trovato")
+        expiry = compute_expires_at(body.role, body.expires_at)
+        update = {
+            "role": body.role,
+            "status": "active",
+            "approved_by": user["id"],
+            "approved_at": datetime.now(timezone.utc).isoformat(),
+            "expires_at": expiry,
+        }
+        if body.venditore_level:
+            update["venditore_level"] = body.venditore_level
+        if body.negozio_id is not None:
+            update["negozio_id"] = body.negozio_id
+        if body.negozi_ids is not None:
+            update["negozi_ids"] = body.negozi_ids
+        if body.subappaltatore_id is not None:
+            update["subappaltatore_id"] = body.subappaltatore_id
+        await db.users.update_one({"id": user_id}, {"$set": update})
+        # Seed default catalog for approved user
+        try:
+            await seed_user_catalog(user_id)
+        except Exception:
+            pass
+        return {"ok": True, "user_id": user_id, "role": body.role, "expires_at": expiry}
+
+    @r.post("/users/{user_id}/reject")
+    async def reject_user(user_id: str, user=Depends(get_current_user)):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        await db.users.update_one({"id": user_id}, {"$set": {
+            "status": "rejected",
+            "rejected_at": datetime.now(timezone.utc).isoformat(),
+            "rejected_by": user["id"],
+        }})
+        return {"ok": True}
+
+    # --- Invite user directly from admin (creates with temp password) ---
+    class InviteUserReq(BaseModel):
+        email: EmailStr
+        name: str
+        role: str
+        phone: Optional[str] = None
+        expires_at: Optional[str] = None
+        venditore_level: Optional[str] = None
+        negozio_id: Optional[str] = None
+        negozi_ids: Optional[List[str]] = None
+        subappaltatore_id: Optional[str] = None
+
+    @r.post("/users/invite")
+    async def invite_user(body: InviteUserReq, user=Depends(get_current_user)):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        if body.role not in ("venditore", "gestore", "cliente", "subappaltatore", "admin"):
+            raise HTTPException(400, "Ruolo non valido")
+        email = body.email.lower()
+        existing = await db.users.find_one({"email": email})
+        if existing:
+            raise HTTPException(400, "Email già registrata")
+        temp_password = secrets.token_urlsafe(9)  # 12+ chars, random
+        uid = str(uuid.uuid4())
+        expiry = compute_expires_at(body.role, body.expires_at)
+        doc = {
+            "id": uid,
+            "email": email,
+            "name": body.name,
+            "role": body.role,
+            "status": "active",
+            "phone": body.phone or "",
+            "password_hash": hash_password(temp_password),
+            "must_change_password": True,
+            "expires_at": expiry,
+            "invited_by": user["id"],
+            "invited_at": datetime.now(timezone.utc).isoformat(),
+            "approved_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if body.venditore_level:
+            doc["venditore_level"] = body.venditore_level
+        if body.negozio_id:
+            doc["negozio_id"] = body.negozio_id
+        if body.negozi_ids:
+            doc["negozi_ids"] = body.negozi_ids
+        if body.subappaltatore_id:
+            doc["subappaltatore_id"] = body.subappaltatore_id
+        await db.users.insert_one(doc)
+        try:
+            await seed_user_catalog(uid)
+        except Exception:
+            pass
+        return {
+            "ok": True,
+            "user_id": uid,
+            "email": email,
+            "temporary_password": temp_password,
+            "role": body.role,
+            "expires_at": expiry,
+            "login_url": "/login",
+        }
+
+    @r.delete("/users/{user_id}")
+    async def delete_user(user_id: str, user=Depends(get_current_user)):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        if user_id == user.get("id"):
+            raise HTTPException(400, "Non puoi cancellare te stesso")
+        target = await db.users.find_one({"id": user_id})
+        if not target:
+            raise HTTPException(404, "Utente non trovato")
+        # Non cancellare il fallback rescue admin
+        if target.get("email") == "admin@admin.it":
+            raise HTTPException(400, "Non puoi cancellare l'admin di sistema")
+        await db.users.delete_one({"id": user_id})
+        return {"ok": True}
+
+    # --- Extend / modify expiration ---
+    class ExpiryUpdate(BaseModel):
+        expires_at: Optional[str] = None  # ISO datetime; null = rimuove scadenza
+
+    @r.patch("/users/{user_id}/expiry")
+    async def set_expiry(user_id: str, body: ExpiryUpdate, user=Depends(get_current_user)):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        # Se era expired e ora rinnoviamo, riattiva
+        update = {"expires_at": body.expires_at}
+        target = await db.users.find_one({"id": user_id})
+        if target and target.get("status") == "expired" and body.expires_at:
+            update["status"] = "active"
+        await db.users.update_one({"id": user_id}, {"$set": update})
+        return {"ok": True, "expires_at": body.expires_at}
 
     # ---------- Configurazioni riferimento ----------
     @r.get("/composite-sections")

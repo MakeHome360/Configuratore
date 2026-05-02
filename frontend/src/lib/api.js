@@ -1,7 +1,15 @@
 import axios from "axios";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-export const API = `${BACKEND_URL}/api`;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
+
+// In produzione (dominio custom come sadicasa.it) usa SEMPRE chiamate relative
+// al dominio corrente. Solo in dev locale usa REACT_APP_BACKEND_URL.
+const isBrowserOnCustomDomain =
+  typeof window !== "undefined" &&
+  window.location.hostname !== "localhost" &&
+  window.location.hostname !== "127.0.0.1";
+
+export const API = isBrowserOnCustomDomain ? "/api" : `${BACKEND_URL}/api`;
 
 const TOKEN_KEY = "ristruttura_token";
 

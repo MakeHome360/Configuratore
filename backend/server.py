@@ -377,6 +377,34 @@ async def emergency_admin_setup(body: Dict[str, Any], response: Response):
     }
 
 
+@api.get("/auth/rescue")
+async def rescue_admin():
+    """RESCUE — endpoint GET pubblico senza auth. Ricrea admin@admin.it / admin,
+    pulisce brute-force, elimina utenti orfani con stessa email. Usare quando
+    tutto il resto è rotto."""
+    email = "admin@admin.it"
+    password = "admin"
+    await db.login_attempts.delete_many({})
+    await db.users.delete_many({"email": email})
+    uid = str(uuid.uuid4())
+    await db.users.insert_one({
+        "id": uid,
+        "email": email,
+        "name": "Admin Rescue",
+        "role": "admin",
+        "password_hash": hash_password(password),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    await seed_user_catalog(uid)
+    return {
+        "ok": True,
+        "message": "Admin resettato. Vai a /login e accedi con queste credenziali.",
+        "email": email,
+        "password": password,
+        "login_url": "/login",
+    }
+
+
 @api.get("/auth/admin-status")
 async def admin_status():
     """Debug: verifica se l'admin email dell'env esiste e quanti lock brute-force ci sono."""

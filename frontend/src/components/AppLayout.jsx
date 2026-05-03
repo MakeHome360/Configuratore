@@ -40,6 +40,7 @@ const NAV = [
     { to: "/adminfasicommessa", label: "Fasi Commessa", icon: Hammer, roles: ["admin"] },
     { to: "/adminvenditori", label: "Venditori", icon: Users2, roles: ["admin"] },
     { to: "/adminsubappaltatori", label: "Subappaltatori", icon: Users2, roles: ["admin"] },
+    { to: "/adminclienti", label: "Clienti", icon: UserCircle2, roles: ["admin"] },
     { to: "/adminnegozi", label: "Negozi", icon: Store, roles: ["admin"] },
     { to: "/admintemplateemail", label: "Template Email", icon: Mail, roles: ["admin"] },
     { to: "/adminutenti", label: "Utenti & Ruoli", icon: UserCircle2, roles: ["admin"] },

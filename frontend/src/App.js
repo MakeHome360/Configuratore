@@ -38,6 +38,7 @@ import AdminNegozi from "@/pages/admin/AdminNegozi";
 import AdminReportBudget from "@/pages/admin/AdminReportBudget";
 import AdminTemplateEmail from "@/pages/admin/AdminTemplateEmail";
 import AdminUtenti from "@/pages/admin/AdminUtenti";
+import AdminClienti from "@/pages/admin/AdminClienti";
 import AdminDatiAzienda from "@/pages/admin/AdminDatiAzienda";
 import AdminImpostazioni from "@/pages/admin/AdminImpostazioni";
 import DashboardSubappaltatori from "@/pages/DashboardSubappaltatori";
@@ -110,6 +111,7 @@ function App() {
             <Route path="/adminreportbudget" element={P(AdminReportBudget)} />
             <Route path="/admintemplateemail" element={P(AdminTemplateEmail)} />
             <Route path="/adminutenti" element={P(AdminUtenti)} />
+            <Route path="/adminclienti" element={P(AdminClienti)} />
             <Route path="/admindatiazienda" element={P(AdminDatiAzienda)} />
             <Route path="/adminimpostazioni" element={P(AdminImpostazioni)} />
             {/* Round 10: Cantieri / Subappaltatori / Portale Cliente */}

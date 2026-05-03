@@ -314,6 +314,185 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* ARREDAMENTO & DESIGN — sezione dedicata */}
+      <section id="arredamento" className="bg-white py-16 lg:py-24" data-testid="arredamento-section">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="grid lg:grid-cols-12 gap-10 mb-14">
+            <div className="lg:col-span-5">
+              <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-3">Arredamento & Design</div>
+              <h2 className="text-4xl lg:text-5xl font-black tracking-tight mb-5" style={{ fontFamily: "Outfit" }}>
+                Disegniamo il tuo spazio
+                <span className="block italic font-light" style={{ fontFamily: "Georgia, serif" }}>prima di costruirlo.</span>
+              </h2>
+              <p className="text-[16px] text-zinc-700 leading-relaxed mb-6">
+                Il nostro studio di interior design lavora al tuo fianco dalla prima moodboard al montaggio finale. Tutto coordinato: materiali, luci, mobili, complementi.
+              </p>
+              <ul className="space-y-3 mb-8">
+                {["Progetto d'interni con anteprima 3D fotorealistica", "Marchi italiani selezionati (cucine, bagni, living)", "Squadra di montaggio professionale interna", "Consegna chiavi in mano: tu trovi tutto al suo posto"].map((t) => (
+                  <li key={t} className="flex items-start gap-3 text-[14px]">
+                    <Check size={16} className="mt-0.5 text-[#1FAE52] flex-shrink-0" strokeWidth={3} />
+                    <span className="text-zinc-700">{t}</span>
+                  </li>
+                ))}
+              </ul>
+              <a href="#contatti" className="inline-flex items-center gap-2 bg-[#1FAE52] hover:bg-[#168540] text-white px-6 py-3 rounded-full text-[14px] font-bold transition-all">
+                Richiedi un progetto d'interni <ArrowRight size={14} />
+              </a>
+            </div>
+            <div className="lg:col-span-7 grid grid-cols-2 gap-3">
+              <div className="row-span-2 relative aspect-[3/4] overflow-hidden rounded-sm group">
+                <img src="https://images.unsplash.com/photo-1600210491892-03d54c0aaf87?auto=format&fit=crop&w=900&q=80" alt="Cucina moderna" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
+                  <div className="text-[10px] font-bold tracking-widest text-[#1FAE52]">CUCINE</div>
+                  <div className="text-white text-[15px] font-bold">Su misura, italiane</div>
+                </div>
+              </div>
+              <div className="relative aspect-square overflow-hidden rounded-sm group">
+                <img src="https://images.unsplash.com/photo-1598300042247-d088f8ab3a91?auto=format&fit=crop&w=600&q=80" alt="Living" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3">
+                  <div className="text-[10px] font-bold tracking-widest text-[#1FAE52]">LIVING</div>
+                  <div className="text-white text-[13px] font-bold">Atmosfera calda</div>
+                </div>
+              </div>
+              <div className="relative aspect-square overflow-hidden rounded-sm group">
+                <img src="https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&w=600&q=80" alt="Camera padronale" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3">
+                  <div className="text-[10px] font-bold tracking-widest text-[#1FAE52]">CAMERE</div>
+                  <div className="text-white text-[13px] font-bold">Cabina armadio</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Categorie arredo */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-14">
+            {[
+              { name: "Cucine", img: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?auto=format&fit=crop&w=400&q=70" },
+              { name: "Bagni", img: "https://images.unsplash.com/photo-1552321554-5fefe8c9ef14?auto=format&fit=crop&w=400&q=70" },
+              { name: "Soggiorni", img: "https://images.unsplash.com/photo-1567767292278-a4f21aa2d36e?auto=format&fit=crop&w=400&q=70" },
+              { name: "Camere", img: "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=400&q=70" },
+              { name: "Studi & Smart", img: "https://images.unsplash.com/photo-1593476550610-87baa860004a?auto=format&fit=crop&w=400&q=70" },
+              { name: "Outdoor", img: "https://images.unsplash.com/photo-1600210491892-03d54c0aaf87?auto=format&fit=crop&w=400&q=70" },
+            ].map((c) => (
+              <div key={c.name} className="relative aspect-square overflow-hidden rounded-sm group cursor-pointer">
+                <img src={c.img} alt={c.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                  <div className="text-white text-[14px] font-bold tracking-wide">{c.name}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Video showcase */}
+          <div className="grid lg:grid-cols-3 gap-6 mb-12">
+            <div className="lg:col-span-2 relative aspect-video overflow-hidden rounded-sm bg-zinc-900 group">
+              <video
+                autoPlay muted loop playsInline
+                poster="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80"
+                className="w-full h-full object-cover"
+                data-testid="arredo-video-1"
+              >
+                <source src="https://cdn.coverr.co/videos/coverr-an-architects-workspace-2596/1080p.mp4" type="video/mp4" />
+              </video>
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
+                <div className="text-[10px] font-bold tracking-widest text-[#1FAE52] mb-1">DIETRO LE QUINTE</div>
+                <div className="text-white text-2xl font-bold" style={{ fontFamily: "Outfit" }}>Lo studio di progettazione</div>
+                <div className="text-zinc-300 text-[13px] mt-1">Dai sopralluogo al rendering 3D, ogni progetto nasce sui nostri tavoli.</div>
+              </div>
+            </div>
+            <div className="space-y-6">
+              <div className="bg-[#0A0A0A] text-white p-6 rounded-sm">
+                <div className="text-[10px] font-bold tracking-widest text-[#1FAE52] mb-2">PROCESSO</div>
+                <div className="text-2xl font-bold mb-3" style={{ fontFamily: "Outfit" }}>Anteprima fotorealistica</div>
+                <p className="text-zinc-400 text-[13px] leading-relaxed mb-4">
+                  Vedi la tua casa finita prima ancora che i lavori inizino. Cambia idea quante volte vuoi, senza costi extra.
+                </p>
+                <a href="#contatti" className="text-[#1FAE52] text-[13px] font-bold hover:underline inline-flex items-center gap-1">
+                  Richiedi una bozza <ArrowRight size={12} />
+                </a>
+              </div>
+              <div className="bg-[#F5F5F2] p-6 rounded-sm">
+                <div className="text-[10px] font-bold tracking-widest text-[#1FAE52] mb-2">QUALITÀ</div>
+                <div className="text-2xl font-bold mb-3" style={{ fontFamily: "Outfit" }}>Marchi selezionati</div>
+                <p className="text-zinc-700 text-[13px] leading-relaxed">
+                  Lavoriamo solo con i migliori produttori italiani. Ti facciamo risparmiare grazie alle nostre convenzioni dirette.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* MONTAGGIO & CANTIERE — video sezione */}
+      <section className="bg-[#0A0A0A] text-white py-16 lg:py-24 relative overflow-hidden" data-testid="montaggio-section">
+        <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: `radial-gradient(circle at 1px 1px, white 1px, transparent 0)`, backgroundSize: '24px 24px' }} />
+        <div className="max-w-7xl mx-auto px-6 relative">
+          <div className="grid lg:grid-cols-12 gap-10 items-center">
+            <div className="lg:col-span-5 order-2 lg:order-1">
+              <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-3">In cantiere</div>
+              <h2 className="text-4xl lg:text-5xl font-black tracking-tight mb-5" style={{ fontFamily: "Outfit" }}>
+                Mani esperte
+                <span className="block italic font-light text-zinc-400" style={{ fontFamily: "Georgia, serif" }}>tempi rispettati.</span>
+              </h2>
+              <p className="text-[16px] text-zinc-400 leading-relaxed mb-6">
+                Squadra interna, niente subappalti improvvisati. Posatori specializzati, capi-cantiere certificati, montatori d'arredamento esperti.
+              </p>
+              <div className="grid grid-cols-2 gap-5 mb-8">
+                <div>
+                  <div className="text-3xl font-black text-[#1FAE52]" style={{ fontFamily: "Outfit" }}>8-10</div>
+                  <div className="text-[12px] text-zinc-400 mt-1">settimane medie<br/>per appartamento 80 m²</div>
+                </div>
+                <div>
+                  <div className="text-3xl font-black text-[#1FAE52]" style={{ fontFamily: "Outfit" }}>0</div>
+                  <div className="text-[12px] text-zinc-400 mt-1">ritardi medi sulla<br/>consegna negli ultimi 12 mesi</div>
+                </div>
+                <div>
+                  <div className="text-3xl font-black text-[#1FAE52]" style={{ fontFamily: "Outfit" }}>5y</div>
+                  <div className="text-[12px] text-zinc-400 mt-1">garanzia post-cantiere<br/>su lavori e finiture</div>
+                </div>
+                <div>
+                  <div className="text-3xl font-black text-[#1FAE52]" style={{ fontFamily: "Outfit" }}>100%</div>
+                  <div className="text-[12px] text-zinc-400 mt-1">cantieri tracciati<br/>con foto settimanali</div>
+                </div>
+              </div>
+              <a href="#contatti" className="inline-flex items-center gap-2 bg-[#1FAE52] hover:bg-[#168540] text-white px-6 py-3 rounded-full text-[14px] font-bold transition-all">
+                Pianifica il tuo cantiere <ArrowRight size={14} />
+              </a>
+            </div>
+            <div className="lg:col-span-7 order-1 lg:order-2 grid grid-cols-2 gap-3">
+              <div className="col-span-2 relative aspect-video overflow-hidden rounded-sm bg-zinc-800">
+                <video
+                  autoPlay muted loop playsInline
+                  poster="https://images.unsplash.com/photo-1581094794329-c8112a89af12?auto=format&fit=crop&w=1200&q=80"
+                  className="w-full h-full object-cover"
+                  data-testid="cantiere-video"
+                >
+                  <source src="https://cdn.coverr.co/videos/coverr-construction-worker-with-a-trowel-9395/1080p.mp4" type="video/mp4" />
+                </video>
+                <div className="absolute top-4 left-4 inline-flex items-center gap-2 bg-black/70 backdrop-blur px-3 py-1.5 rounded-full">
+                  <span className="w-2 h-2 rounded-full bg-[#1FAE52] animate-pulse" />
+                  <span className="text-[11px] font-bold tracking-wider">CANTIERE LIVE</span>
+                </div>
+              </div>
+              <div className="relative aspect-video overflow-hidden rounded-sm bg-zinc-800">
+                <img src="https://images.unsplash.com/photo-1581094794329-c8112a89af12?auto=format&fit=crop&w=600&q=70" alt="Posa pavimento" className="w-full h-full object-cover" />
+                <div className="absolute bottom-2 left-2 right-2">
+                  <div className="text-[10px] font-bold tracking-widest text-[#1FAE52]">POSA</div>
+                  <div className="text-white text-[12px] font-bold">Pavimenti & rivestimenti</div>
+                </div>
+              </div>
+              <div className="relative aspect-video overflow-hidden rounded-sm bg-zinc-800">
+                <img src="https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=600&q=70" alt="Montaggio cucina" className="w-full h-full object-cover" />
+                <div className="absolute bottom-2 left-2 right-2">
+                  <div className="text-[10px] font-bold tracking-widest text-[#1FAE52]">MONTAGGIO</div>
+                  <div className="text-white text-[12px] font-bold">Cucine & arredi</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* PACCHETTI */}
       <section id="pacchetti" className="bg-white py-16 lg:py-24" data-testid="pacchetti-section">
         <div className="max-w-7xl mx-auto px-6">

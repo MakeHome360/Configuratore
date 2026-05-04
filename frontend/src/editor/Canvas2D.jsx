@@ -7,19 +7,29 @@ const INITIAL_VIEW = { x: -300, y: -200, w: 2200, h: 1600 };
 function Measurement({ x1, y1, x2, y2, big = false, color = "#0A0A0A" }) {
   const dx = x2 - x1, dy = y2 - y1;
   const len = Math.hypot(dx, dy);
+  if (len < 1) return null;
   const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
   const nx = -dy / (len || 1), ny = dx / (len || 1);
   const off = big ? 38 : 24;
   const lx = mx + nx * off, ly = my + ny * off;
-  const fs = big ? 28 : 18;
-  const padY = big ? 14 : 9;
-  const padX = big ? 32 : 20;
+  const fs = big ? 18 : 14;
   const txt = `${(len / 100).toFixed(2)} m`;
   return (
     <g pointerEvents="none">
       <line x1={mx} y1={my} x2={lx} y2={ly} stroke={color} strokeWidth={big ? 1.5 : 1} strokeDasharray="3,3" opacity="0.6" />
-      <rect x={lx - padX} y={ly - padY} width={padX * 2} height={padY * 2} rx={6} fill="white" stroke={color} strokeWidth={big ? 2.5 : 1.5} opacity={0.97} />
-      <text x={lx} y={ly + 6} textAnchor="middle" fontSize={fs} fontFamily="JetBrains Mono" fontWeight="800" fill={color}>{txt}</text>
+      <text
+        x={lx}
+        y={ly + 4}
+        textAnchor="middle"
+        fontSize={`${fs}px`}
+        fontFamily="JetBrains Mono"
+        fontWeight="800"
+        fill={color}
+        stroke="white"
+        strokeWidth="4px"
+        paintOrder="stroke fill"
+        style={{ paintOrder: "stroke fill" }}
+      >{txt}</text>
     </g>
   );
 }
@@ -899,6 +909,29 @@ export default function Canvas2D({
 
   return (
     <div className="relative w-full h-full bg-[#FAFAFA]">
+      {/* HUD info: misura del segmento corrente durante il drawing */}
+      {(() => {
+        let active = null;
+        if (tool === "wall" && wallDraft) {
+          const d = Math.hypot(cursor.x - wallDraft.x, cursor.y - wallDraft.y);
+          active = { label: "Muro in tracciamento", m: d / 100 };
+        } else if (tool === "wall-cartongesso" && wallDraft) {
+          const d = Math.hypot(cursor.x - wallDraft.x, cursor.y - wallDraft.y);
+          active = { label: "Muro cartongesso", m: d / 100 };
+        } else if (tool === "room" && roomDraft.length > 0) {
+          const last = roomDraft[roomDraft.length - 1];
+          const d = Math.hypot(cursor.x - last.x, cursor.y - last.y);
+          active = { label: `Stanza · lato ${roomDraft.length}`, m: d / 100 };
+        }
+        if (!active) return null;
+        return (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-[#0A0A0A] text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-3 font-mono" data-testid="drawing-hud">
+            <span className="text-[10px] uppercase tracking-widest text-zinc-400">{active.label}</span>
+            <span className="text-[18px] font-bold text-[#1FAE52]">{active.m.toFixed(2)} m</span>
+          </div>
+        );
+      })()}
+
       {/* Zoom controls overlay */}
       <div className="absolute top-3 right-3 z-20 flex flex-col gap-1 bg-white/95 backdrop-blur shadow-md border border-zinc-200 rounded p-1" data-testid="zoom-controls">
         <button

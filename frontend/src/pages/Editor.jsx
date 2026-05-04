@@ -431,24 +431,70 @@ export default function Editor() {
     if (!floorplanFile) { toast.error("Seleziona un'immagine"); return; }
     setFloorplanLoading(true);
     try {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        try {
-          const b64 = reader.result.split(",")[1];
-          const { data } = await api.post("/ai/floorplan-import", { image_base64: b64 });
-          if (data.project_data) {
-            setProjectData(() => ({ ...emptyProjectData(), ...data.project_data }));
-            toast.success("Planimetria importata");
-            setFloorplanOpen(false);
-          } else {
-            toast.error("Impossibile elaborare l'immagine");
+      // Resize via canvas: max 1600px lato lungo, JPEG q=0.85 → riduce drasticamente tempo AI
+      const blobToBase64 = (blob) => new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result.split(",")[1]);
+        r.onerror = rej;
+        r.readAsDataURL(blob);
+      });
+      const optimizeImage = (file) => new Promise((res, rej) => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX = 1600;
+          let { width: w, height: h } = img;
+          if (w > MAX || h > MAX) {
+            const scale = Math.min(MAX / w, MAX / h);
+            w = Math.round(w * scale); h = Math.round(h * scale);
           }
-        } catch (e) { toast.error(e.response?.data?.detail || "Errore import AI"); }
-        setFloorplanLoading(false);
-      };
-      reader.readAsDataURL(floorplanFile);
+          const canvas = document.createElement("canvas");
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          ctx.fillStyle = "#FFFFFF"; ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          canvas.toBlob((blob) => blob ? res(blob) : rej(new Error("Conversione fallita")), "image/jpeg", 0.85);
+        };
+        img.onerror = () => rej(new Error("File immagine non valido"));
+        img.src = URL.createObjectURL(file);
+      });
+
+      let blob;
+      try {
+        blob = await optimizeImage(floorplanFile);
+      } catch {
+        // Fallback se browser non supporta conversione
+        blob = floorplanFile;
+      }
+      const b64 = await blobToBase64(blob);
+      const sizeKb = Math.round(b64.length * 0.75 / 1024);
+      console.log(`[floorplan] sending ${sizeKb}KB to AI...`);
+
+      try {
+        const { data } = await api.post("/ai/floorplan-import", { image_base64: b64 }, { timeout: 120000 });
+        if (data.project_data && (data.rooms_count || 0) > 0) {
+          setProjectData(() => ({ ...emptyProjectData(), ...data.project_data }));
+          toast.success(`Planimetria importata · ${data.rooms_count} stanze`);
+          setFloorplanOpen(false);
+          setTimeout(() => window.dispatchEvent(new CustomEvent("cad:fit-all")), 200);
+        } else if (data.project_data && !data.rooms_count) {
+          toast.error("L'AI non è riuscita a riconoscere stanze. Prova con un'immagine più chiara o ad alto contrasto.");
+        } else {
+          toast.error("Risposta AI inattesa. Riprova.");
+        }
+      } catch (e) {
+        const detail = e.response?.data?.detail || e.message || "Errore sconosciuto";
+        if (detail.includes("EMERGENT_LLM_KEY")) {
+          toast.error("Servizio AI non configurato. Contatta l'amministratore.");
+        } else if (e.code === "ECONNABORTED") {
+          toast.error("L'AI ci sta mettendo troppo. Riprova con un'immagine più piccola.");
+        } else {
+          toast.error(`Errore import: ${detail.substring(0, 120)}`);
+        }
+      }
+      setFloorplanLoading(false);
     } catch (e) {
-      toast.error("Errore lettura file");
+      console.error("Floorplan import error:", e);
+      toast.error("Errore durante la lettura del file");
       setFloorplanLoading(false);
     }
   };

@@ -334,9 +334,11 @@ export default function Canvas2D({
     (project.gas || []).forEach((g) => include(g.x, g.y));
     (project.hvac || []).forEach((h) => include(h.x, h.y));
     if (!isFinite(minX)) return null;
-    // Pad per quote/etichette
-    const PAD = 220;
-    return { x: minX - PAD, y: minY - PAD, w: (maxX - minX) + PAD * 2, h: (maxY - minY) + PAD * 2 };
+    // Pad proporzionale alla grandezza del progetto + estra spazio per quote esterne (140 unità per le linee di quota)
+    // e per legende/barra scala (180 unità) — per progetti grandi serve più padding
+    const projW = maxX - minX, projH = maxY - minY;
+    const PAD = Math.max(280, projW * 0.18, projH * 0.18);
+    return { x: minX - PAD, y: minY - PAD, w: projW + PAD * 2, h: projH + PAD * 2 };
   }, [autoFit, project]);
   const effectiveViewBox = computedViewBox || viewBox;
 
@@ -975,15 +977,6 @@ export default function Canvas2D({
         onWheel={onWheel}
         data-testid="canvas-2d"
       >
-        <style>{`
-          .canvas-stroke-fixed { vector-effect: non-scaling-stroke; }
-          svg[data-testid="canvas-2d"] line,
-          svg[data-testid="canvas-2d"] path,
-          svg[data-testid="canvas-2d"] polyline,
-          svg[data-testid="canvas-2d"] rect:not(.no-fixed-stroke),
-          svg[data-testid="canvas-2d"] circle,
-          svg[data-testid="canvas-2d"] polygon { vector-effect: non-scaling-stroke; }
-        `}</style>
         <defs>
           <pattern id="grid-small" width="10" height="10" patternUnits="userSpaceOnUse">
             <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#E4E4E7" strokeWidth="0.3" />

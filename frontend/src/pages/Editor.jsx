@@ -2271,16 +2271,34 @@ function TavoleModal({ open, setOpen, project, catalog, estimateV2, onExport, on
 }
 
 function TavolaPreview({ tavola, project, catalog }) {
+  // Calcola aspect ratio reale del progetto per evitare clip
+  const aspectRatio = useMemo(() => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    (project.data?.rooms || []).forEach((r) => (r.points || []).forEach((p) => {
+      if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x; if (p.y > maxY) maxY = p.y;
+    }));
+    (project.data?.walls || []).forEach((w) => {
+      [w.x1, w.x2].forEach((x) => { if (x < minX) minX = x; if (x > maxX) maxX = x; });
+      [w.y1, w.y2].forEach((y) => { if (y < minY) minY = y; if (y > maxY) maxY = y; });
+    });
+    if (!isFinite(minX)) return "16/9";
+    const w = (maxX - minX) * 1.36, h = (maxY - minY) * 1.36; // include padding del computedViewBox
+    if (w < 1 || h < 1) return "16/9";
+    const r = w / h;
+    return Math.min(2.2, Math.max(0.7, r)); // tra 0.7 (verticale) e 2.2 (panoramico)
+  }, [project.data]);
+
   return (
     <div className="bg-white border border-zinc-300 p-3" data-testid={`tavola-preview-${tavola.id}`}>
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
         <div className="font-semibold text-sm" style={{ fontFamily: "Outfit" }}>{tavola.title}</div>
         <div className="flex items-center gap-2">
           <div className="text-[10px] mono px-1.5 py-0.5 bg-zinc-900 text-white tracking-widest">SCALA 1:100</div>
           <div className="text-[10px] mono text-zinc-400">{project.name}</div>
         </div>
       </div>
-      <div className="aspect-video bg-zinc-50 border border-zinc-200 relative">
+      <div className="bg-zinc-50 border border-zinc-200 relative w-full" style={{ aspectRatio }}>
         <Canvas2D
           project={project.data} setProject={() => {}} tool="select"
           selected={null} setSelected={() => {}} selectedMaterial="" catalog={catalog}
@@ -2289,15 +2307,17 @@ function TavolaPreview({ tavola, project, catalog }) {
           layers={tavola.layers} viewMode={tavola.viewMode}
           autoFit={true}
         />
-        <Legenda tavolaId={tavola.id} />
-        {/* Barra scala per riferimento visivo */}
-        <div className="absolute left-3 bottom-3 bg-white border border-zinc-900 px-2 py-1 flex items-center gap-1.5">
+      </div>
+      {/* Legenda + barra scala FUORI dal canvas per non coprire il disegno */}
+      <div className="flex items-center justify-between mt-2 gap-3 flex-wrap">
+        <Legenda tavolaId={tavola.id} inline />
+        <div className="bg-white border border-zinc-900 px-2 py-1 flex items-center gap-1.5">
           <div className="flex h-3">
             <div className="w-6 bg-zinc-900" />
             <div className="w-6 bg-white border-y border-zinc-900" />
             <div className="w-6 bg-zinc-900" />
           </div>
-          <span className="mono text-[10px] font-bold text-zinc-900">0—3 m</span>
+          <span className="mono text-[10px] font-bold text-zinc-900">0—3 m · scala 1:100</span>
         </div>
       </div>
     </div>
@@ -2343,9 +2363,32 @@ const LEGENDE = {
   ],
 };
 
-function Legenda({ tavolaId }) {
+function Legenda({ tavolaId, inline = false }) {
   const items = LEGENDE[tavolaId];
   if (!items) return null;
+  if (inline) {
+    return (
+      <div className="bg-white border border-zinc-300 px-2 py-1 text-[10px] mono flex flex-wrap items-center gap-x-3 gap-y-1" data-testid={`legenda-${tavolaId}`}>
+        <span className="text-[9px] uppercase tracking-widest text-zinc-500 font-bold">Legenda:</span>
+        {items.map((it, i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            {it.hatch === "demo" ? (
+              <div className="w-3 h-3" style={{ backgroundImage: `repeating-linear-gradient(45deg, ${it.color}, ${it.color} 1.5px, transparent 1.5px, transparent 4px)` }} />
+            ) : it.hatch === "new" ? (
+              <div className="w-3 h-3" style={{ backgroundImage: `repeating-linear-gradient(-45deg, ${it.color}, ${it.color} 1px, transparent 1px, transparent 3px)` }} />
+            ) : it.swatch ? (
+              <div className="w-3 h-3 border border-zinc-400" style={{ background: it.color }} />
+            ) : it.dashed ? (
+              <div className="w-4 h-0.5" style={{ background: `repeating-linear-gradient(to right, ${it.color}, ${it.color} 2px, transparent 2px, transparent 4px)` }} />
+            ) : (
+              <div className="w-4 h-0.5" style={{ background: it.color }} />
+            )}
+            <span className="text-zinc-700">{it.label}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="absolute bottom-1 right-1 bg-white/95 border border-zinc-300 px-2 py-1.5 text-[9px] mono space-y-0.5 max-w-[55%]" data-testid={`legenda-${tavolaId}`}>
       <div className="text-[8px] uppercase tracking-widest text-zinc-500 font-bold mb-1">Legenda</div>

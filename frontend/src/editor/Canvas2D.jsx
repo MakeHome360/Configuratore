@@ -268,6 +268,44 @@ export default function Canvas2D({
   const [demoAreaDraft, setDemoAreaDraft] = useState([]);
   const [cursor, setCursor] = useState({ x: 0, y: 0 });
   const [viewBox, setViewBox] = useState(INITIAL_VIEW);
+
+  // Funzione fit-all: calcola bbox dai contenuti e aggiorna viewBox con padding
+  const fitAll = React.useCallback(() => {
+    const pts = [];
+    (project.rooms || []).forEach((r) => (r.points || []).forEach((p) => pts.push(p)));
+    (project.walls || []).forEach((w) => { pts.push({ x: w.x1, y: w.y1 }); pts.push({ x: w.x2, y: w.y2 }); });
+    if (pts.length < 2) { setViewBox(INITIAL_VIEW); return; }
+    const minX = Math.min(...pts.map((p) => p.x));
+    const maxX = Math.max(...pts.map((p) => p.x));
+    const minY = Math.min(...pts.map((p) => p.y));
+    const maxY = Math.max(...pts.map((p) => p.y));
+    const padX = Math.max((maxX - minX) * 0.18, 250);
+    const padY = Math.max((maxY - minY) * 0.18, 250);
+    setViewBox({ x: minX - padX, y: minY - padY, w: (maxX - minX) + padX * 2, h: (maxY - minY) + padY * 2 });
+  }, [project.rooms, project.walls]);
+
+  // Auto-fit quando il bbox del progetto è più grande del viewBox (es. l'utente ha allungato un muro a 48m)
+  useEffect(() => {
+    const pts = [];
+    (project.walls || []).forEach((w) => { pts.push({ x: w.x1, y: w.y1 }); pts.push({ x: w.x2, y: w.y2 }); });
+    if (pts.length < 2) return;
+    const minX = Math.min(...pts.map((p) => p.x));
+    const maxX = Math.max(...pts.map((p) => p.x));
+    const minY = Math.min(...pts.map((p) => p.y));
+    const maxY = Math.max(...pts.map((p) => p.y));
+    const projW = maxX - minX, projH = maxY - minY;
+    if (projW > viewBox.w * 0.95 || projH > viewBox.h * 0.95) {
+      fitAll();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.walls?.length, project.walls?.map?.((w) => `${w.x1},${w.y1},${w.x2},${w.y2}`).join("|")]);
+
+  // Listener evento custom per fit-all (triggered da PropertiesPanel dopo cambio lunghezza muro)
+  useEffect(() => {
+    const handler = () => fitAll();
+    window.addEventListener("cad:fit-all", handler);
+    return () => window.removeEventListener("cad:fit-all", handler);
+  }, [fitAll]);
   const [pan, setPan] = useState(null);
   const [drag, setDrag] = useState(null); // {kind, id, sub?: 'p1'|'p2'|'t'|'pos', start:{x,y}, orig}
   const pendingRoomClickRef = useRef(null);
@@ -879,20 +917,7 @@ export default function Canvas2D({
         >−</button>
         <button
           type="button"
-          onClick={() => {
-            // Fit-to-content: bbox di tutti gli elementi visibili
-            const pts = [];
-            (project.rooms || []).forEach((r) => (r.points || []).forEach((p) => pts.push(p)));
-            (project.walls || []).forEach((w) => { pts.push({ x: w.x1, y: w.y1 }); pts.push({ x: w.x2, y: w.y2 }); });
-            if (pts.length < 2) { setViewBox(INITIAL_VIEW); return; }
-            const minX = Math.min(...pts.map((p) => p.x));
-            const maxX = Math.max(...pts.map((p) => p.x));
-            const minY = Math.min(...pts.map((p) => p.y));
-            const maxY = Math.max(...pts.map((p) => p.y));
-            const padX = Math.max((maxX - minX) * 0.15, 200);
-            const padY = Math.max((maxY - minY) * 0.15, 200);
-            setViewBox({ x: minX - padX, y: minY - padY, w: (maxX - minX) + padX * 2, h: (maxY - minY) + padY * 2 });
-          }}
+          onClick={fitAll}
           className="w-8 h-8 hover:bg-zinc-100 rounded text-[10px] font-bold text-zinc-700"
           title="Adatta alla vista (fit-all)"
           data-testid="zoom-fit"

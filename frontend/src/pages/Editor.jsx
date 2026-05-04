@@ -866,21 +866,21 @@ export default function Editor() {
 
         {/* Right sidebar collapsible */}
         {sidebarOpen ? (
-          <aside className="w-96 border-l border-zinc-200 bg-white flex flex-col min-h-0 relative" data-testid="right-sidebar">
+          <aside className="w-96 border-l border-zinc-200 bg-white flex flex-col min-h-0 max-h-full relative overflow-hidden" data-testid="right-sidebar">
             <button onClick={() => setSidebarOpen(false)} className="absolute -left-3 top-3 z-10 w-6 h-6 bg-white border border-zinc-300 flex items-center justify-center hover:bg-zinc-50 shadow-sm" title="Riduci pannello" data-testid="sidebar-collapse-btn"><ChevronRight size={14} /></button>
-            <Tabs defaultValue="properties" className="flex-1 flex flex-col">
-              <TabsList className="rounded-none h-10 border-b border-zinc-200 bg-white justify-start px-2">
+            <Tabs defaultValue="properties" className="flex-1 flex flex-col min-h-0">
+              <TabsList className="rounded-none h-10 border-b border-zinc-200 bg-white justify-start px-2 flex-shrink-0">
                 <TabsTrigger value="properties" className="rounded-none text-xs uppercase tracking-widest" data-testid="tab-properties">Proprietà</TabsTrigger>
                 <TabsTrigger value="catalog" className="rounded-none text-xs uppercase tracking-widest" data-testid="tab-catalog">Catalogo</TabsTrigger>
                 <TabsTrigger value="cost" className="rounded-none text-xs uppercase tracking-widest" data-testid="tab-cost">Preventivo Live</TabsTrigger>
               </TabsList>
-              <TabsContent value="properties" className="p-4 overflow-auto flex-1 mt-0">
+              <TabsContent value="properties" className="p-4 overflow-y-auto flex-1 mt-0 min-h-0">
                 <PropertiesPanel project={project.data} setProject={setProjectData} selected={selected} catalog={catalog} editMode={editMode} voci={voci} />
               </TabsContent>
-              <TabsContent value="catalog" className="p-0 overflow-auto flex-1 mt-0">
+              <TabsContent value="catalog" className="p-0 overflow-y-auto flex-1 mt-0 min-h-0">
                 <CatalogPanel catalog={catalog} selectedMaterial={selectedMaterial} setSelectedMaterial={(id) => { setSelectedMaterial(id); setTool("item"); }} project={project.data} setProject={setProjectData} voci={voci} selected={selected} />
               </TabsContent>
-              <TabsContent value="cost" className="p-0 overflow-auto flex-1 mt-0">
+              <TabsContent value="cost" className="p-0 overflow-y-auto flex-1 mt-0 min-h-0">
                 <CostPanelV2 estimate={estimateV2} packageRef={project.data?.packageRef} legacy={estimate} linkedPreventivo={linkedPreventivo} saveAsPreventivo={saveAsPreventivo} excludedKeys={project.data?.excluded_keys || []} setExcludedKeys={(keys) => setProjectData((d) => ({ ...d, excluded_keys: keys }))} removeElementsForKey={(key) => {
                   // Rimuove dal PROGETTO gli elementi associati alla voce
                   const map = {
@@ -1226,6 +1226,8 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
               const newX2 = obj.x1 + (obj.x2 - obj.x1) * ratio;
               const newY2 = obj.y1 + (obj.y2 - obj.y1) * ratio;
               updateObj({ x2: newX2, y2: newY2 });
+              // Trigger auto-fit del canvas dopo la modifica (dispatch event)
+              setTimeout(() => window.dispatchEvent(new CustomEvent("cad:fit-all")), 80);
             };
             return (
               <>

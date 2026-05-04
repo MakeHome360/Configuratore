@@ -28,19 +28,19 @@ function Measurement({ x1, y1, x2, y2, big = false, color = "#0A0A0A" }) {
 function ElectricalSymbol({ e, isSel }) {
   const c = isSel ? "#2563EB" : "#7C3AED";
   if (e.type === "quadro" || e.type === "quadro-elettrico") {
-    return <g><rect x={-22} y={-15} width={44} height={30} fill="white" stroke={c} strokeWidth="2" /><text x={0} y={5} fontSize="13" textAnchor="middle" fontWeight="900" fill={c}>Q</text><text x={0} y={28} fontSize="8" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>QUADRO</text></g>;
+    return <g><rect x={-22} y={-15} width={44} height={30} fill="white" stroke={c} strokeWidth="2" /><text x={0} y={5} fontSize="13px" textAnchor="middle" fontWeight="900" fill={c}>Q</text><text x={0} y={28} fontSize="8px" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>QUADRO</text></g>;
   }
   if (e.type === "scatola") {
-    return <g><rect x={-10} y={-10} width={20} height={20} fill="white" stroke={c} strokeWidth="1.5" strokeDasharray="2,2" /><text x={0} y={4} fontSize="9" textAnchor="middle" fontWeight="700" fill={c}>D</text></g>;
+    return <g><rect x={-10} y={-10} width={20} height={20} fill="white" stroke={c} strokeWidth="1.5" strokeDasharray="2,2" /><text x={0} y={4} fontSize="9px" textAnchor="middle" fontWeight="700" fill={c}>D</text></g>;
   }
   if (e.type === "presa") {
-    return <g><circle cx={0} cy={0} r={12} fill="white" stroke={c} strokeWidth="2" /><line x1={-4} y1={-4} x2={-4} y2={4} stroke={c} strokeWidth="2" /><line x1={4} y1={-4} x2={4} y2={4} stroke={c} strokeWidth="2" /><text x={0} y={22} fontSize="8" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>PRESA</text></g>;
+    return <g><circle cx={0} cy={0} r={12} fill="white" stroke={c} strokeWidth="2" /><line x1={-4} y1={-4} x2={-4} y2={4} stroke={c} strokeWidth="2" /><line x1={4} y1={-4} x2={4} y2={4} stroke={c} strokeWidth="2" /><text x={0} y={22} fontSize="8px" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>PRESA</text></g>;
   }
   if (e.type === "interruttore") {
-    return <g><circle cx={0} cy={0} r={10} fill="white" stroke={c} strokeWidth="2" /><line x1={-4} y1={4} x2={4} y2={-4} stroke={c} strokeWidth="2" /><text x={0} y={20} fontSize="8" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>INT</text></g>;
+    return <g><circle cx={0} cy={0} r={10} fill="white" stroke={c} strokeWidth="2" /><line x1={-4} y1={4} x2={4} y2={-4} stroke={c} strokeWidth="2" /><text x={0} y={20} fontSize="8px" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>INT</text></g>;
   }
   if (e.type === "luce" || e.type === "punto-luce") {
-    return <g><circle cx={0} cy={0} r={12} fill="white" stroke={c} strokeWidth="2" /><line x1={-8} y1={-8} x2={8} y2={8} stroke={c} strokeWidth="1.5" /><line x1={-8} y1={8} x2={8} y2={-8} stroke={c} strokeWidth="1.5" /><text x={0} y={22} fontSize="8" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>LUCE</text></g>;
+    return <g><circle cx={0} cy={0} r={12} fill="white" stroke={c} strokeWidth="2" /><line x1={-8} y1={-8} x2={8} y2={8} stroke={c} strokeWidth="1.5" /><line x1={-8} y1={8} x2={8} y2={-8} stroke={c} strokeWidth="1.5" /><text x={0} y={22} fontSize="8px" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>LUCE</text></g>;
   }
   return null;
 }
@@ -63,10 +63,10 @@ function PlumbingSymbol({ p, isSel }) {
         {items.map((it, i) => (
           <g key={i} transform={`translate(${startX + i * W}, 0)`}>
             <circle cx={0} cy={0} r={11} fill="white" stroke={it.c} strokeWidth="2" />
-            <text x={0} y={4} fontSize="11" textAnchor="middle" fontWeight="900" fill={it.c}>{it.lbl}</text>
+            <text x={0} y={4} fontSize="11px" textAnchor="middle" fontWeight="900" fill={it.c}>{it.lbl}</text>
           </g>
         ))}
-        <text x={0} y={26} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill="#525252">PUNTO ACQUA</text>
+        <text x={0} y={26} fontSize="9px" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill="#525252">PUNTO ACQUA</text>
       </g>
     );
   }
@@ -76,8 +76,8 @@ function PlumbingSymbol({ p, isSel }) {
   return (
     <g>
       <circle cx={0} cy={0} r={12} fill="white" stroke={c} strokeWidth="2" />
-      <text x={0} y={5} fontSize="13" textAnchor="middle" fontWeight="900" fill={c}>{sym}</text>
-      <text x={0} y={24} fontSize="8" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>{lbl}</text>
+      <text x={0} y={5} fontSize="13px" textAnchor="middle" fontWeight="900" fill={c}>{sym}</text>
+      <text x={0} y={24} fontSize="8px" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>{lbl}</text>
     </g>
   );
 }
@@ -89,9 +89,9 @@ function GasSymbol({ g, isSel }) {
       {/* Background contrast halo */}
       <circle cx={0} cy={0} r={16} fill="#FEF9C3" stroke={c} strokeWidth="2.5" />
       {/* Inner flame icon */}
-      <text x={0} y={3} fontSize="14" textAnchor="middle" fontWeight="900" fill={c}>G</text>
+      <text x={0} y={3} fontSize="14px" textAnchor="middle" fontWeight="900" fill={c}>G</text>
       {/* Label below for prints */}
-      <text x={0} y={28} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill="#854D0E">GAS</text>
+      <text x={0} y={28} fontSize="9px" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill="#854D0E">GAS</text>
     </g>
   );
 }
@@ -100,72 +100,72 @@ function HvacSymbol({ h, isSel }) {
   const c = isSel ? "#2563EB" : "#0F766E";
   const t = h.type || "split";
   if (t === "esterna" || t === "ue") {
-    return <g><rect x={-22} y={-14} width={44} height={28} fill="white" stroke={c} strokeWidth="1.5" /><text x={0} y={4} fontSize="9" textAnchor="middle" fontWeight="700" fill={c}>UE</text></g>;
+    return <g><rect x={-22} y={-14} width={44} height={28} fill="white" stroke={c} strokeWidth="1.5" /><text x={0} y={4} fontSize="9px" textAnchor="middle" fontWeight="700" fill={c}>UE</text></g>;
   }
   if (t === "caldaia") {
     return <g>
       <rect x={-22} y={-22} width={44} height={44} rx={2} fill="#FEF3C7" stroke="#B91C1C" strokeWidth="1.5" />
       <circle cx={0} cy={-4} r={5} fill="#B91C1C" />
-      <text x={0} y={16} fontSize="8" textAnchor="middle" fontWeight="700" fill="#B91C1C">CALDAIA</text>
+      <text x={0} y={16} fontSize="8px" textAnchor="middle" fontWeight="700" fill="#B91C1C">CALDAIA</text>
     </g>;
   }
   if (t === "pompa-calore") {
     return <g>
       <rect x={-26} y={-16} width={52} height={32} rx={3} fill="#DBEAFE" stroke="#1D4ED8" strokeWidth="1.5" />
-      <text x={0} y={4} fontSize="8" textAnchor="middle" fontWeight="700" fill="#1D4ED8">P.CALORE</text>
+      <text x={0} y={4} fontSize="8px" textAnchor="middle" fontWeight="700" fill="#1D4ED8">P.CALORE</text>
     </g>;
   }
   if (t === "scaldabagno") {
     return <g>
       <circle cx={0} cy={0} r={14} fill="#FEE2E2" stroke="#B91C1C" strokeWidth="1.5" />
-      <text x={0} y={3} fontSize="8" textAnchor="middle" fontWeight="700" fill="#B91C1C">SB</text>
-      <text x={0} y={22} fontSize="7" textAnchor="middle" fill="#B91C1C">SCALDABAGNO</text>
+      <text x={0} y={3} fontSize="8px" textAnchor="middle" fontWeight="700" fill="#B91C1C">SB</text>
+      <text x={0} y={22} fontSize="7px" textAnchor="middle" fill="#B91C1C">SCALDABAGNO</text>
     </g>;
   }
   if (t === "vmc") {
     return <g>
       <rect x={-20} y={-12} width={40} height={24} fill="#E0E7FF" stroke="#4338CA" strokeWidth="1.5" />
-      <text x={0} y={3} fontSize="8" textAnchor="middle" fontWeight="700" fill="#4338CA">VMC</text>
+      <text x={0} y={3} fontSize="8px" textAnchor="middle" fontWeight="700" fill="#4338CA">VMC</text>
     </g>;
   }
   if (t === "fotovoltaico") {
     return <g>
       <rect x={-22} y={-14} width={44} height={28} fill="#1E293B" stroke="#0F172A" strokeWidth="1.5" />
       {[-10,0,10].map(x => [-7,7].map(y => <rect key={`${x},${y}`} x={x-4} y={y-4} width={8} height={8} fill="#3B82F6" stroke="#0F172A" strokeWidth="0.5" />))}
-      <text x={0} y={26} fontSize="7" textAnchor="middle" fontWeight="700" fill="#0F172A">FV</text>
+      <text x={0} y={26} fontSize="7px" textAnchor="middle" fontWeight="700" fill="#0F172A">FV</text>
     </g>;
   }
   if (t === "termoarredo") {
     return <g>
       <rect x={-8} y={-20} width={16} height={40} fill="white" stroke="#7C3AED" strokeWidth="1.5" />
       {[-14,-7,0,7,14].map(y => <line key={y} x1={-8} y1={y} x2={8} y2={y} stroke="#7C3AED" strokeWidth="0.6" />)}
-      <text x={0} y={32} fontSize="7" textAnchor="middle" fontWeight="700" fill="#7C3AED">TERMOA.</text>
+      <text x={0} y={32} fontSize="7px" textAnchor="middle" fontWeight="700" fill="#7C3AED">TERMOA.</text>
     </g>;
   }
   if (t === "termosifone" || t === "radiatore") {
     return <g>
       <rect x={-22} y={-7} width={44} height={14} fill="white" stroke={c} strokeWidth="1.5" />
       {[-16,-8,0,8,16].map(x => <line key={x} x1={x} y1={-7} x2={x} y2={7} stroke={c} strokeWidth="0.6" />)}
-      <text x={0} y={18} fontSize="7" textAnchor="middle" fontWeight="700" fill={c}>RADIAT.</text>
+      <text x={0} y={18} fontSize="7px" textAnchor="middle" fontWeight="700" fill={c}>RADIAT.</text>
     </g>;
   }
   if (t === "canalizzato") {
     return <g>
       <rect x={-32} y={-10} width={64} height={20} rx={3} fill="white" stroke={c} strokeWidth="1.5" strokeDasharray="3,2" />
-      <text x={0} y={4} fontSize="9" textAnchor="middle" fontWeight="700" fill={c}>CANALIZZ.</text>
+      <text x={0} y={4} fontSize="9px" textAnchor="middle" fontWeight="700" fill={c}>CANALIZZ.</text>
     </g>;
   }
   if (t === "dual-split") {
-    return <g><rect x={-32} y={-9} width={64} height={18} rx={3} fill="white" stroke={c} strokeWidth="1.5" /><text x={0} y={4} fontSize="10" textAnchor="middle" fontWeight="700" fill={c}>DUAL SPL.</text></g>;
+    return <g><rect x={-32} y={-9} width={64} height={18} rx={3} fill="white" stroke={c} strokeWidth="1.5" /><text x={0} y={4} fontSize="10px" textAnchor="middle" fontWeight="700" fill={c}>DUAL SPL.</text></g>;
   }
   if (t === "trial-split") {
-    return <g><rect x={-34} y={-9} width={68} height={18} rx={3} fill="white" stroke={c} strokeWidth="1.5" /><text x={0} y={4} fontSize="10" textAnchor="middle" fontWeight="700" fill={c}>TRIAL SPL.</text></g>;
+    return <g><rect x={-34} y={-9} width={68} height={18} rx={3} fill="white" stroke={c} strokeWidth="1.5" /><text x={0} y={4} fontSize="10px" textAnchor="middle" fontWeight="700" fill={c}>TRIAL SPL.</text></g>;
   }
   if (t === "quadri-split") {
-    return <g><rect x={-36} y={-9} width={72} height={18} rx={3} fill="white" stroke={c} strokeWidth="1.5" /><text x={0} y={4} fontSize="10" textAnchor="middle" fontWeight="700" fill={c}>QUADRI SPL.</text></g>;
+    return <g><rect x={-36} y={-9} width={72} height={18} rx={3} fill="white" stroke={c} strokeWidth="1.5" /><text x={0} y={4} fontSize="10px" textAnchor="middle" fontWeight="700" fill={c}>QUADRI SPL.</text></g>;
   }
   // default split
-  return <g><rect x={-30} y={-9} width={60} height={18} rx={3} fill="white" stroke={c} strokeWidth="1.5" /><text x={0} y={4} fontSize="10" textAnchor="middle" fontWeight="700" fill={c}>SPLIT</text></g>;
+  return <g><rect x={-30} y={-9} width={60} height={18} rx={3} fill="white" stroke={c} strokeWidth="1.5" /><text x={0} y={4} fontSize="10px" textAnchor="middle" fontWeight="700" fill={c}>SPLIT</text></g>;
 }
 
 // Stair symbol renderer (chiocciola/muratura/legno)
@@ -184,7 +184,7 @@ function StairSymbol({ s, isSel }) {
           const ang = (i * 2 * Math.PI) / steps;
           return <line key={i} x1={Math.cos(ang) * r * 0.25} y1={Math.sin(ang) * r * 0.25} x2={Math.cos(ang) * r} y2={Math.sin(ang) * r} stroke={c} strokeWidth="0.8" />;
         })}
-        <text x={0} y={r + 16} textAnchor="middle" fontSize="10" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>SCALA CHIOCCIOLA</text>
+        <text x={0} y={r + 16} textAnchor="middle" fontSize="10px" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>SCALA CHIOCCIOLA</text>
       </g>
     );
   }
@@ -201,7 +201,7 @@ function StairSymbol({ s, isSel }) {
       {/* freccia salita */}
       <line x1={0} y1={d / 2 - 8} x2={0} y2={-d / 2 + 12} stroke={c} strokeWidth="2" />
       <polygon points={`0,${-d / 2 + 12} -6,${-d / 2 + 22} 6,${-d / 2 + 22}`} fill={c} />
-      <text x={0} y={d / 2 + 14} textAnchor="middle" fontSize="9" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>SCALA · {(s.type || "muratura").toUpperCase()}</text>
+      <text x={0} y={d / 2 + 14} textAnchor="middle" fontSize="9px" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>SCALA · {(s.type || "muratura").toUpperCase()}</text>
     </g>
   );
 }
@@ -942,6 +942,15 @@ export default function Canvas2D({
         onWheel={onWheel}
         data-testid="canvas-2d"
       >
+        <style>{`
+          .canvas-stroke-fixed { vector-effect: non-scaling-stroke; }
+          svg[data-testid="canvas-2d"] line,
+          svg[data-testid="canvas-2d"] path,
+          svg[data-testid="canvas-2d"] polyline,
+          svg[data-testid="canvas-2d"] rect:not(.no-fixed-stroke),
+          svg[data-testid="canvas-2d"] circle,
+          svg[data-testid="canvas-2d"] polygon { vector-effect: non-scaling-stroke; }
+        `}</style>
         <defs>
           <pattern id="grid-small" width="10" height="10" patternUnits="userSpaceOnUse">
             <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#E4E4E7" strokeWidth="0.3" />
@@ -994,14 +1003,14 @@ export default function Canvas2D({
                   <line x1={x} y1={yBot - 5} x2={x} y2={yBot + 5} stroke={stroke} strokeWidth={thin} />
                   <line x1={x} y1={maxY + 5} x2={x} y2={yBot - 5} stroke={stroke} strokeWidth={0.5} strokeDasharray="2,2" opacity="0.4" />
                   {i < xs.length - 1 && (
-                    <text x={(x + xs[i + 1]) / 2} y={yBot + 18} textAnchor="middle" fontSize="11" fontFamily="JetBrains Mono" fill={stroke}>
+                    <text x={(x + xs[i + 1]) / 2} y={yBot + 18} textAnchor="middle" fontSize="11px" fontFamily="JetBrains Mono" fill={stroke}>
                       {fmtNum((xs[i + 1] - x) / 100, 2)}
                     </text>
                   )}
                 </g>
               ))}
               <line x1={minX} y1={yBot + 32} x2={maxX} y2={yBot + 32} stroke={stroke} strokeWidth={thin + 0.5} />
-              <text x={(minX + maxX) / 2} y={yBot + 48} textAnchor="middle" fontSize="13" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke}>{fmtNum(totW, 2)} m</text>
+              <text x={(minX + maxX) / 2} y={yBot + 48} textAnchor="middle" fontSize="13px" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke}>{fmtNum(totW, 2)} m</text>
 
               {/* === ORIZZONTALE — SOPRA === */}
               <line x1={minX} y1={yTop} x2={maxX} y2={yTop} stroke={stroke} strokeWidth={thin} />
@@ -1010,14 +1019,14 @@ export default function Canvas2D({
                   <line x1={x} y1={yTop - 5} x2={x} y2={yTop + 5} stroke={stroke} strokeWidth={thin} />
                   <line x1={x} y1={yTop + 5} x2={x} y2={minY - 5} stroke={stroke} strokeWidth={0.5} strokeDasharray="2,2" opacity="0.4" />
                   {i < xs.length - 1 && (
-                    <text x={(x + xs[i + 1]) / 2} y={yTop - 8} textAnchor="middle" fontSize="11" fontFamily="JetBrains Mono" fill={stroke}>
+                    <text x={(x + xs[i + 1]) / 2} y={yTop - 8} textAnchor="middle" fontSize="11px" fontFamily="JetBrains Mono" fill={stroke}>
                       {fmtNum((xs[i + 1] - x) / 100, 2)}
                     </text>
                   )}
                 </g>
               ))}
               <line x1={minX} y1={yTop - 32} x2={maxX} y2={yTop - 32} stroke={stroke} strokeWidth={thin + 0.5} />
-              <text x={(minX + maxX) / 2} y={yTop - 38} textAnchor="middle" fontSize="13" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke}>{fmtNum(totW, 2)} m</text>
+              <text x={(minX + maxX) / 2} y={yTop - 38} textAnchor="middle" fontSize="13px" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke}>{fmtNum(totW, 2)} m</text>
 
               {/* === VERTICALE — SINISTRA === */}
               <line x1={xLeft} y1={minY} x2={xLeft} y2={maxY} stroke={stroke} strokeWidth={thin} />
@@ -1026,14 +1035,14 @@ export default function Canvas2D({
                   <line x1={xLeft - 5} y1={y} x2={xLeft + 5} y2={y} stroke={stroke} strokeWidth={thin} />
                   <line x1={xLeft + 5} y1={y} x2={minX - 5} y2={y} stroke={stroke} strokeWidth={0.5} strokeDasharray="2,2" opacity="0.4" />
                   {i < ys.length - 1 && (
-                    <text x={xLeft - 10} y={(y + ys[i + 1]) / 2 + 4} textAnchor="end" fontSize="11" fontFamily="JetBrains Mono" fill={stroke}>
+                    <text x={xLeft - 10} y={(y + ys[i + 1]) / 2 + 4} textAnchor="end" fontSize="11px" fontFamily="JetBrains Mono" fill={stroke}>
                       {fmtNum((ys[i + 1] - y) / 100, 2)}
                     </text>
                   )}
                 </g>
               ))}
               <line x1={xLeft - 32} y1={minY} x2={xLeft - 32} y2={maxY} stroke={stroke} strokeWidth={thin + 0.5} />
-              <text x={xLeft - 48} y={(minY + maxY) / 2 + 4} textAnchor="middle" fontSize="13" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke} transform={`rotate(-90, ${xLeft - 48}, ${(minY + maxY) / 2 + 4})`}>{fmtNum(totH, 2)} m</text>
+              <text x={xLeft - 48} y={(minY + maxY) / 2 + 4} textAnchor="middle" fontSize="13px" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke} transform={`rotate(-90, ${xLeft - 48}, ${(minY + maxY) / 2 + 4})`}>{fmtNum(totH, 2)} m</text>
 
               {/* === VERTICALE — DESTRA === */}
               <line x1={xRight} y1={minY} x2={xRight} y2={maxY} stroke={stroke} strokeWidth={thin} />
@@ -1042,14 +1051,14 @@ export default function Canvas2D({
                   <line x1={xRight - 5} y1={y} x2={xRight + 5} y2={y} stroke={stroke} strokeWidth={thin} />
                   <line x1={maxX + 5} y1={y} x2={xRight - 5} y2={y} stroke={stroke} strokeWidth={0.5} strokeDasharray="2,2" opacity="0.4" />
                   {i < ys.length - 1 && (
-                    <text x={xRight + 10} y={(y + ys[i + 1]) / 2 + 4} textAnchor="start" fontSize="11" fontFamily="JetBrains Mono" fill={stroke}>
+                    <text x={xRight + 10} y={(y + ys[i + 1]) / 2 + 4} textAnchor="start" fontSize="11px" fontFamily="JetBrains Mono" fill={stroke}>
                       {fmtNum((ys[i + 1] - y) / 100, 2)}
                     </text>
                   )}
                 </g>
               ))}
               <line x1={xRight + 32} y1={minY} x2={xRight + 32} y2={maxY} stroke={stroke} strokeWidth={thin + 0.5} />
-              <text x={xRight + 48} y={(minY + maxY) / 2 + 4} textAnchor="middle" fontSize="13" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke} transform={`rotate(90, ${xRight + 48}, ${(minY + maxY) / 2 + 4})`}>{fmtNum(totH, 2)} m</text>
+              <text x={xRight + 48} y={(minY + maxY) / 2 + 4} textAnchor="middle" fontSize="13px" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke} transform={`rotate(90, ${xRight + 48}, ${(minY + maxY) / 2 + 4})`}>{fmtNum(totH, 2)} m</text>
             </g>
           );
         })()}
@@ -1095,8 +1104,8 @@ export default function Canvas2D({
               {r.controsoffitto && (
                 <polygon points={pts} fill="url(#hatch-controsoff)" fillOpacity="0.4" />
               )}
-              <text x={cx} y={cy - 6} fontSize="18" textAnchor="middle" fontFamily="Outfit" fill="#0A0A0A" fontWeight="700" letterSpacing="1.5" pointerEvents="none" style={{ textTransform: "uppercase" }}>{(r.name || "").toUpperCase()}</text>
-              <text x={cx} y={cy + 14} fontSize="11" textAnchor="middle" fontFamily="JetBrains Mono" fill="#71717A" pointerEvents="none">{fmtNum(areaM2, 2)} m²</text>
+              <text x={cx} y={cy - 6} fontSize="18px" textAnchor="middle" fontFamily="Outfit" fill="#0A0A0A" fontWeight="700" letterSpacing="1.5" pointerEvents="none" style={{ textTransform: "uppercase" }}>{(r.name || "").toUpperCase()}</text>
+              <text x={cx} y={cy + 14} fontSize="11px" textAnchor="middle" fontFamily="JetBrains Mono" fill="#71717A" pointerEvents="none">{fmtNum(areaM2, 2)} m²</text>
               {/* QUOTE INTERNE: ogni lato del poligono stanza ottiene la sua quota */}
               {L.dimensions && r.points.map((pt, i) => {
                 const next = r.points[(i + 1) % r.points.length];
@@ -1117,25 +1126,25 @@ export default function Canvas2D({
                 return (
                   <g key={`edge-q-${i}`} pointerEvents="none">
                     <rect x={lx - padX} y={ly - padY} width={padX * 2} height={padY * 2} rx={2} fill="white" stroke="#0A0A0A" strokeWidth="1" />
-                    <text x={lx} y={ly + 5} textAnchor="middle" fontSize="12" fontFamily="JetBrains Mono" fontWeight="700" fill="#0A0A0A">{txt}</text>
+                    <text x={lx} y={ly + 5} textAnchor="middle" fontSize="12px" fontFamily="JetBrains Mono" fontWeight="700" fill="#0A0A0A">{txt}</text>
                   </g>
                 );
               })}
-              {r.controsoffitto && <text x={cx} y={cy + 28} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#0F766E" fontWeight="700" pointerEvents="none">CTRSF</text>}
-              {isFullFloorDemolito && <text x={cx} y={cy + 28} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#DC2626" fontWeight="700" pointerEvents="none">DEMO PAV. TOTALE</text>}
-              {isRivestDemolito && <text x={cx} y={cy + 42} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#F97316" fontWeight="700" pointerEvents="none">DEMO RIV. TOTALE</text>}
+              {r.controsoffitto && <text x={cx} y={cy + 28} fontSize="9px" textAnchor="middle" fontFamily="JetBrains Mono" fill="#0F766E" fontWeight="700" pointerEvents="none">CTRSF</text>}
+              {isFullFloorDemolito && <text x={cx} y={cy + 28} fontSize="9px" textAnchor="middle" fontFamily="JetBrains Mono" fill="#DC2626" fontWeight="700" pointerEvents="none">DEMO PAV. TOTALE</text>}
+              {isRivestDemolito && <text x={cx} y={cy + 42} fontSize="9px" textAnchor="middle" fontFamily="JetBrains Mono" fill="#F97316" fontWeight="700" pointerEvents="none">DEMO RIV. TOTALE</text>}
               {/* Indicatore modifiche di progetto stanza */}
               {hasProgettoMods && VM !== "fatto" && (
                 <>
                   <polygon points={pts} fill="#FBBF24" fillOpacity="0.10" stroke="#F59E0B" strokeWidth="1.5" strokeDasharray="2,3" pointerEvents="none" />
-                  <text x={cx} y={cy + 56} fontSize="8" textAnchor="middle" fontFamily="JetBrains Mono" fill="#B45309" fontWeight="700" pointerEvents="none">⚒ MODIFICHE PROGETTO</text>
+                  <text x={cx} y={cy + 56} fontSize="8px" textAnchor="middle" fontFamily="JetBrains Mono" fill="#B45309" fontWeight="700" pointerEvents="none">⚒ MODIFICHE PROGETTO</text>
                 </>
               )}
               {/* Controsoffitto: bordo interno tratteggiato */}
               {(r.controsoffitto || (r.progetto && r.progetto.controsoffitto)) && (
                 <g pointerEvents="none">
                   <polygon points={r.points.map(p => `${p.x + (cx > p.x ? 8 : -8)},${p.y + (cy > p.y ? 8 : -8)}`).join(" ")} fill="none" stroke="#0EA5E9" strokeWidth="1.2" strokeDasharray="6,3" opacity="0.7" />
-                  <text x={cx} y={cy + 70} fontSize="8" textAnchor="middle" fontFamily="JetBrains Mono" fill="#0369A1" fontWeight="700">CONTROSOFFITTO</text>
+                  <text x={cx} y={cy + 70} fontSize="8px" textAnchor="middle" fontFamily="JetBrains Mono" fill="#0369A1" fontWeight="700">CONTROSOFFITTO</text>
                 </g>
               )}
               {/* corner dots + angle labels (fuori-quadro detection) */}
@@ -1155,7 +1164,7 @@ export default function Canvas2D({
                     {L.dimensions && (
                       <>
                         <rect x={pt.x - 16} y={pt.y - 28} width={32} height={14} rx={3} fill="white" stroke={colorAng} strokeWidth="1" />
-                        <text x={pt.x} y={pt.y - 18} textAnchor="middle" fontSize="9" fontFamily="JetBrains Mono" fontWeight="700" fill={colorAng}>{ang.toFixed(0)}°</text>
+                        <text x={pt.x} y={pt.y - 18} textAnchor="middle" fontSize="9px" fontFamily="JetBrains Mono" fontWeight="700" fill={colorAng}>{ang.toFixed(0)}°</text>
                       </>
                     )}
                   </g>
@@ -1228,7 +1237,7 @@ export default function Canvas2D({
                 <text
                   x={w.x1 + ((partial.from + partial.to) / 2) * (w.x2 - w.x1)}
                   y={w.y1 + ((partial.from + partial.to) / 2) * (w.y2 - w.y1) - 16}
-                  fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill="#DC2626"
+                  fontSize="9px" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill="#DC2626"
                   pointerEvents="none"
                 >DEMO {Math.round((partial.to - partial.from) * len)}cm × h{partial.height || 270}cm</text>
               )}
@@ -1316,10 +1325,10 @@ export default function Canvas2D({
                 <>
                   <line x1={-d.width / 2} y1={-3} x2={d.width / 2} y2={-3} stroke={stroke} strokeWidth="1.5" />
                   <line x1={-d.width / 2} y1={3} x2={d.width / 2} y2={3} stroke={stroke} strokeWidth="1.5" />
-                  <text x={0} y={2} fontSize="9" textAnchor="middle" fill={stroke}>↔</text>
+                  <text x={0} y={2} fontSize="9px" textAnchor="middle" fill={stroke}>↔</text>
                 </>
               )}
-              <text x={0} y={-12} fontSize="12" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke} pointerEvents="none">{d.width}</text>
+              <text x={0} y={-12} fontSize="12px" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke} pointerEvents="none">{d.width}</text>
               {/* drag handle */}
               {isSel && tool === "select" && (
                 <circle cx={0} cy={0} r="7" fill="white" stroke="#2563EB" strokeWidth="2"
@@ -1351,7 +1360,7 @@ export default function Canvas2D({
               <rect x={-wn.width / 2} y={-3} width={wn.width} height={6} fill="none" stroke={stroke} strokeWidth={isPF ? 1.6 : 1} />
               <line x1={-wn.width / 2} y1={0} x2={wn.width / 2} y2={0} stroke={stroke} strokeWidth="1" />
               {isPF && <line x1={0} y1={-3} x2={0} y2={3} stroke={stroke} strokeWidth="1.2" />}
-              <text x={0} y={-12} fontSize="12" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke} pointerEvents="none">{wn.width}</text>
+              <text x={0} y={-12} fontSize="12px" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={stroke} pointerEvents="none">{wn.width}</text>
               {isSel && tool === "select" && (
                 <circle cx={0} cy={0} r="7" fill="white" stroke="#2563EB" strokeWidth="2"
                   style={{ cursor: "ew-resize" }}
@@ -1383,7 +1392,7 @@ export default function Canvas2D({
               data-testid={`item-${it.id}`}
             >
               <rect x={-w / 2} y={-d / 2} width={w} height={d} fill={color} fillOpacity="0.85" stroke={isSel ? "#2563EB" : "#3F3F46"} strokeWidth={isSel ? 1.5 : 0.6} />
-              <text x={0} y={4} fontSize="9" textAnchor="middle" fontFamily="JetBrains Mono" fill="#0A0A0A" pointerEvents="none">{(m?.name || "item").slice(0, 12)}</text>
+              <text x={0} y={4} fontSize="9px" textAnchor="middle" fontFamily="JetBrains Mono" fill="#0A0A0A" pointerEvents="none">{(m?.name || "item").slice(0, 12)}</text>
             </g>
           );
         })}
@@ -1503,7 +1512,7 @@ export default function Canvas2D({
               style={{ cursor: isPlacementTool ? "crosshair" : "pointer" }}
               data-testid={`demolition-rivestimento-${d.id}`}>
               <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#F97316" strokeWidth={(w.thickness || 10) + 6} strokeDasharray="3,3" opacity={isSel ? 0.95 : 0.7} strokeLinecap="butt" />
-              <text x={cx} y={cy - 14} textAnchor="middle" fontSize="9" fontFamily="JetBrains Mono" fontWeight="700" fill="#F97316">
+              <text x={cx} y={cy - 14} textAnchor="middle" fontSize="9px" fontFamily="JetBrains Mono" fontWeight="700" fill="#F97316">
                 DEMO RIV. {Math.round(xTo - xFrom)}×{Math.round((d.hToCm != null ? d.hToCm : (d.heightCm || 200)) - (d.hFromCm || 0))}cm @ h{d.hFromCm || 0}cm
               </text>
             </g>
@@ -1514,7 +1523,7 @@ export default function Canvas2D({
         {(project.demolitions || []).filter((d) => d.kind === "pavimento" && d.polygon && d.polygon.length >= 3).map((d) => (
           <g key={`demo-poly-${d.id}`} pointerEvents="none">
             <polygon points={d.polygon.map((p) => `${p.x},${p.y}`).join(" ")} fill="url(#hatch-demo)" fillOpacity="0.55" stroke="#DC2626" strokeWidth="2" strokeDasharray="5,4" />
-            <text x={d.x} y={d.y} textAnchor="middle" fontSize="10" fontFamily="JetBrains Mono" fontWeight="700" fill="#DC2626">{`DEMO ${fmtNum((polygonArea(d.polygon) / 10000), 2)} m²`}</text>
+            <text x={d.x} y={d.y} textAnchor="middle" fontSize="10px" fontFamily="JetBrains Mono" fontWeight="700" fill="#DC2626">{`DEMO ${fmtNum((polygonArea(d.polygon) / 10000), 2)} m²`}</text>
           </g>
         ))}
 
@@ -1604,7 +1613,7 @@ export default function Canvas2D({
             style={{ cursor: isPlacementTool ? "crosshair" : "pointer" }}
             data-testid={`controsoffitto-area-${c.id}`}>
             <polygon points={(c.polygon || []).map((p) => `${p.x},${p.y}`).join(" ")} fill="url(#hatch-controsoff)" fillOpacity="0.55" stroke="#0EA5E9" strokeWidth="1.5" strokeDasharray="6,4" />
-            <text x={c.x} y={c.y} textAnchor="middle" fontSize="10" fontFamily="JetBrains Mono" fontWeight="700" fill="#0369A1">{`CONTROSOFF. ${fmtNum(c.areaM2 || 0, 2)}m²`}</text>
+            <text x={c.x} y={c.y} textAnchor="middle" fontSize="10px" fontFamily="JetBrains Mono" fontWeight="700" fill="#0369A1">{`CONTROSOFF. ${fmtNum(c.areaM2 || 0, 2)}m²`}</text>
           </g>
         ))}
 
@@ -1616,7 +1625,7 @@ export default function Canvas2D({
               const a = polygonArea(project.packageArea.polygon) / 10000;
               const cx = project.packageArea.polygon.reduce((s, p) => s + p.x, 0) / project.packageArea.polygon.length;
               const cy = project.packageArea.polygon.reduce((s, p) => s + p.y, 0) / project.packageArea.polygon.length;
-              return <text x={cx} y={cy} fontSize="11" fontFamily="JetBrains Mono" fontWeight="700" fill="#047857" textAnchor="middle">{`AREA PACCHETTO ${a.toFixed(2)} m²`}</text>;
+              return <text x={cx} y={cy} fontSize="11px" fontFamily="JetBrains Mono" fontWeight="700" fill="#047857" textAnchor="middle">{`AREA PACCHETTO ${a.toFixed(2)} m²`}</text>;
             })()}
           </g>
         )}

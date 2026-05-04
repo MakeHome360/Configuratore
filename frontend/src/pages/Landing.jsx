@@ -199,57 +199,57 @@ export default function Landing() {
       {/* HERO */}
       <section className="relative overflow-hidden bg-[#F5F5F2]" data-testid="hero-section">
         <div className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: `radial-gradient(circle at 1px 1px, #0A0A0A 1px, transparent 0)`, backgroundSize: '24px 24px' }} />
-        <div className="relative max-w-7xl mx-auto px-6 py-20 lg:py-28 grid lg:grid-cols-12 gap-10 items-center">
+        <div className="relative max-w-7xl mx-auto px-5 sm:px-6 py-12 sm:py-16 lg:py-28 grid lg:grid-cols-12 gap-8 lg:gap-10 items-center">
           <div className="lg:col-span-6">
-            <div className="inline-flex items-center gap-2 bg-white border border-zinc-200 px-4 py-2 rounded-full mb-7" data-testid="hero-badge">
+            <div className="inline-flex items-center gap-2 bg-white border border-zinc-200 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full mb-5 sm:mb-7" data-testid="hero-badge">
               <span className="w-2 h-2 rounded-full bg-[#1FAE52] animate-pulse" />
-              <span className="text-[12px] font-medium tracking-wide">Studio di ristrutturazioni · dal 2014</span>
+              <span className="text-[11px] sm:text-[12px] font-medium tracking-wide">Studio di ristrutturazioni · dal 2014</span>
             </div>
-            <h1 className="text-[44px] sm:text-[56px] lg:text-[72px] leading-[0.95] font-black tracking-tight mb-6" style={{ fontFamily: "Outfit" }}>
+            <h1 className="text-[36px] sm:text-[48px] md:text-[56px] lg:text-[72px] leading-[0.95] font-black tracking-tight mb-5 sm:mb-6" style={{ fontFamily: "Outfit" }}>
               Quando una casa
               <span className="block italic font-light text-[#1FAE52]" style={{ fontFamily: "Georgia, serif" }}>Sa di Casa.</span>
             </h1>
-            <p className="text-[17px] lg:text-[19px] text-zinc-700 leading-relaxed mb-9 max-w-xl">
+            <p className="text-[15px] sm:text-[17px] lg:text-[19px] text-zinc-700 leading-relaxed mb-7 sm:mb-9 max-w-xl">
               Ristrutturazioni chiavi in mano, arredamento su misura e servizi per la casa. Tutto sotto un solo tetto, con preventivi chiari e prezzi bloccati.
             </p>
-            <div className="flex flex-wrap items-center gap-3 mb-10">
-              <a href="#contatti" className="group inline-flex items-center gap-2 bg-[#1FAE52] hover:bg-[#168540] text-white px-7 py-4 rounded-full text-[15px] font-bold transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5" data-testid="hero-cta-primary">
+            <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 mb-8 sm:mb-10">
+              <a href="#contatti" className="group inline-flex items-center justify-center gap-2 bg-[#1FAE52] hover:bg-[#168540] text-white px-6 sm:px-7 py-3.5 sm:py-4 rounded-full text-[14px] sm:text-[15px] font-bold transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5" data-testid="hero-cta-primary">
                 Richiedi preventivo gratuito <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
               </a>
-              <a href="#processo" className="inline-flex items-center gap-2 text-[15px] font-bold text-[#0A0A0A] hover:text-[#1FAE52] transition-colors px-2 py-4" data-testid="hero-cta-secondary">
+              <a href="#processo" className="inline-flex items-center justify-center gap-2 text-[14px] sm:text-[15px] font-bold text-[#0A0A0A] hover:text-[#1FAE52] transition-colors px-2 py-3 sm:py-4" data-testid="hero-cta-secondary">
                 Come lavoriamo <ArrowRight size={16} />
               </a>
             </div>
-            <div className="flex flex-wrap items-center gap-x-8 gap-y-3 pt-6 border-t border-zinc-300 text-[13px] text-zinc-700">
+            <div className="flex flex-wrap items-center gap-x-6 sm:gap-x-8 gap-y-3 pt-5 sm:pt-6 border-t border-zinc-300 text-[12px] sm:text-[13px] text-zinc-700">
               <div className="flex items-center gap-2">
-                <ShieldCheck size={16} className="text-[#1FAE52]" />
-                <span><strong>Garanzia 5 anni</strong> sui lavori</span>
+                <ShieldCheck size={15} className="text-[#1FAE52] flex-shrink-0" />
+                <span><strong>Garanzia 5 anni</strong></span>
               </div>
               <div className="flex items-center gap-2">
-                <Lock size={16} className="text-[#1FAE52]" />
-                <span><strong>Preventivo bloccato</strong>, nessun extra</span>
+                <Lock size={15} className="text-[#1FAE52] flex-shrink-0" />
+                <span><strong>Preventivo bloccato</strong></span>
               </div>
               <div className="flex items-center gap-2">
-                <BadgeCheck size={16} className="text-[#1FAE52]" />
+                <BadgeCheck size={15} className="text-[#1FAE52] flex-shrink-0" />
                 <span>IVA <strong>10%</strong> inclusa</span>
               </div>
             </div>
           </div>
-          <div className="lg:col-span-6 relative">
-            <div className="relative aspect-[4/5] overflow-hidden rounded-sm">
+          <div className="lg:col-span-6 relative mt-4 lg:mt-0">
+            <div className="relative aspect-[4/5] sm:aspect-[16/10] lg:aspect-[4/5] overflow-hidden rounded-sm">
               <img src={HERO_IMG} alt="Soggiorno luminoso ristrutturato" className="w-full h-full object-cover" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
             </div>
-            {/* Floating card 1 */}
-            <div className="absolute -bottom-6 -left-6 lg:-left-10 bg-white shadow-2xl p-5 max-w-[280px] border-l-4 border-[#1FAE52]">
-              <div className="text-[11px] font-bold text-[#1FAE52] tracking-widest mb-1">PREVENTIVO BLOCCATO</div>
-              <div className="text-[14px] font-semibold text-[#0A0A0A] leading-snug">«Ho pagato esattamente quello che era scritto sul contratto. Niente sorprese.»</div>
+            {/* Floating card 1 — ridotta su mobile */}
+            <div className="absolute -bottom-4 left-3 right-3 sm:-bottom-6 sm:left-auto sm:-right-0 lg:-left-10 lg:right-auto bg-white shadow-2xl p-4 sm:p-5 sm:max-w-[280px] border-l-4 border-[#1FAE52]">
+              <div className="text-[10px] sm:text-[11px] font-bold text-[#1FAE52] tracking-widest mb-1">PREVENTIVO BLOCCATO</div>
+              <div className="text-[13px] sm:text-[14px] font-semibold text-[#0A0A0A] leading-snug">«Ho pagato esattamente quello che era scritto sul contratto. Niente sorprese.»</div>
               <div className="flex items-center gap-1 mt-2">
-                {[1,2,3,4,5].map(n => <Star key={n} size={12} className="fill-[#1FAE52] text-[#1FAE52]" />)}
+                {[1,2,3,4,5].map(n => <Star key={n} size={11} className="fill-[#1FAE52] text-[#1FAE52]" />)}
                 <span className="text-[11px] text-zinc-500 ml-1">— Marco, Milano</span>
               </div>
             </div>
-            {/* Floating card 2 */}
+            {/* Floating card 2 — solo desktop */}
             <div className="hidden lg:block absolute -top-4 -right-6 bg-[#0A0A0A] text-white shadow-2xl p-4 rounded-sm">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-[#1FAE52] flex items-center justify-center">
@@ -266,27 +266,27 @@ export default function Landing() {
       </section>
 
       {/* VALORI */}
-      <section className="bg-white py-16 lg:py-24 border-b border-zinc-100" data-testid="valori-section">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center max-w-2xl mx-auto mb-14">
+      <section className="bg-white py-12 sm:py-12 sm:py-16 lg:py-24 border-b border-zinc-100" data-testid="valori-section">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6">
+          <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-10 sm:mb-14">
             <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-3">Quello che ci contraddistingue</div>
-            <h2 className="text-4xl lg:text-5xl font-black tracking-tight mb-4" style={{ fontFamily: "Outfit" }}>
+            <h2 className="text-3xl sm:text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight mb-4" style={{ fontFamily: "Outfit" }}>
               Niente sorprese. <span className="italic font-light" style={{ fontFamily: "Georgia, serif" }}>Mai.</span>
             </h2>
-            <p className="text-[16px] text-zinc-600 leading-relaxed">
+            <p className="text-[14px] sm:text-[16px] text-zinc-600 leading-relaxed">
               Crediamo che ristrutturare casa debba essere un'esperienza serena. Per questo abbiamo costruito un metodo basato su quattro principi non negoziabili.
             </p>
           </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
             {VALORI.map((v, i) => {
               const Icon = v.icon;
               return (
-                <div key={v.title} className="group p-7 bg-[#F5F5F2] border border-transparent hover:border-[#1FAE52] hover:bg-white transition-all duration-300" data-testid={`valore-${i}`}>
-                  <div className="w-12 h-12 bg-[#0A0A0A] flex items-center justify-center mb-5 rounded-full group-hover:bg-[#1FAE52] transition-colors">
-                    <Icon size={20} className="text-white" strokeWidth={2} />
+                <div key={v.title} className="group p-5 sm:p-7 bg-[#F5F5F2] border border-transparent hover:border-[#1FAE52] hover:bg-white transition-all duration-300" data-testid={`valore-${i}`}>
+                  <div className="w-10 sm:w-12 h-10 sm:h-12 bg-[#0A0A0A] flex items-center justify-center mb-4 sm:mb-5 rounded-full group-hover:bg-[#1FAE52] transition-colors">
+                    <Icon size={18} className="text-white" strokeWidth={2} />
                   </div>
-                  <h3 className="text-lg font-bold mb-2" style={{ fontFamily: "Outfit" }}>{v.title}</h3>
-                  <p className="text-[13.5px] text-zinc-600 leading-relaxed">{v.text}</p>
+                  <h3 className="text-base sm:text-lg font-bold mb-1.5 sm:mb-2" style={{ fontFamily: "Outfit" }}>{v.title}</h3>
+                  <p className="text-[12px] sm:text-[13.5px] text-zinc-600 leading-relaxed">{v.text}</p>
                 </div>
               );
             })}
@@ -295,77 +295,77 @@ export default function Landing() {
       </section>
 
       {/* SERVIZI */}
-      <section id="servizi" className="bg-[#F5F5F2] py-16 lg:py-24" data-testid="servizi-section">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between mb-12 gap-6">
+      <section id="servizi" className="bg-[#F5F5F2] py-12 sm:py-12 sm:py-16 lg:py-24" data-testid="servizi-section">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6">
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between mb-8 sm:mb-12 gap-4 sm:gap-6">
             <div className="max-w-2xl">
               <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-3">I nostri servizi</div>
-              <h2 className="text-4xl lg:text-5xl font-black tracking-tight" style={{ fontFamily: "Outfit" }}>
+              <h2 className="text-3xl sm:text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight" style={{ fontFamily: "Outfit" }}>
                 Tutto quello che serve <span className="italic font-light" style={{ fontFamily: "Georgia, serif" }}>alla tua casa.</span>
               </h2>
             </div>
-            <p className="text-[15px] text-zinc-600 max-w-md leading-relaxed">
+            <p className="text-[14px] sm:text-[15px] text-zinc-600 max-w-md leading-relaxed">
               Un'unica squadra per tutte le esigenze della casa. Niente coordinamento di più aziende, niente palleggiamenti di responsabilità.
             </p>
           </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
             {SERVIZI.map((s, i) => <ServiceCard key={s.title} s={s} i={i} />)}
           </div>
         </div>
       </section>
 
       {/* ARREDAMENTO & DESIGN — sezione dedicata */}
-      <section id="arredamento" className="bg-white py-16 lg:py-24" data-testid="arredamento-section">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid lg:grid-cols-12 gap-10 mb-14">
+      <section id="arredamento" className="bg-white py-12 sm:py-12 sm:py-16 lg:py-24" data-testid="arredamento-section">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6">
+          <div className="grid lg:grid-cols-12 gap-8 lg:gap-10 mb-10 sm:mb-10 sm:mb-14">
             <div className="lg:col-span-5">
               <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-3">Arredamento & Design</div>
-              <h2 className="text-4xl lg:text-5xl font-black tracking-tight mb-5" style={{ fontFamily: "Outfit" }}>
+              <h2 className="text-3xl sm:text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight mb-4 sm:mb-5" style={{ fontFamily: "Outfit" }}>
                 Disegniamo il tuo spazio
                 <span className="block italic font-light" style={{ fontFamily: "Georgia, serif" }}>prima di costruirlo.</span>
               </h2>
-              <p className="text-[16px] text-zinc-700 leading-relaxed mb-6">
+              <p className="text-[14px] sm:text-[16px] text-zinc-700 leading-relaxed mb-5 sm:mb-6">
                 Il nostro studio di interior design lavora al tuo fianco dalla prima moodboard al montaggio finale. Tutto coordinato: materiali, luci, mobili, complementi.
               </p>
-              <ul className="space-y-3 mb-8">
+              <ul className="space-y-2.5 sm:space-y-3 mb-6 sm:mb-8">
                 {["Progetto d'interni con anteprima 3D fotorealistica", "Marchi italiani selezionati (cucine, bagni, living)", "Squadra di montaggio professionale interna", "Consegna chiavi in mano: tu trovi tutto al suo posto"].map((t) => (
-                  <li key={t} className="flex items-start gap-3 text-[14px]">
+                  <li key={t} className="flex items-start gap-3 text-[13px] sm:text-[14px]">
                     <Check size={16} className="mt-0.5 text-[#1FAE52] flex-shrink-0" strokeWidth={3} />
                     <span className="text-zinc-700">{t}</span>
                   </li>
                 ))}
               </ul>
-              <a href="#contatti" className="inline-flex items-center gap-2 bg-[#1FAE52] hover:bg-[#168540] text-white px-6 py-3 rounded-full text-[14px] font-bold transition-all">
+              <a href="#contatti" className="inline-flex items-center gap-2 bg-[#1FAE52] hover:bg-[#168540] text-white px-5 sm:px-6 py-2.5 sm:py-3 rounded-full text-[13px] sm:text-[14px] font-bold transition-all">
                 Richiedi un progetto d'interni <ArrowRight size={14} />
               </a>
             </div>
-            <div className="lg:col-span-7 grid grid-cols-2 gap-3">
+            <div className="lg:col-span-7 grid grid-cols-2 gap-2 sm:gap-3">
               <div className="row-span-2 relative aspect-[3/4] overflow-hidden rounded-sm group">
                 <img src="https://images.unsplash.com/photo-1600210491892-03d54c0aaf87?auto=format&fit=crop&w=900&q=80" alt="Cucina moderna" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
-                  <div className="text-[10px] font-bold tracking-widest text-[#1FAE52]">CUCINE</div>
-                  <div className="text-white text-[15px] font-bold">Su misura, italiane</div>
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3 sm:p-4">
+                  <div className="text-[9px] sm:text-[10px] font-bold tracking-widest text-[#1FAE52]">CUCINE</div>
+                  <div className="text-white text-[13px] sm:text-[15px] font-bold">Su misura, italiane</div>
                 </div>
               </div>
               <div className="relative aspect-square overflow-hidden rounded-sm group">
                 <img src="https://images.unsplash.com/photo-1598300042247-d088f8ab3a91?auto=format&fit=crop&w=600&q=80" alt="Living" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3">
-                  <div className="text-[10px] font-bold tracking-widest text-[#1FAE52]">LIVING</div>
-                  <div className="text-white text-[13px] font-bold">Atmosfera calda</div>
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2 sm:p-3">
+                  <div className="text-[9px] sm:text-[10px] font-bold tracking-widest text-[#1FAE52]">LIVING</div>
+                  <div className="text-white text-[11px] sm:text-[13px] font-bold">Atmosfera calda</div>
                 </div>
               </div>
               <div className="relative aspect-square overflow-hidden rounded-sm group">
                 <img src="https://images.unsplash.com/photo-1620626011761-996317b8d101?auto=format&fit=crop&w=600&q=80" alt="Camera padronale" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3">
-                  <div className="text-[10px] font-bold tracking-widest text-[#1FAE52]">CAMERE</div>
-                  <div className="text-white text-[13px] font-bold">Cabina armadio</div>
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2 sm:p-3">
+                  <div className="text-[9px] sm:text-[10px] font-bold tracking-widest text-[#1FAE52]">CAMERE</div>
+                  <div className="text-white text-[11px] sm:text-[13px] font-bold">Cabina armadio</div>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Categorie arredo */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-14">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3 mb-10 sm:mb-10 sm:mb-14">
             {[
               { name: "Cucine", img: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?auto=format&fit=crop&w=400&q=70" },
               { name: "Bagni", img: "https://images.unsplash.com/photo-1552321554-5fefe8c9ef14?auto=format&fit=crop&w=400&q=70" },
@@ -377,14 +377,14 @@ export default function Landing() {
               <div key={c.name} className="relative aspect-square overflow-hidden rounded-sm group cursor-pointer">
                 <img src={c.img} alt={c.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
                 <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                  <div className="text-white text-[14px] font-bold tracking-wide">{c.name}</div>
+                  <div className="text-white text-[12px] sm:text-[14px] font-bold tracking-wide">{c.name}</div>
                 </div>
               </div>
             ))}
           </div>
 
           {/* Video showcase */}
-          <div className="grid lg:grid-cols-3 gap-6 mb-12">
+          <div className="grid lg:grid-cols-3 gap-4 sm:gap-6 mb-8 sm:mb-12">
             <div className="lg:col-span-2 relative aspect-video overflow-hidden rounded-sm bg-zinc-900 group">
               <video
                 autoPlay muted loop playsInline
@@ -394,28 +394,28 @@ export default function Landing() {
               >
                 <source src="https://cdn.coverr.co/videos/coverr-an-architects-workspace-2596/1080p.mp4" type="video/mp4" />
               </video>
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 sm:p-6">
                 <div className="text-[10px] font-bold tracking-widest text-[#1FAE52] mb-1">DIETRO LE QUINTE</div>
-                <div className="text-white text-2xl font-bold" style={{ fontFamily: "Outfit" }}>Lo studio di progettazione</div>
-                <div className="text-zinc-300 text-[13px] mt-1">Dai sopralluogo al rendering 3D, ogni progetto nasce sui nostri tavoli.</div>
+                <div className="text-white text-lg sm:text-2xl font-bold" style={{ fontFamily: "Outfit" }}>Lo studio di progettazione</div>
+                <div className="text-zinc-300 text-[11px] sm:text-[13px] mt-1">Dai sopralluogo al rendering 3D, ogni progetto nasce sui nostri tavoli.</div>
               </div>
             </div>
-            <div className="space-y-6">
-              <div className="bg-[#0A0A0A] text-white p-6 rounded-sm">
+            <div className="grid grid-cols-2 lg:grid-cols-1 gap-4 sm:gap-6">
+              <div className="bg-[#0A0A0A] text-white p-4 sm:p-6 rounded-sm">
                 <div className="text-[10px] font-bold tracking-widest text-[#1FAE52] mb-2">PROCESSO</div>
-                <div className="text-2xl font-bold mb-3" style={{ fontFamily: "Outfit" }}>Anteprima fotorealistica</div>
-                <p className="text-zinc-400 text-[13px] leading-relaxed mb-4">
-                  Vedi la tua casa finita prima ancora che i lavori inizino. Cambia idea quante volte vuoi, senza costi extra.
+                <div className="text-lg sm:text-2xl font-bold mb-2 sm:mb-3" style={{ fontFamily: "Outfit" }}>Anteprima fotorealistica</div>
+                <p className="text-zinc-400 text-[11px] sm:text-[13px] leading-relaxed mb-3 sm:mb-4">
+                  Vedi la tua casa finita prima che i lavori inizino.
                 </p>
-                <a href="#contatti" className="text-[#1FAE52] text-[13px] font-bold hover:underline inline-flex items-center gap-1">
-                  Richiedi una bozza <ArrowRight size={12} />
+                <a href="#contatti" className="text-[#1FAE52] text-[12px] sm:text-[13px] font-bold hover:underline inline-flex items-center gap-1">
+                  Richiedi bozza <ArrowRight size={12} />
                 </a>
               </div>
-              <div className="bg-[#F5F5F2] p-6 rounded-sm">
+              <div className="bg-[#F5F5F2] p-4 sm:p-6 rounded-sm">
                 <div className="text-[10px] font-bold tracking-widest text-[#1FAE52] mb-2">QUALITÀ</div>
-                <div className="text-2xl font-bold mb-3" style={{ fontFamily: "Outfit" }}>Marchi selezionati</div>
-                <p className="text-zinc-700 text-[13px] leading-relaxed">
-                  Lavoriamo solo con i migliori produttori italiani. Ti facciamo risparmiare grazie alle nostre convenzioni dirette.
+                <div className="text-lg sm:text-2xl font-bold mb-2 sm:mb-3" style={{ fontFamily: "Outfit" }}>Marchi selezionati</div>
+                <p className="text-zinc-700 text-[11px] sm:text-[13px] leading-relaxed">
+                  I migliori produttori italiani, a prezzi di convenzione.
                 </p>
               </div>
             </div>
@@ -424,13 +424,13 @@ export default function Landing() {
       </section>
 
       {/* MONTAGGIO & CANTIERE — video sezione */}
-      <section className="bg-[#0A0A0A] text-white py-16 lg:py-24 relative overflow-hidden" data-testid="montaggio-section">
+      <section className="bg-[#0A0A0A] text-white py-12 sm:py-16 lg:py-24 relative overflow-hidden" data-testid="montaggio-section">
         <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: `radial-gradient(circle at 1px 1px, white 1px, transparent 0)`, backgroundSize: '24px 24px' }} />
-        <div className="max-w-7xl mx-auto px-6 relative">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6 relative">
           <div className="grid lg:grid-cols-12 gap-10 items-center">
             <div className="lg:col-span-5 order-2 lg:order-1">
               <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-3">In cantiere</div>
-              <h2 className="text-4xl lg:text-5xl font-black tracking-tight mb-5" style={{ fontFamily: "Outfit" }}>
+              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight mb-5" style={{ fontFamily: "Outfit" }}>
                 Mani esperte
                 <span className="block italic font-light text-zinc-400" style={{ fontFamily: "Georgia, serif" }}>tempi rispettati.</span>
               </h2>
@@ -494,11 +494,11 @@ export default function Landing() {
       </section>
 
       {/* PACCHETTI */}
-      <section id="pacchetti" className="bg-white py-16 lg:py-24" data-testid="pacchetti-section">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center max-w-2xl mx-auto mb-14">
+      <section id="pacchetti" className="bg-white py-12 sm:py-16 lg:py-24" data-testid="pacchetti-section">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6">
+          <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-14">
             <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-3">Prezzi chiari, tutto incluso</div>
-            <h2 className="text-4xl lg:text-5xl font-black tracking-tight mb-4" style={{ fontFamily: "Outfit" }}>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight mb-4" style={{ fontFamily: "Outfit" }}>
               Quattro pacchetti. <span className="italic font-light" style={{ fontFamily: "Georgia, serif" }}>Zero sorprese.</span>
             </h2>
             <p className="text-[16px] text-zinc-600 leading-relaxed">
@@ -517,10 +517,10 @@ export default function Landing() {
       {/* PROCESSO */}
       <section id="processo" className="bg-[#0A0A0A] text-white py-16 lg:py-28 relative overflow-hidden" data-testid="processo-section">
         <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: `radial-gradient(circle at 1px 1px, white 1px, transparent 0)`, backgroundSize: '24px 24px' }} />
-        <div className="max-w-7xl mx-auto px-6 relative">
-          <div className="max-w-2xl mb-14">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6 relative">
+          <div className="max-w-2xl mb-10 sm:mb-14">
             <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-3">Come lavoriamo</div>
-            <h2 className="text-4xl lg:text-5xl font-black tracking-tight mb-4" style={{ fontFamily: "Outfit" }}>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight mb-4" style={{ fontFamily: "Outfit" }}>
               Quattro passaggi. <span className="italic font-light text-zinc-400" style={{ fontFamily: "Georgia, serif" }}>Mai uno di più.</span>
             </h2>
             <p className="text-[16px] text-zinc-400 leading-relaxed">
@@ -548,12 +548,12 @@ export default function Landing() {
       </section>
 
       {/* PROGETTI */}
-      <section id="progetti" className="bg-[#F5F5F2] py-16 lg:py-24" data-testid="progetti-section">
-        <div className="max-w-7xl mx-auto px-6">
+      <section id="progetti" className="bg-[#F5F5F2] py-12 sm:py-16 lg:py-24" data-testid="progetti-section">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6">
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between mb-12 gap-6">
             <div className="max-w-2xl">
               <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-3">I nostri progetti</div>
-              <h2 className="text-4xl lg:text-5xl font-black tracking-tight" style={{ fontFamily: "Outfit" }}>
+              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight" style={{ fontFamily: "Outfit" }}>
                 Le case che <span className="italic font-light" style={{ fontFamily: "Georgia, serif" }}>sanno di noi.</span>
               </h2>
             </div>
@@ -576,11 +576,11 @@ export default function Landing() {
       </section>
 
       {/* TESTIMONIAL */}
-      <section className="bg-white py-16 lg:py-24" data-testid="testimonial-section">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center max-w-2xl mx-auto mb-14">
+      <section className="bg-white py-12 sm:py-16 lg:py-24" data-testid="testimonial-section">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6">
+          <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-14">
             <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-3">Cosa dicono di noi</div>
-            <h2 className="text-4xl lg:text-5xl font-black tracking-tight" style={{ fontFamily: "Outfit" }}>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight" style={{ fontFamily: "Outfit" }}>
               4,9 stelle su Google. <span className="italic font-light" style={{ fontFamily: "Georgia, serif" }}>Non per caso.</span>
             </h2>
           </div>
@@ -607,11 +607,11 @@ export default function Landing() {
       </section>
 
       {/* FAQ */}
-      <section className="bg-[#F5F5F2] py-16 lg:py-24" data-testid="faq-section">
-        <div className="max-w-4xl mx-auto px-6">
+      <section className="bg-[#F5F5F2] py-12 sm:py-16 lg:py-24" data-testid="faq-section">
+        <div className="max-w-4xl mx-auto px-5 sm:px-6">
           <div className="text-center mb-12">
             <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-3">Domande frequenti</div>
-            <h2 className="text-4xl lg:text-5xl font-black tracking-tight" style={{ fontFamily: "Outfit" }}>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight" style={{ fontFamily: "Outfit" }}>
               Quello che <span className="italic font-light" style={{ fontFamily: "Georgia, serif" }}>tutti chiedono.</span>
             </h2>
           </div>
@@ -622,11 +622,11 @@ export default function Landing() {
       </section>
 
       {/* CONTATTI */}
-      <section id="contatti" className="bg-white py-16 lg:py-24 border-y border-zinc-100" data-testid="contatti-section">
-        <div className="max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-12">
+      <section id="contatti" className="bg-white py-12 sm:py-16 lg:py-24 border-y border-zinc-100" data-testid="contatti-section">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6 grid lg:grid-cols-2 gap-12">
           <div>
             <div className="text-[11px] font-bold tracking-[0.2em] uppercase text-[#1FAE52] mb-3">Parliamone</div>
-            <h2 className="text-4xl lg:text-5xl font-black tracking-tight mb-5" style={{ fontFamily: "Outfit" }}>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight mb-5" style={{ fontFamily: "Outfit" }}>
               Pronto a ristrutturare?
               <span className="block italic font-light" style={{ fontFamily: "Georgia, serif" }}>Iniziamo da un caffè.</span>
             </h2>
@@ -712,7 +712,7 @@ export default function Landing() {
 
       {/* FOOTER */}
       <footer className="bg-[#0A0A0A] text-white" data-testid="footer">
-        <div className="max-w-7xl mx-auto px-6 py-16 grid md:grid-cols-2 lg:grid-cols-4 gap-10">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6 py-16 grid md:grid-cols-2 lg:grid-cols-4 gap-10">
           <div>
             <img src="/brand/sadicasa-dark.png" alt="Sa di Casa" className="h-14 w-auto mb-4" />
             <p className="text-[13px] text-zinc-400 leading-relaxed mb-5">
@@ -761,7 +761,7 @@ export default function Landing() {
           </div>
         </div>
         <div className="border-t border-zinc-900">
-          <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col md:flex-row items-center justify-between gap-4 text-[12px] text-zinc-500">
+          <div className="max-w-7xl mx-auto px-5 sm:px-6 py-6 flex flex-col md:flex-row items-center justify-between gap-4 text-[12px] text-zinc-500">
             <div>© {new Date().getFullYear()} Sa di Casa S.r.l. · P.IVA 01234567890 · Tutti i diritti riservati</div>
             <div className="flex gap-5">
               <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>

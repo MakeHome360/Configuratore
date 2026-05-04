@@ -1213,7 +1213,55 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
             🔒 Muro dello Stato di Fatto. In modalità Progetto puoi solo demolirlo (totale o parziale) ma non modificarne le proprietà fisiche.
           </div>
         )}
-        <div className="mono text-xs text-zinc-500">Lunghezza: {fmtNum(Math.hypot(obj.x2 - obj.x1, obj.y2 - obj.y1) / 100, 2)} m</div>
+        <div className="bg-emerald-50 border border-emerald-200 p-2.5 space-y-2" data-testid="wall-length-edit">
+          <Label className="text-xs uppercase tracking-widest text-emerald-800">Lunghezza muro</Label>
+          {(() => {
+            const lenCm = Math.hypot(obj.x2 - obj.x1, obj.y2 - obj.y1);
+            const lenM = lenCm / 100;
+            const orient = Math.abs(obj.x2 - obj.x1) > Math.abs(obj.y2 - obj.y1) ? "orizzontale" : "verticale";
+            const setLength = (newM) => {
+              const newCm = parseFloat(newM) * 100;
+              if (!newCm || newCm < 10 || lenCm < 1) return;
+              const ratio = newCm / lenCm;
+              const newX2 = obj.x1 + (obj.x2 - obj.x1) * ratio;
+              const newY2 = obj.y1 + (obj.y2 - obj.y1) * ratio;
+              updateObj({ x2: newX2, y2: newY2 });
+            };
+            return (
+              <>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0.1"
+                    defaultValue={lenM.toFixed(2)}
+                    key={lenCm}
+                    onBlur={(e) => setLength(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.target.blur(); } }}
+                    disabled={lockedFatto}
+                    className="rounded-sm h-9 mono flex-1"
+                    data-testid="wall-length-input"
+                  />
+                  <span className="text-xs text-zinc-700 mono font-semibold">m</span>
+                </div>
+                <div className="flex gap-1.5 flex-wrap">
+                  {[1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 30, 50].map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setLength(v)}
+                      disabled={lockedFatto}
+                      className="text-[10px] px-2 py-0.5 bg-white border border-emerald-300 rounded hover:bg-emerald-100 mono"
+                    >{v}m</button>
+                  ))}
+                </div>
+                <div className="text-[10px] text-zinc-600 mono">
+                  Orientamento: {orient} · Premi <kbd className="bg-white border border-zinc-300 px-1 rounded text-[9px]">Enter</kbd> per applicare
+                </div>
+              </>
+            );
+          })()}
+        </div>
         <fieldset disabled={lockedFatto} className={lockedFatto ? "opacity-60 pointer-events-none" : ""}>
           <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Tipo</Label>
             <Select value={obj.kind || "mattone"} onValueChange={(v) => updateObj({ kind: v })}>

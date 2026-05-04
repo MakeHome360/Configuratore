@@ -861,6 +861,50 @@ export default function Canvas2D({
 
   return (
     <div className="relative w-full h-full bg-[#FAFAFA]">
+      {/* Zoom controls overlay */}
+      <div className="absolute top-3 right-3 z-20 flex flex-col gap-1 bg-white/95 backdrop-blur shadow-md border border-zinc-200 rounded p-1" data-testid="zoom-controls">
+        <button
+          type="button"
+          onClick={() => setViewBox((v) => ({ x: v.x + v.w * 0.1, y: v.y + v.h * 0.1, w: v.w * 0.8, h: v.h * 0.8 }))}
+          className="w-8 h-8 hover:bg-zinc-100 rounded text-lg font-bold text-zinc-700"
+          title="Zoom +"
+          data-testid="zoom-in"
+        >+</button>
+        <button
+          type="button"
+          onClick={() => setViewBox((v) => ({ x: v.x - v.w * 0.125, y: v.y - v.h * 0.125, w: v.w * 1.25, h: v.h * 1.25 }))}
+          className="w-8 h-8 hover:bg-zinc-100 rounded text-lg font-bold text-zinc-700"
+          title="Zoom −"
+          data-testid="zoom-out"
+        >−</button>
+        <button
+          type="button"
+          onClick={() => {
+            // Fit-to-content: bbox di tutti gli elementi visibili
+            const pts = [];
+            (project.rooms || []).forEach((r) => (r.points || []).forEach((p) => pts.push(p)));
+            (project.walls || []).forEach((w) => { pts.push({ x: w.x1, y: w.y1 }); pts.push({ x: w.x2, y: w.y2 }); });
+            if (pts.length < 2) { setViewBox(INITIAL_VIEW); return; }
+            const minX = Math.min(...pts.map((p) => p.x));
+            const maxX = Math.max(...pts.map((p) => p.x));
+            const minY = Math.min(...pts.map((p) => p.y));
+            const maxY = Math.max(...pts.map((p) => p.y));
+            const padX = Math.max((maxX - minX) * 0.15, 200);
+            const padY = Math.max((maxY - minY) * 0.15, 200);
+            setViewBox({ x: minX - padX, y: minY - padY, w: (maxX - minX) + padX * 2, h: (maxY - minY) + padY * 2 });
+          }}
+          className="w-8 h-8 hover:bg-zinc-100 rounded text-[10px] font-bold text-zinc-700"
+          title="Adatta alla vista (fit-all)"
+          data-testid="zoom-fit"
+        >FIT</button>
+        <button
+          type="button"
+          onClick={() => setViewBox(INITIAL_VIEW)}
+          className="w-8 h-8 hover:bg-zinc-100 rounded text-[10px] font-bold text-zinc-700"
+          title="Reset viewport iniziale"
+          data-testid="zoom-reset"
+        >1:1</button>
+      </div>
       <svg
         ref={svgRef}
         viewBox={`${effectiveViewBox.x} ${effectiveViewBox.y} ${effectiveViewBox.w} ${effectiveViewBox.h}`}

@@ -1,5 +1,23 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 22 — Feb 2026 — Brand + Dashboard Venditori & Provvigioni)
+- ✅ **Brand title**: cambiato `<title>` da "Emergent | Fullstack App" → **"Sa di Casa | Ristrutturazioni e Arredo"** (`/app/frontend/public/index.html`) + meta description coerente.
+- ✅ **Dashboard Venditori personalizzata** (`/app/frontend/src/pages/DashboardVenditore.jsx`):
+  - Nuovo Dashboard automatico per ruolo `venditore` (Dashboard.jsx redirige in base al ruolo).
+  - Header con badge gerarchia (Venditore / Responsabile P.V. / Area Manager) e % provvigione.
+  - 4 KPI cards: Provvigioni Totali, Fatturato Personale, Preventivi, Fatturato Team.
+  - Tabs: Panoramica, Provvigioni, Team (solo per manager).
+  - Tabella provvigioni con tipo Diretta/Override e stato (previsionale/maturata/maturata_completa/sospesa).
+  - Ranking team con riga utente evidenziata.
+  - Anche admin può aprire dashboard di un singolo venditore via `/dashboardvenditore/:vid` (link da `AdminVenditori.jsx`).
+- ✅ **Calcolo provvigioni live** (backend, `routes_biz.py`):
+  - `GET /api/venditori/me/dashboard` (venditore + admin) e `/api/venditori/{id}/dashboard` (admin only).
+  - `GET /api/provvigioni/me` (rows + totale).
+  - Logica gerarchica: `semplice` vede solo proprie; `responsabile` aggiunge override su colleghi stesso `negozio_id`; `area_manager` su tutti i negozi in `negozi_ids`.
+  - Stato derivato dallo stato commessa: `da_iniziare→previsionale`, `in_corso→maturata`, `completata→maturata_completa`, `sospesa→sospesa`.
+- ✅ **Impostazioni Provvigioni** (Admin → Impostazioni): aggiunte 5 nuove % configurabili con backfill automatico nel doc esistente (`provvigione_*_pct`, default 3/5/7 personali e 1/1.5 override).
+- ✅ **Test pytest** `tests/test_provvigioni_dashboard.py` (3/3 PASSED) per regressione.
+
 ## Recent Updates (Round 21 — Feb 2026 — Quote 2D 4 lati + UX Demolizioni)
 - ✅ **Quote dimensionali sulla Pianta 2D su tutti i 4 lati** (`Canvas2D.jsx`): catena ticks + quote parziali + quote totali su SOPRA, SOTTO, SINISTRA e DESTRA del bbox progetto. Stile architettonico professionale (JetBrains Mono 11/13px, stroke #1F2937).
 - ✅ **Quote interne ai poligoni stanza**: ogni lato di ogni stanza ha un badge bianco bordato nero con la sua misura (es. `4,00 m`). Format coerente con virgola IT via `fmtNum`.

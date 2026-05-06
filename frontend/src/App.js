@@ -27,6 +27,7 @@ import CentroCosto from "@/pages/CentroCosto";
 import CRM from "@/pages/CRM";
 import DashboardCliente from "@/pages/DashboardCliente";
 import DashboardSubappaltatore from "@/pages/DashboardSubappaltatore";
+import DashboardVenditore from "@/pages/DashboardVenditore";
 // admin
 import AdminPacchetti from "@/pages/admin/AdminPacchetti";
 import AdminOptional from "@/pages/admin/AdminOptional";
@@ -79,6 +80,8 @@ function App() {
             <Route path="/dashboard" element={P(Dashboard)} />
             <Route path="/dashboardcliente" element={P(DashboardCliente)} />
             <Route path="/dashboardsubappaltatore" element={P(DashboardSubappaltatore)} />
+            <Route path="/dashboardvenditore" element={P(DashboardVenditore)} />
+            <Route path="/dashboardvenditore/:vid" element={P(DashboardVenditore)} />
             {/* Preventivi */}
             <Route path="/nuovopreventivo" element={P(NuovoPreventivo)} />
             <Route path="/preventivi" element={P(Preventivi)} />

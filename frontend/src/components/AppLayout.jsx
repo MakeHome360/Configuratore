@@ -6,6 +6,7 @@ import {
   LayoutDashboard, FilePlus2, Files, Briefcase, Users2, Building2,
   Settings, Package, Sparkles, UserCircle2, LogOut, Store,
   ClipboardList, BarChart3, Mail, Layers, Hammer, Target, Pencil, Receipt,
+  Wallet,
   ChevronLeft, ChevronRight, Menu
 } from "lucide-react";
 
@@ -16,6 +17,7 @@ const NAV = [
     { to: "/preventivi", label: "Preventivi", icon: Files, roles: ["admin","venditore","user","cliente"] },
     { to: "/crm", label: "CRM Lead", icon: Target, roles: ["admin","venditore"] },
     { to: "/configuratoreesigenze", label: "Configuratore Esigenze", icon: Sparkles, roles: ["admin","venditore","user"] },
+    { to: "/dashboardvenditore", label: "Le mie Provvigioni", icon: Wallet, roles: ["venditore"] },
   ]},
   { section: "Progettazione", items: [
     { to: "/progetti", label: "Progetti CAD", icon: Pencil, roles: ["admin","venditore","user"] },

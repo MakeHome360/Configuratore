@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { Page, PageHeader } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
@@ -6,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserPlus } from "lucide-react";
+import { UserPlus, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function AdminVenditori() {
@@ -14,6 +15,7 @@ export default function AdminVenditori() {
   const [negozi, setNegozi] = useState([]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", password: "", negozio_id: "", role: "venditore" });
+  const nav = useNavigate();
 
   const reload = () => {
     api.get("/venditori").then((r) => setRows(r.data || [])).catch(() => {});
@@ -66,8 +68,10 @@ export default function AdminVenditori() {
               <th className="px-3 py-2 text-left">Email</th>
               <th className="px-3 py-2 text-left">Negozio</th>
               <th className="px-3 py-2 text-left">Ruolo</th>
+              <th className="px-3 py-2 text-left">Livello</th>
               <th className="px-3 py-2 text-right">Preventivi</th>
               <th className="px-3 py-2 text-right">Commesse</th>
+              <th className="px-3 py-2 text-center">Azioni</th>
             </tr></thead>
             <tbody className="divide-y divide-zinc-100">
               {rows.map((v) => (
@@ -76,11 +80,17 @@ export default function AdminVenditori() {
                   <td className="px-3 py-2 mono text-xs">{v.email}</td>
                   <td className="px-3 py-2 text-xs">{negozi.find(n => n.id === v.negozio_id)?.nome || "-"}</td>
                   <td className="px-3 py-2 text-xs uppercase">{v.role}</td>
+                  <td className="px-3 py-2 text-xs uppercase">{v.venditore_level || "semplice"}</td>
                   <td className="px-3 py-2 text-right mono">{v.preventivi || 0}</td>
                   <td className="px-3 py-2 text-right mono">{v.commesse || 0}</td>
+                  <td className="px-3 py-2 text-center">
+                    <Button size="sm" variant="outline" className="rounded-sm h-8" onClick={() => nav(`/dashboardvenditore/${v.id}`)} data-testid={`btn-vend-dashboard-${v.id}`}>
+                      <BarChart3 className="h-3.5 w-3.5 mr-1" /> Dashboard
+                    </Button>
+                  </td>
                 </tr>
               ))}
-              {!rows.length && <tr><td colSpan={6} className="px-3 py-12 text-center text-zinc-500">Nessun venditore. Clicca "Crea/Invita venditore" qui sopra per crearne uno.</td></tr>}
+              {!rows.length && <tr><td colSpan={8} className="px-3 py-12 text-center text-zinc-500">Nessun venditore. Clicca "Crea/Invita venditore" qui sopra per crearne uno.</td></tr>}
             </tbody>
           </table>
         </div>

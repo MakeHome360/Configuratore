@@ -1,19 +1,26 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { Page, PageHeader, StatCard, fmtEur, statoCommessaBadge, statoPreventivoBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { FilePlus2, Files, Briefcase, TrendingUp } from "lucide-react";
+import DashboardVenditore from "@/pages/DashboardVenditore";
 
 const PKG_COLORS = { "pkg-basic": "#475569", "pkg-smart": "#3B82F6", "pkg-premium": "#0EA5E9", "pkg-elite": "#0A0A0A" };
 const PKG_NAMES = { "pkg-basic": "BASIC", "pkg-smart": "SMART", "pkg-premium": "PREMIUM", "pkg-elite": "ELITE" };
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const [stats, setStats] = useState(null);
   const nav = useNavigate();
   useEffect(() => {
+    if (user?.role === "venditore") return; // venditori usano DashboardVenditore
     api.get("/stats/dashboard").then((r) => setStats(r.data)).catch(() => setStats({}));
-  }, []);
+  }, [user?.role]);
+
+  // Routing per ruolo
+  if (user?.role === "venditore") return <DashboardVenditore />;
 
   if (!stats) return <Page><div className="text-zinc-500">Caricamento...</div></Page>;
 

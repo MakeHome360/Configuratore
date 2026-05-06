@@ -42,6 +42,17 @@ export default function AdminImpostazioni() {
             <F label="Sicurezza cantiere" k="sicurezza_pct" unit="%" />
             <F label="Direzione lavori" k="direzione_lavori_pct" unit="%" />
           </div>
+          <div className="bg-white border border-zinc-200 rounded-lg p-5 space-y-4 lg:col-span-2">
+            <h3 className="font-semibold">Provvigioni Venditori</h3>
+            <p className="text-xs text-zinc-500 -mt-2">% applicata sul totale commessa IVA inclusa. Usata sia per la dashboard del venditore sia per il calcolo dei compensi.</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <F label="Venditore semplice" k="provvigione_semplice_pct" unit="% propria" />
+              <F label="Responsabile P.V." k="provvigione_responsabile_pct" unit="% propria" />
+              <F label="Area Manager" k="provvigione_area_manager_pct" unit="% propria" />
+              <F label="Override Responsabile (su team)" k="provvigione_responsabile_override_pct" unit="%" />
+              <F label="Override Area Manager (su area)" k="provvigione_area_manager_override_pct" unit="%" />
+            </div>
+          </div>
         </div>
         <div className="mt-4 text-xs text-zinc-500 bg-amber-50 border border-amber-200 p-3 rounded max-w-5xl">
           <strong>Nota:</strong> Le modifiche avranno effetto solo sui nuovi preventivi. I preventivi esistenti non verranno modificati.

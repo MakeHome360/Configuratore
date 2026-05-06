@@ -488,8 +488,14 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
     @r.get("/impostazioni")
     async def get_imp(user=Depends(get_current_user)):
         await ensure_global_seeds()
-        doc = await db.impostazioni.find_one({}, {"_id": 0})
-        return doc or {}
+        doc = await db.impostazioni.find_one({}, {"_id": 0}) or {}
+        # Backfill: garantisce che i nuovi campi (provvigioni) siano presenti per l'admin UI
+        from packages_seed import DEFAULT_IMPOSTAZIONI as _DI
+        missing = {k: v for k, v in _DI.items() if k not in doc}
+        if missing:
+            await db.impostazioni.update_one({}, {"$set": missing}, upsert=True)
+            doc = await db.impostazioni.find_one({}, {"_id": 0}) or {}
+        return doc
 
     @r.put("/impostazioni")
     async def update_imp(body: Dict[str, Any], user=Depends(get_current_user)):
@@ -552,6 +558,217 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
             u["preventivi"] = await db.preventivi.count_documents({"venditore_id": u["id"]})
             u["commesse"] = await db.commesse.count_documents({"venditore_id": u["id"]})
         return users
+
+    # ---------- Provvigioni & Dashboard Venditore ----------
+    async def _imposta_provvigioni():
+        """Carica le % provvigione, fallback sui default se mancanti."""
+        from packages_seed import DEFAULT_IMPOSTAZIONI as _DI
+        imp = await db.impostazioni.find_one({}, {"_id": 0}) or {}
+        keys = [
+            "provvigione_semplice_pct",
+            "provvigione_responsabile_pct",
+            "provvigione_area_manager_pct",
+            "provvigione_responsabile_override_pct",
+            "provvigione_area_manager_override_pct",
+        ]
+        return {k: float(imp.get(k, _DI.get(k, 0.0)) or 0.0) for k in keys}
+
+    def _level_pct(level: str, settings: Dict[str, float]) -> float:
+        if level == "area_manager":
+            return settings["provvigione_area_manager_pct"]
+        if level == "responsabile":
+            return settings["provvigione_responsabile_pct"]
+        return settings["provvigione_semplice_pct"]
+
+    def _override_pct(level: str, settings: Dict[str, float]) -> float:
+        if level == "area_manager":
+            return settings["provvigione_area_manager_override_pct"]
+        if level == "responsabile":
+            return settings["provvigione_responsabile_override_pct"]
+        return 0.0
+
+    def _stato_provvigione(stato_commessa: str) -> str:
+        return {
+            "da_iniziare": "previsionale",
+            "in_corso": "maturata",
+            "completata": "maturata_completa",
+            "sospesa": "sospesa",
+        }.get(stato_commessa or "da_iniziare", "previsionale")
+
+    async def _scope_venditore(target):
+        """Ritorna (own_ids, team_ids) per un utente venditore.
+        own_ids = id dell'utente target. team_ids = colleghi gestiti (escluso lui)."""
+        own_id = target["id"]
+        level = (target.get("venditore_level") or "semplice")
+        team_ids: List[str] = []
+        if level == "responsabile":
+            negozio_id = target.get("negozio_id")
+            if negozio_id:
+                colls = await db.users.find(
+                    {"negozio_id": negozio_id, "role": "venditore", "id": {"$ne": own_id}},
+                    {"id": 1, "_id": 0},
+                ).to_list(500)
+                team_ids = [c["id"] for c in colls]
+        elif level == "area_manager":
+            negozi_ids = target.get("negozi_ids") or ([target["negozio_id"]] if target.get("negozio_id") else [])
+            if negozi_ids:
+                colls = await db.users.find(
+                    {"negozio_id": {"$in": negozi_ids}, "role": "venditore", "id": {"$ne": own_id}},
+                    {"id": 1, "_id": 0},
+                ).to_list(2000)
+                team_ids = [c["id"] for c in colls]
+        return own_id, team_ids, level
+
+    async def _build_dashboard_for(target):
+        """Costruisce dashboard + provvigioni per un dato utente venditore (anche admin che impersona)."""
+        settings = await _imposta_provvigioni()
+        own_id, team_ids, level = await _scope_venditore(target)
+        own_pct = _level_pct(level, settings)
+        ovr_pct = _override_pct(level, settings)
+
+        # Preventivi
+        prev_own = await db.preventivi.find({"venditore_id": own_id}, {"_id": 0}).sort("created_at", -1).to_list(2000)
+        prev_team = await db.preventivi.find({"venditore_id": {"$in": team_ids}}, {"_id": 0}).sort("created_at", -1).to_list(2000) if team_ids else []
+        # Commesse
+        comm_own = await db.commesse.find({"venditore_id": own_id}, {"_id": 0}).sort("created_at", -1).to_list(2000)
+        comm_team = await db.commesse.find({"venditore_id": {"$in": team_ids}}, {"_id": 0}).sort("created_at", -1).to_list(2000) if team_ids else []
+
+        def _sum(items, key):
+            return float(sum((x.get(key) or 0) for x in items))
+
+        # Provvigioni: una riga per commessa
+        prov_rows: List[Dict[str, Any]] = []
+        for c in comm_own:
+            tot = float(c.get("totale_preventivo") or 0)
+            prov_rows.append({
+                "commessa_id": c.get("id"),
+                "commessa_numero": c.get("numero"),
+                "cliente": (c.get("cliente") or {}),
+                "totale_commessa": tot,
+                "tipo": "diretta",
+                "venditore_id": own_id,
+                "pct": own_pct,
+                "importo": round(tot * own_pct / 100.0, 2),
+                "stato_commessa": c.get("stato") or "da_iniziare",
+                "stato": _stato_provvigione(c.get("stato")),
+                "data": c.get("data_inizio") or c.get("created_at"),
+            })
+        # Override sui colleghi (solo manager)
+        if ovr_pct > 0:
+            # Mappa id->nome venditore per leggibilità
+            tids = team_ids
+            colls = await db.users.find({"id": {"$in": tids}}, {"id": 1, "name": 1, "_id": 0}).to_list(2000) if tids else []
+            cmap = {c["id"]: c.get("name") for c in colls}
+            for c in comm_team:
+                tot = float(c.get("totale_preventivo") or 0)
+                vid = c.get("venditore_id")
+                prov_rows.append({
+                    "commessa_id": c.get("id"),
+                    "commessa_numero": c.get("numero"),
+                    "cliente": (c.get("cliente") or {}),
+                    "totale_commessa": tot,
+                    "tipo": "override",
+                    "venditore_id": vid,
+                    "venditore_nome": cmap.get(vid, "—"),
+                    "pct": ovr_pct,
+                    "importo": round(tot * ovr_pct / 100.0, 2),
+                    "stato_commessa": c.get("stato") or "da_iniziare",
+                    "stato": _stato_provvigione(c.get("stato")),
+                    "data": c.get("data_inizio") or c.get("created_at"),
+                })
+
+        # Stats aggregate
+        prov_totale = round(sum(p["importo"] for p in prov_rows), 2)
+        prov_maturate = round(sum(p["importo"] for p in prov_rows if p["stato"] in ("maturata", "maturata_completa")), 2)
+        prov_previsionali = round(sum(p["importo"] for p in prov_rows if p["stato"] == "previsionale"), 2)
+
+        ranking_team: List[Dict[str, Any]] = []
+        if team_ids:
+            # Ranking per fatturato totale per ogni venditore del team (incluso target)
+            all_ids = [own_id] + team_ids
+            users_map_docs = await db.users.find({"id": {"$in": all_ids}}, {"id": 1, "name": 1, "venditore_level": 1, "negozio_id": 1, "_id": 0}).to_list(2000)
+            users_map = {u["id"]: u for u in users_map_docs}
+            stat_by_v: Dict[str, Dict[str, float]] = {uid: {"fatturato": 0.0, "commesse": 0, "preventivi": 0} for uid in all_ids}
+            for c in comm_own + comm_team:
+                vid = c.get("venditore_id")
+                if vid in stat_by_v:
+                    stat_by_v[vid]["fatturato"] += float(c.get("totale_preventivo") or 0)
+                    stat_by_v[vid]["commesse"] += 1
+            for p in prev_own + prev_team:
+                vid = p.get("venditore_id")
+                if vid in stat_by_v:
+                    stat_by_v[vid]["preventivi"] += 1
+            for uid, s in stat_by_v.items():
+                ranking_team.append({
+                    "venditore_id": uid,
+                    "name": (users_map.get(uid) or {}).get("name") or "—",
+                    "level": (users_map.get(uid) or {}).get("venditore_level") or "semplice",
+                    "fatturato": round(s["fatturato"], 2),
+                    "commesse": s["commesse"],
+                    "preventivi": s["preventivi"],
+                    "is_self": uid == own_id,
+                })
+            ranking_team.sort(key=lambda x: x["fatturato"], reverse=True)
+
+        return {
+            "venditore": {
+                "id": target.get("id"),
+                "name": target.get("name"),
+                "email": target.get("email"),
+                "level": level,
+                "negozio_id": target.get("negozio_id"),
+                "negozi_ids": target.get("negozi_ids") or [],
+            },
+            "settings": {**settings, "own_pct": own_pct, "override_pct": ovr_pct},
+            "stats": {
+                "preventivi_propri": len(prev_own),
+                "preventivi_team": len(prev_team),
+                "commesse_proprie": len(comm_own),
+                "commesse_team": len(comm_team),
+                "fatturato_proprio": round(_sum(comm_own, "totale_preventivo"), 2),
+                "fatturato_team": round(_sum(comm_team, "totale_preventivo"), 2),
+                "provvigioni_totali": prov_totale,
+                "provvigioni_maturate": prov_maturate,
+                "provvigioni_previsionali": prov_previsionali,
+            },
+            "provvigioni": prov_rows,
+            "ranking_team": ranking_team,
+            "ultimi_preventivi": (prev_own + prev_team)[:8],
+            "ultime_commesse": (comm_own + comm_team)[:8],
+        }
+
+    @r.get("/venditori/me/dashboard")
+    async def venditore_my_dashboard(user=Depends(get_current_user)):
+        if user.get("role") not in ("venditore", "admin"):
+            raise HTTPException(403, "Riservato a venditori e admin")
+        # Admin senza venditore_level → vede aggregato globale come area_manager su tutti i negozi
+        if user.get("role") == "admin" and not user.get("venditore_level"):
+            target = {
+                "id": user["id"],
+                "name": user.get("name") or "Amministratore",
+                "email": user.get("email"),
+                "venditore_level": "area_manager",
+                "negozi_ids": [n["id"] async for n in db.negozi.find({}, {"id": 1, "_id": 0})],
+                "negozio_id": None,
+            }
+            return await _build_dashboard_for(target)
+        return await _build_dashboard_for(user)
+
+    @r.get("/venditori/{vid}/dashboard")
+    async def venditore_dashboard_admin(vid: str, user=Depends(get_current_user)):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        target = await db.users.find_one({"id": vid}, {"_id": 0})
+        if not target:
+            raise HTTPException(404, "Venditore non trovato")
+        return await _build_dashboard_for(target)
+
+    @r.get("/provvigioni/me")
+    async def provvigioni_me(user=Depends(get_current_user)):
+        if user.get("role") not in ("venditore", "admin"):
+            raise HTTPException(403, "Riservato a venditori e admin")
+        d = await _build_dashboard_for(user)
+        return {"rows": d["provvigioni"], "totale": d["stats"]["provvigioni_totali"]}
 
     # ---------- Users management (admin) ----------
     @r.get("/users")

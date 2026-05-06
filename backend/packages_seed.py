@@ -297,6 +297,13 @@ DEFAULT_IMPOSTAZIONI = {
     "ricarico_default": 1.8,
     "sicurezza_pct": 3.0,
     "direzione_lavori_pct": 5.0,
+    # Provvigioni venditori (% sul totale commessa IVA inclusa)
+    "provvigione_semplice_pct": 3.0,
+    "provvigione_responsabile_pct": 5.0,
+    "provvigione_area_manager_pct": 7.0,
+    # Override manageriali sulle vendite del team / area (% sul totale dei colleghi)
+    "provvigione_responsabile_override_pct": 1.0,
+    "provvigione_area_manager_override_pct": 1.5,
 }
 
 # ---------------- Dati Azienda default ----------------

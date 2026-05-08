@@ -1,5 +1,18 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 24 — Feb 2026 — Unificazione Pavimento + 3D Allineato + UX Stanza)
+- ✅ **3D BUG pavimento fuori dalla stanza FIXATO**: `mesh.rotation.x = -π/2` invertiva l'asse Y rispetto a muri/oggetti. Cambiato a `+π/2` con `side: DoubleSide` per allineare correttamente il polygon-pavimento ai muri (mappa `(x,y) 2D → (x,0,y) 3D`).
+- ✅ **3D filtrato per phase (fatto/progetto)**: Viewer3D ora riceve `viewMode` da Editor.jsx e filtra `rooms`, `walls`, `doors`, `windows`, `items` con la stessa logica del 2D. Niente più bleeding "vedo nel 3D cose che non sono in questa fase".
+- ✅ **Tiling come Single Source of Truth pavimento**:
+  - Tool "Schema piastrelle" → aggiunto **color picker + 12 preset** (terracotta, antracite, bianco, marmo, etc).
+  - Bottoni "↗ Applica a TUTTA la casa" + "✕ Rimuovi posa da tutte le stanze".
+  - Quando esiste almeno un `tiling[]` nel progetto, **SOLO** le stanze con tiling specifico contano per il pavimento m² nel preventivo (`progetto.floorMaterial` viene IGNORATO per il pavimento). Risolto bug "ho applicato in metà casa ma calcola 42 m² tutta casa".
+  - Il 2D e il 3D usano `tiling.color` come priorità sul colore visivo del pavimento → si vede subito il cambio dopo aver scelto il colore.
+- ✅ **Pannello stanza più chiaro**:
+  - Nuovo banner blu "📐 Pavimento → preventivo" che spiega quale fonte verrà usata (tiling vs floorMaterial) e mostra la voce applicata alla stanza corrente.
+  - I 3 switch "Imp. elettrico / Imp. idraulico / Controsoffitto totale" ora hanno **descrizione + tooltip** che spiegano cosa fanno e che entrano nel preventivo al m².
+- ✅ **Tooltip su switch** con dettagli costruttivi (rifacimento cavi, tubi acqua/scarichi, cartongesso 2 lastre + isolante).
+
 ## Recent Updates (Round 23 — Feb 2026 — CAD Save Fix + Elettrico Specifico + Lato Muro + Configuratore Infissi)
 - ✅ **Bug CRITICO salvataggio CAD**: `/api/projects/{id}` filtrava per `user_id` → admin che apriva progetto di un altro utente otteneva 404 sul Salva. Ora admin può read/update/delete qualsiasi progetto; gli altri ruoli restano scoped al proprio user_id (`server.py`).
 - ✅ **Voci elettriche specifiche** mappate a preventivo: 5 nuove voci backoffice (`voce-punto-presa-tv`, `voce-punto-rj45`, `voce-punto-presa-cucina`, `voce-punto-deviatore`, `voce-punto-luce-led`) + backfill automatico se DB già seedato + mapping `utils.js` aggiornato. Prima questi tipi venivano "aggiunti" al progetto ma erano invisibili nel canvas e mappati erroneamente a `punto_luce`.

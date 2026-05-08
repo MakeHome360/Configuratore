@@ -826,7 +826,7 @@ export default function Canvas2D({
         const tp = tilingParams || { size: "60x60", angle: 0 };
         setProject((prj) => ({
           ...prj,
-          tiling: [...(prj.tiling || []).filter((x) => x.roomId !== r.id), { id: uid(), roomId: r.id, size: tp.size, angle: tp.angle, startPoint: p, voceId: tp.voceId || null, vocePrice: tp.vocePrice || 0, voceName: tp.voceName || "" }],
+          tiling: [...(prj.tiling || []).filter((x) => x.roomId !== r.id), { id: uid(), roomId: r.id, size: tp.size, angle: tp.angle, startPoint: p, voceId: tp.voceId || null, vocePrice: tp.vocePrice || 0, voceName: tp.voceName || "", color: tp.color || "#D4A574" }],
         }));
       }
       return;
@@ -1178,6 +1178,11 @@ export default function Canvas2D({
           const isRivestDemolito = demolitions.some((d) => d.kind === "rivestimento" && d.roomId === r.id && !d.wallId);
           const showFloor = L.floors !== false && !isFullFloorDemolito;
           const hasProgettoMods = !!r.progetto && (r.progetto.floorMaterial || r.progetto.wallMaterial || r.progetto.ceilingMaterial || r.progetto.controsoffitto || r.progetto.electrical || r.progetto.plumbing);
+          // Tiling specifico per la stanza: prende priorità sul colore visivo
+          const tilingHere = (tiling || []).find((t) => t.roomId === r.id);
+          const fillColor = showFloor
+            ? (tilingHere?.color || r.floorTileColor || mat?.color || "#F5E9D8")
+            : "#FAFAFA";
           return (
             <g key={r.id}
               onMouseDown={(e) => { if (isPlacementTool) return; e.stopPropagation(); handleElementClick("rooms", r.id); }}
@@ -1190,8 +1195,8 @@ export default function Canvas2D({
               style={{ cursor: isPlacementTool ? "crosshair" : "pointer" }}
               data-testid={`room-${r.id}`}
             >
-              {/* floor (default if no demolition) — override color se presente */}
-              <polygon points={pts} fill={showFloor ? (r.floorTileColor || mat?.color || "#F5E9D8") : "#FAFAFA"} fillOpacity={isSel ? 0.65 : (showFloor ? 0.55 : 0.2)} stroke={isSel ? "#2563EB" : "transparent"} strokeWidth={isSel ? 2 : 0} />
+              {/* floor (default if no demolition) — override color se presente; priorità a tiling */}
+              <polygon points={pts} fill={fillColor} fillOpacity={isSel ? 0.7 : (showFloor ? (tilingHere ? 0.7 : 0.55) : 0.2)} stroke={isSel ? "#2563EB" : "transparent"} strokeWidth={isSel ? 2 : 0} />
               {/* demolizione pavimento totale overlay (solo se TOTALE, non parziale/area) */}
               {isFullFloorDemolito && (
                 <>

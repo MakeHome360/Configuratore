@@ -7,6 +7,23 @@ const CM = 1 / 100;
 function buildScene(project, catalog) {
   const root = new THREE.Group();
   const byId = Object.fromEntries((catalog || []).map((m) => [m.id, m]));
+  const viewMode = project.viewMode || "progetto"; // "fatto" | "progetto"
+  // Filtro phase coerente col 2D: in "fatto" → solo elementi esistenti, in "progetto" → tutto tranne demoliti.
+  const phaseOK = (el) => {
+    const ph = el?.phase || "fatto";
+    if (viewMode === "fatto") return ph === "fatto";
+    return true;
+  };
+  // Tiling map: roomId → { color, voceName }
+  const tilingByRoom = {};
+  (project.tiling || []).forEach((t) => {
+    if (!t.roomId) return;
+    tilingByRoom[t.roomId] = {
+      color: t.color || t.tileColor || null,
+      voceName: t.voceName || null,
+      voceId: t.voceId || null,
+    };
+  });
 
   // Ground
   const ground = new THREE.Mesh(
@@ -22,11 +39,24 @@ function buildScene(project, catalog) {
   grid.position.y = 0;
   root.add(grid);
 
-  // Room floors + ceilings (controsoffitto totale stanza)
-  (project.rooms || []).forEach((r) => {
+  // Room floors + ceilings (controsoffitto totale stanza) — filtrate per phase
+  (project.rooms || []).filter(phaseOK).forEach((r) => {
     if (!r.points || r.points.length < 3) return;
-    const mat = byId[r.floorMaterial];
-    const baseFloorColor = r.floorTileColor || mat?.color || "#E4E4E7";
+    // PRIORITÀ COLORE PAVIMENTO:
+    // 1. Se viewMode=progetto e c'è tiling specifico per la stanza → colore voce piastrella (catalog) o tiling.color
+    // 2. Se viewMode=progetto e r.progetto.floorMaterial → mat.color
+    // 3. Altrimenti r.floorTileColor → mat.color (stato fatto)
+    const tilingHere = tilingByRoom[r.id];
+    let baseFloorColor;
+    if (viewMode === "progetto" && tilingHere) {
+      baseFloorColor = tilingHere.color || "#D4A574"; // colore scelto dall'utente nel tool
+    } else if (viewMode === "progetto" && r.progetto?.floorMaterial) {
+      const pmat = byId[r.progetto.floorMaterial];
+      baseFloorColor = r.progetto.floorTileColor || pmat?.color || "#E4E4E7";
+    } else {
+      const mat = byId[r.floorMaterial];
+      baseFloorColor = r.floorTileColor || mat?.color || "#E4E4E7";
+    }
     const color = new THREE.Color(baseFloorColor);
     const shape = new THREE.Shape();
     r.points.forEach((p, i) => {
@@ -38,9 +68,10 @@ function buildScene(project, catalog) {
     const geom = new THREE.ShapeGeometry(shape);
     const mesh = new THREE.Mesh(
       geom,
-      new THREE.MeshStandardMaterial({ color, roughness: 0.6 })
+      new THREE.MeshStandardMaterial({ color, roughness: 0.6, side: THREE.DoubleSide })
     );
-    mesh.rotation.x = -Math.PI / 2;
+    // FIX: rotation +PI/2 (non -PI/2) per allineare il pavimento ai muri (mappa (x,y) 2D → (x,0,y) 3D)
+    mesh.rotation.x = Math.PI / 2;
     mesh.position.y = 0.001;
     mesh.receiveShadow = true;
     root.add(mesh);
@@ -80,12 +111,12 @@ function buildScene(project, catalog) {
     root.add(ceil);
   });
 
-  // Walls with door/window holes
-  const doors = project.doors || [];
-  const windows = project.windows || [];
+  // Walls with door/window holes — filtrati per phase coerente col 2D
+  const doors = (project.doors || []).filter(phaseOK);
+  const windows = (project.windows || []).filter(phaseOK);
   const height = (project.roomHeight || 270) * CM;
 
-  (project.walls || []).forEach((w) => {
+  (project.walls || []).filter((w) => phaseOK(w) && !w.demolito).forEach((w) => {
     const dx = w.x2 - w.x1;
     const dy = w.y2 - w.y1;
     const length = Math.hypot(dx, dy) * CM;
@@ -204,7 +235,7 @@ function buildScene(project, catalog) {
   });
 
   // Items
-  (project.items || []).forEach((it) => {
+  (project.items || []).filter(phaseOK).forEach((it) => {
     const mat = byId[it.materialId];
     const color = new THREE.Color(mat?.color || "#71717A");
     const w = (it.width || 60) * CM;

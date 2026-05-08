@@ -373,9 +373,13 @@ export function estimateProjectV2(project, voci, packageRef) {
     const areaM2 = polygonArea(r.points) / 10000;
     const perimM = polygonPerimeter(r.points) / 100;
     const wallAreaM2 = perimM * (height / 100);
-    // Force floor materiale a "piastrelle" se nella stanza è stato applicato un tiling specifico
+    // PAVIMENTO — Single Source of Truth:
+    // Se c'è almeno un tiling nel progetto, allora SOLO le stanze con tiling specifico contano per il pavimento.
+    // Se non c'è tiling, fm vince (vecchio comportamento).
     const hasTilingHere = tilingRoomIds.has(r.id);
-    if (fm || hasTilingHere) {
+    const tilingActive = tilingRoomIds.size > 0;
+    const shouldCountFloor = tilingActive ? hasTilingHere : !!fm;
+    if (shouldCountFloor) {
       const f = (fm || "").toLowerCase();
       if (!hasTilingHere && f.includes("parquet")) add("pavimento_parquet", areaM2);
       else if (!hasTilingHere && (f.includes("pvc") || f.includes("laminat"))) add("pavimento_pvc", areaM2);

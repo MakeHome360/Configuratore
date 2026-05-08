@@ -105,7 +105,7 @@ export default function Editor() {
   const [plumbingKind, setPlumbingKind] = useState("acqua-fredda");
   const [hvacKind, setHvacKind] = useState("split");
   const [stairsKind, setStairsKind] = useState("muratura");
-  const [tilingParams, setTilingParams] = useState({ size: "60x60", angle: 0 });
+  const [tilingParams, setTilingParams] = useState({ size: "60x60", angle: 0, color: "#D4A574" });
   const [activeGroup, setActiveGroup] = useState("base");
   const [editMode, setEditMode] = useState("fatto"); // "fatto" | "progetto"
   const viewer3DRef = useRef(null);
@@ -818,6 +818,15 @@ export default function Editor() {
               </Select>
               <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Angolo (°)</Label>
               <Input type="number" value={tilingParams.angle} onChange={(e) => setTilingParams((p) => ({ ...p, angle: parseInt(e.target.value) || 0 }))} className="rounded-sm h-8 mono" data-testid="tile-angle" />
+              <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Colore piastrella (per 2D/3D)</Label>
+              <div className="flex items-center gap-2">
+                <input type="color" value={tilingParams.color || "#D4A574"} onChange={(e) => setTilingParams((p) => ({ ...p, color: e.target.value }))} className="h-8 w-12 border border-zinc-300 rounded-sm cursor-pointer" data-testid="tile-color" />
+                <div className="grid grid-cols-6 gap-1 flex-1">
+                  {["#D4A574","#A87C4F","#FAFAFA","#3F3F46","#A1A1AA","#78350F","#0F766E","#1E3A8A","#92400E","#475569","#FBBF24","#DC2626"].map((c) => (
+                    <button key={c} onClick={() => setTilingParams((p) => ({ ...p, color: c }))} className={`h-6 border ${tilingParams.color === c ? "border-zinc-900 ring-2 ring-zinc-900" : "border-zinc-300"}`} style={{ background: c }} title={c} />
+                  ))}
+                </div>
+              </div>
               <button
                 type="button"
                 disabled={!tilingParams.voceId || !(project?.data?.rooms || []).length}
@@ -832,17 +841,36 @@ export default function Editor() {
                       id: uid(), roomId: r.id, size: tilingParams.size, angle: tilingParams.angle,
                       startPoint: { x: r.points[0].x, y: r.points[0].y },
                       voceId: tilingParams.voceId, vocePrice: tilingParams.vocePrice, voceName: tilingParams.voceName,
+                      color: tilingParams.color || "#D4A574",
                     }));
                     return { ...d, tiling: [...others, ...newTilings] };
                   });
-                  toast.success(`✓ ${voce.name} applicato a tutte le ${rooms.length} stanze`);
+                  toast.success(`✓ ${voce.name} applicato a tutte le ${rooms.length} stanze (m² calcolati a partire dai muri)`);
                 }}
-                className="w-full rounded-sm h-8 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold disabled:bg-zinc-300 disabled:cursor-not-allowed"
+                className="w-full rounded-sm h-9 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold disabled:bg-zinc-300 disabled:cursor-not-allowed"
                 data-testid="tile-apply-all-rooms"
               >
-                ↗ Applica a TUTTE le stanze
+                ↗ Applica a TUTTA la casa
               </button>
-              <div className="text-[10px] text-zinc-500 mono leading-tight">scegli il tipo di piastrella dal catalogo<br/>poi click in stanza per posare,<br/>oppure il bottone qui sopra per tutta la casa</div>
+              <button
+                type="button"
+                disabled={!(project?.data?.tiling || []).length}
+                onClick={() => {
+                  if (!confirm("Rimuovere la posa piastrelle da tutte le stanze?")) return;
+                  setProjectData((d) => ({ ...d, tiling: [] }));
+                  toast.success("Posa piastrelle rimossa da tutta la casa");
+                }}
+                className="w-full rounded-sm h-7 border border-rose-300 text-rose-700 hover:bg-rose-50 text-[10px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                data-testid="tile-clear-all"
+              >
+                ✕ Rimuovi posa da tutte le stanze
+              </button>
+              <div className="bg-blue-50 border border-blue-200 p-1.5 text-[10px] text-blue-900 leading-tight">
+                <b>Come funziona:</b><br/>
+                • <b>Click su una stanza</b> → applica solo lì<br/>
+                • <b>"Applica a TUTTA la casa"</b> → tutte le stanze in un colpo<br/>
+                • <b>m² adattati ai muri</b> automaticamente
+              </div>
             </div>
           )}
 
@@ -904,7 +932,7 @@ export default function Editor() {
                 <span className="ml-auto mono text-xs text-zinc-500">trascina · zoom</span>
               </div>
               <div className="relative" style={{ height: "calc(100% - 2rem)" }}>
-                <Viewer3D ref={viewer3DRef} project={project.data} catalog={catalog} />
+                <Viewer3D ref={viewer3DRef} project={{ ...project.data, viewMode: editMode }} catalog={catalog} />
               </div>
             </div>
           )}
@@ -1219,6 +1247,21 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
             🔒 Elemento dello Stato di Fatto. In modalità Progetto le proprietà sono read-only — usa le <b>Modifiche di progetto</b> qui sotto per definire le nuove finiture, oppure torna in modalità "Stato di Fatto" per modificarlo.
           </div>
         )}
+        {/* INFO BOX: spiegazione UNIFICATA pavimento/preventivo */}
+        {(() => {
+          const tilingsForRoom = (project.tiling || []).filter((t) => t.roomId === obj.id);
+          const tilingActive = (project.tiling || []).length > 0;
+          return (
+            <div className="bg-blue-50 border border-blue-300 p-2 text-[11px] text-blue-900 leading-tight" data-testid="room-tiling-banner">
+              <b>📐 Pavimento → preventivo:</b><br/>
+              {tilingActive ? (
+                <>Stai usando il tool <b>"Schema piastrelle"</b> (è la fonte UFFICIALE per il pavimento). {tilingsForRoom.length ? <>In questa stanza è applicata: <b>{tilingsForRoom[0].voceName}</b>.</> : <>Questa stanza <b>NON</b> ha piastrelle: aggiungile dal tool 🟦 Schema piastrelle.</>}</>
+              ) : (
+                <>Le scelte qui sotto (pavimento esistente / nuovo) sono <b>solo visive</b>. Per far entrare il pavimento nel preventivo usa il tool <b>🟦 "Schema piastrelle"</b> dalla toolbar.</>
+              )}
+            </div>
+          );
+        })()}
         <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Nome</Label><Input value={obj.name} onChange={(e) => updateObj({ name: e.target.value })} disabled={lockedFatto} className="rounded-sm h-9 mt-1.5" data-testid="room-name-input" /></div>
         <fieldset disabled={lockedFatto} className={lockedFatto ? "opacity-60 pointer-events-none" : ""}>
           <MaterialPickerWithApplyAll label="Pavimento (esistente)" category="floor" catalog={catalog} value={obj.floorMaterial} onChange={(v) => updateObj({ floorMaterial: v })} testid="room-floor-select" applyAll={() => applyMaterialAllRooms("floorMaterial", obj.floorMaterial)} />
@@ -1229,9 +1272,31 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
           <div className="h-3"></div>
           <MaterialPickerWithApplyAll label="Soffitto (esistente)" category="ceiling" catalog={catalog} value={obj.ceilingMaterial} onChange={(v) => updateObj({ ceilingMaterial: v })} testid="room-ceiling-select" applyAll={() => applyMaterialAllRooms("ceilingMaterial", obj.ceilingMaterial)} />
           <ColorOverridePicker label="Colore soffitto" value={obj.ceilingPaintColor} onChange={(v) => updateObj({ ceilingPaintColor: v })} testid="room-ceiling-color" />
-          <div className="flex items-center justify-between mt-3"><Label className="text-xs uppercase tracking-widest text-zinc-500">Imp. elettrico</Label><Switch checked={!!obj.electrical} onCheckedChange={(v) => updateObj({ electrical: v })} data-testid="room-electrical-switch" /></div>
-          <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-zinc-500">Imp. idraulico</Label><Switch checked={!!obj.plumbing} onCheckedChange={(v) => updateObj({ plumbing: v })} data-testid="room-plumbing-switch" /></div>
-          <div className="flex items-center justify-between"><Label className="text-xs uppercase tracking-widest text-zinc-500">Controsoffitto totale</Label><Switch checked={!!obj.controsoffitto} onCheckedChange={(v) => updateObj({ controsoffitto: v })} data-testid="room-controsoff-switch" /></div>
+          {/* SWITCH STANZA — con tooltip esplicativi */}
+          <div className="mt-3 bg-zinc-50 border border-zinc-200 p-2 space-y-2">
+            <div className="text-[10px] uppercase tracking-widest text-zinc-700 font-bold">Lavorazioni della stanza (entrano nel preventivo)</div>
+            <div className="flex items-start justify-between gap-2" title="Se ATTIVO: rifacimento completo dell'impianto elettrico al m² su tutta la stanza (cavi, scatole, certificazione). Aggiungi prese/interruttori/luci dal tool ⚡ ELETTRICO della toolbar per simboli specifici.">
+              <div className="flex-1">
+                <Label className="text-xs font-semibold text-zinc-800">⚡ Imp. elettrico</Label>
+                <div className="text-[10px] text-zinc-500 leading-tight">Rifacimento completo cavi/scatole/certificazione al m².</div>
+              </div>
+              <Switch checked={!!obj.electrical} onCheckedChange={(v) => updateObj({ electrical: v })} data-testid="room-electrical-switch" />
+            </div>
+            <div className="flex items-start justify-between gap-2" title="Se ATTIVO: rifacimento dell'impianto idraulico al m² (tubi acqua/scarichi, collaudo) + rivestimento piastrelle pareti se non già scelto. Tipico per bagni/cucine.">
+              <div className="flex-1">
+                <Label className="text-xs font-semibold text-zinc-800">🚰 Imp. idraulico</Label>
+                <div className="text-[10px] text-zinc-500 leading-tight">Rifacimento tubi acqua/scarichi al m². Tipico per bagni/cucine.</div>
+              </div>
+              <Switch checked={!!obj.plumbing} onCheckedChange={(v) => updateObj({ plumbing: v })} data-testid="room-plumbing-switch" />
+            </div>
+            <div className="flex items-start justify-between gap-2" title="Se ATTIVO: aggiunge controsoffitto totale in cartongesso (2 lastre + isolante) su TUTTA la superficie della stanza. Conta come m² nel preventivo. Riduce l'altezza utile di ~30cm.">
+              <div className="flex-1">
+                <Label className="text-xs font-semibold text-zinc-800">📐 Controsoffitto totale</Label>
+                <div className="text-[10px] text-zinc-500 leading-tight">Cartongesso su tutta la stanza (uniforma altezze, nasconde impianti).</div>
+              </div>
+              <Switch checked={!!obj.controsoffitto} onCheckedChange={(v) => updateObj({ controsoffitto: v })} data-testid="room-controsoff-switch" />
+            </div>
+          </div>
         </fieldset>
         {/* MODIFICHE DI PROGETTO: visibili sempre per stanze fatto+progetto, modificabili in mode progetto */}
         {isProgettoMode && (

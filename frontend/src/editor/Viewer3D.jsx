@@ -295,26 +295,76 @@ function SceneRoot({ project, catalog }) {
   return null;
 }
 
-function Picker3D({ onSelect }) {
+function Picker3D({ onSelect, onDrag }) {
   const { gl, camera, scene } = useThree();
   useEffect(() => {
-    if (!onSelect) return;
     const ray = new THREE.Raycaster();
+    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     let downX = 0, downY = 0, moved = false;
-    const onDown = (ev) => { downX = ev.clientX; downY = ev.clientY; moved = false; };
-    const onMove = (ev) => {
-      if (Math.hypot(ev.clientX - downX, ev.clientY - downY) > 4) moved = true;
-    };
-    const onUp = (ev) => {
-      if (moved) return; // era un drag della camera
+    let dragTarget = null;
+    let dragOffset = new THREE.Vector3();
+
+    const screenToWorld = (ev) => {
       const rect = gl.domElement.getBoundingClientRect();
       const m = new THREE.Vector2(
         ((ev.clientX - rect.left) / rect.width) * 2 - 1,
         -((ev.clientY - rect.top) / rect.height) * 2 + 1
       );
       ray.setFromCamera(m, camera);
+      return { rect, m };
+    };
+
+    const onDown = (ev) => {
+      downX = ev.clientX; downY = ev.clientY; moved = false;
+      screenToWorld(ev);
+      // Cerca un item draggabile sotto il puntatore (solo "items": mobili)
       const hits = ray.intersectObjects(scene.children, true);
-      // trova il primo hit con userData.kind
+      for (const h of hits) {
+        let o = h.object;
+        while (o && !o.userData?.kind) o = o.parent;
+        if (o?.userData?.kind === "items" && o.userData.id && onDrag) {
+          dragTarget = o;
+          // calcola offset tra centro oggetto e punto colpito sul piano y=0
+          const groundHit = new THREE.Vector3();
+          ray.ray.intersectPlane(groundPlane, groundHit);
+          dragOffset.copy(groundHit).sub(o.position);
+          // disabilita orbit controls
+          gl.domElement.style.cursor = "grabbing";
+          ev.stopPropagation();
+          break;
+        }
+      }
+    };
+
+    const onMove = (ev) => {
+      if (Math.hypot(ev.clientX - downX, ev.clientY - downY) > 4) moved = true;
+      if (dragTarget) {
+        screenToWorld(ev);
+        const groundHit = new THREE.Vector3();
+        if (ray.ray.intersectPlane(groundPlane, groundHit)) {
+          const newPos = groundHit.sub(dragOffset);
+          dragTarget.position.x = newPos.x;
+          dragTarget.position.z = newPos.z;
+        }
+        ev.stopPropagation();
+      }
+    };
+
+    const onUp = (ev) => {
+      if (dragTarget && onDrag && moved) {
+        // commit posizione finale (in cm CAD: x/CM, z/CM)
+        const px = dragTarget.position.x * 100; // 1m = 100cm; CM=1/100 quindi *100 inverte
+        const pz = dragTarget.position.z * 100;
+        onDrag({ kind: "items", id: dragTarget.userData.id, x: Math.round(px), y: Math.round(pz) });
+        dragTarget = null;
+        gl.domElement.style.cursor = "default";
+        return;
+      }
+      dragTarget = null;
+      gl.domElement.style.cursor = "default";
+      if (moved || !onSelect) return; // era un drag della camera
+      screenToWorld(ev);
+      const hits = ray.intersectObjects(scene.children, true);
       for (const h of hits) {
         let o = h.object;
         while (o && !o.userData?.kind) o = o.parent;
@@ -332,7 +382,7 @@ function Picker3D({ onSelect }) {
       gl.domElement.removeEventListener("pointermove", onMove);
       gl.domElement.removeEventListener("pointerup", onUp);
     };
-  }, [gl, camera, scene, onSelect]);
+  }, [gl, camera, scene, onSelect, onDrag]);
   return null;
 }
 
@@ -439,7 +489,7 @@ function OrbitLite({ target = [0, 0, 0] }) {
   return null;
 }
 
-const Viewer3D = forwardRef(function Viewer3D({ project, catalog, onSelect, selected }, ref) {
+const Viewer3D = forwardRef(function Viewer3D({ project, catalog, onSelect, onDrag, selected }, ref) {
   const glRef = useRef(null);
 
   useImperativeHandle(ref, () => ({
@@ -481,7 +531,7 @@ const Viewer3D = forwardRef(function Viewer3D({ project, catalog, onSelect, sele
       <Lights />
       <OrbitLite target={center} />
       <SceneRoot project={project} catalog={catalog} />
-      {onSelect && <Picker3D onSelect={onSelect} />}
+      {(onSelect || onDrag) && <Picker3D onSelect={onSelect} onDrag={onDrag} />}
       {selected && <Highlight3D selected={selected} />}
     </Canvas>
   );

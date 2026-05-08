@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -66,6 +66,13 @@ const P = (Comp) => (
 );
 
 function App() {
+  // Forza il title contro eventuali script esterni che lo sovrascrivono.
+  useEffect(() => {
+    const T = "Sa di Casa | Ristrutturazioni e Arredo";
+    document.title = T;
+    const t = setInterval(() => { if (document.title !== T) document.title = T; }, 1500);
+    return () => clearInterval(t);
+  }, []);
   return (
     <div className="App">
       <AuthProvider>

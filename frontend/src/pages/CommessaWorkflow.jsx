@@ -13,7 +13,8 @@ import { toast } from "sonner";
 
 const STATO_ART_BADGE = {
   ok:               { txt: "OK",                cls: "bg-emerald-100 text-emerald-700" },
-  da_autorizzare:   { txt: "Da autorizzare",    cls: "bg-rose-100 text-rose-700" },
+  warning:          { txt: "Warning",           cls: "bg-amber-100 text-amber-800" },
+  da_autorizzare:   { txt: "BLOCCO",            cls: "bg-rose-100 text-rose-700" },
   autorizzato:      { txt: "Autorizzato",       cls: "bg-blue-100 text-blue-700" },
   interno:          { txt: "Operai interni",    cls: "bg-violet-100 text-violet-700" },
 };
@@ -84,6 +85,31 @@ export default function CommessaWorkflow() {
   );
 }
 
+// Componente upload file riutilizzabile
+function UploadField({ label, onUploaded, commessaId, tipo, accept = "*/*", testid = "upload-field" }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <label className={`inline-flex items-center gap-2 px-3 py-1.5 border-2 border-dashed border-zinc-300 rounded text-xs text-zinc-700 cursor-pointer hover:bg-zinc-50 ${busy ? "opacity-50" : ""}`} data-testid={testid}>
+      <input type="file" accept={accept} className="hidden" disabled={busy} onChange={async (e) => {
+        const f = e.target.files?.[0]; if (!f) return;
+        setBusy(true);
+        try {
+          const fd = new FormData();
+          fd.append("file", f);
+          if (commessaId) fd.append("commessa_id", commessaId);
+          if (tipo) fd.append("tipo", tipo);
+          const r = await api.post("/uploads", fd, { headers: { "Content-Type": "multipart/form-data" } });
+          toast.success("File caricato");
+          onUploaded?.(r.data);
+        } catch (err) {
+          toast.error("Errore upload: " + (err.response?.data?.detail || err.message));
+        } finally { setBusy(false); e.target.value = ""; }
+      }} />
+      📎 {busy ? "Carico..." : (label || "Carica file")}
+    </label>
+  );
+}
+
 // ---- 1. CONTRATTO ----
 function Contratto({ wf, cid, reload }) {
   const cn = wf.contratto || {};
@@ -93,6 +119,7 @@ function Contratto({ wf, cid, reload }) {
       <h3 className="font-semibold">Contratto cliente</h3>
       <p className="text-xs text-zinc-500">Carica il contratto firmato (link Drive/Dropbox/altro) o incolla il testo. Il cliente può firmare anche dal Portale Cliente con OTP.</p>
       <div><Label className="text-xs">Link al contratto (PDF)</Label><Input value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} placeholder="https://drive.google.com/..." data-testid="contr-url" /></div>
+      <div><UploadField label="Oppure carica PDF contratto" onUploaded={(meta) => setForm({ ...form, url: window.location.origin + meta.url })} commessaId={cid} tipo="contratto" accept=".pdf,.doc,.docx" testid="upload-contratto" /></div>
       <div><Label className="text-xs">Testo / Note</Label><textarea value={form.testo} onChange={e => setForm({ ...form, testo: e.target.value })} className="w-full border border-zinc-300 rounded-sm p-2 text-sm h-32 mono" data-testid="contr-testo" /></div>
       <label className="flex items-center gap-2"><input type="checkbox" checked={form.firmato} onChange={e => setForm({ ...form, firmato: e.target.checked })} data-testid="contr-firmato" /> <span className="text-sm">Firmato dal cliente</span></label>
       <Button onClick={async () => {
@@ -150,6 +177,7 @@ function Documenti({ wf, cid, reload }) {
             </div>
             <div><Label className="text-xs">Nome</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} data-testid="doc-name" /></div>
             <div><Label className="text-xs">URL (link a Drive/Dropbox/Cloud)</Label><Input value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} placeholder="https://..." data-testid="doc-url" /></div>
+            <div><UploadField label="Oppure carica file dal PC" onUploaded={(meta) => setForm({ ...form, url: window.location.origin + meta.url, name: form.name || meta.name })} commessaId={cid} accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.dwg,.dxf,.xls,.xlsx,.zip" testid="upload-documento" /></div>
             <div><Label className="text-xs">Note</Label><Input value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} data-testid="doc-note" /></div>
           </div>
           <DialogFooter>
@@ -274,7 +302,7 @@ function Artigiani({ wf, cid, reload }) {
                   <td className={`px-3 py-2 text-right mono ${(ai.scarto_pct_su_rivendita || 0) > 10 ? "text-rose-700 font-bold" : (ai.scarto_pct_su_rivendita || 0) < 0 ? "text-emerald-700" : ""}`}>{ai.scarto_pct_su_rivendita != null ? `${ai.scarto_pct_su_rivendita > 0 ? "+" : ""}${fmtNum(ai.scarto_pct_su_rivendita, 1)}%` : "—"}</td>
                   <td className="px-3 py-2 text-xs max-w-md">
                     <div className="text-zinc-700">{ai.giudizio}</div>
-                    {ai.giudizio_ai && <details className="text-[10px] text-zinc-500 mt-1"><summary className="cursor-pointer text-blue-600 hover:underline"><Sparkles className="inline h-3 w-3" /> Giudizio AI</summary><div className="mt-1 italic">{ai.giudizio_ai}</div></details>}
+                    {ai.differenza_eur != null && <div className="text-[10px] text-zinc-500 mono mt-0.5">Δ vs rivendita: {ai.differenza_eur > 0 ? "+" : ""}{fmtEur(ai.differenza_eur)}</div>}
                   </td>
                   <td className="px-3 py-2 text-center"><span className={`px-2 py-0.5 rounded text-[11px] font-medium ${sb.cls}`}>{sb.txt}</span></td>
                   <td className="px-3 py-2 text-right">
@@ -321,7 +349,8 @@ function Artigiani({ wf, cid, reload }) {
                 <div><Label className="text-xs">Importo offerto (€)</Label><Input type="number" value={form.importo_offerto} onChange={e => setForm({ ...form, importo_offerto: parseFloat(e.target.value) || 0 })} data-testid="art-importo" /></div>
                 <div><Label className="text-xs">Link PDF preventivo</Label><Input value={form.url_pdf} onChange={e => setForm({ ...form, url_pdf: e.target.value })} placeholder="https://..." data-testid="art-pdf" /></div>
               </div>
-              <div><Label className="text-xs">Testo estratto dal PDF (per analisi AI più accurata)</Label><textarea value={form.testo_estratto} onChange={e => setForm({ ...form, testo_estratto: e.target.value })} className="w-full border border-zinc-300 rounded-sm p-2 text-xs h-24 mono" placeholder="Incolla qui il contenuto del preventivo..." data-testid="art-testo" /></div>
+              <div><UploadField label="Oppure carica PDF preventivo dal PC" onUploaded={(meta) => setForm({ ...form, url_pdf: window.location.origin + meta.url })} commessaId={cid} tipo="preventivo_artigiano" accept=".pdf,.png,.jpg,.jpeg" testid="upload-prev-art" /></div>
+              <div><Label className="text-xs">Note interne (testo libero)</Label><textarea value={form.testo_estratto} onChange={e => setForm({ ...form, testo_estratto: e.target.value })} className="w-full border border-zinc-300 rounded-sm p-2 text-xs h-20 mono" placeholder="Eventuali note dal preventivo..." data-testid="art-testo" /></div>
             </>}
             <div><Label className="text-xs">Note interne</Label><Input value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} data-testid="art-note" /></div>
           </div>
@@ -332,13 +361,14 @@ function Artigiani({ wf, cid, reload }) {
               if (!form.voci_riferite.length) { toast.error("Seleziona almeno una voce di computo"); return; }
               try {
                 const r = await api.post(`/commesse/${cid}/workflow/artigiani-preventivi`, form);
-                if (r.data.stato === "da_autorizzare") toast.warning("Sopra soglia: richiesta autorizzazione inviata.");
-                else toast.success("Preventivo registrato");
+                if (r.data.stato === "da_autorizzare") toast.error("BLOCCO: scarto > 25% — richiesta autorizzazione inviata");
+                else if (r.data.stato === "warning") toast.warning("Warning: scarto > 10% — verifica con il responsabile");
+                else toast.success("Preventivo OK registrato");
                 setOpen(false);
                 setForm({ artigiano_nome: "", voci_riferite: [], importo_offerto: 0, url_pdf: "", testo_estratto: "", note: "", modalita: "artigiano" });
                 reload();
               } catch (e) { toast.error("Errore: " + (e.response?.data?.detail || e.message)); }
-            }} style={{ background: "var(--brand)", color: "white" }} data-testid="art-save">Carica e analizza con AI</Button>
+            }} style={{ background: "var(--brand)", color: "white" }} data-testid="art-save">Carica e verifica</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -346,35 +376,102 @@ function Artigiani({ wf, cid, reload }) {
   );
 }
 
-// ---- 6. FASI CANTIERE ----
+// ---- 6. FASI CANTIERE (con Gantt visivo) ----
 function Fasi({ wf, cid, reload }) {
   const fasi = wf.fasi || [];
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ titolo: "", eseguito_da: "interno", artigiano_nome: "", data_inizio: "", data_fine: "", stato: "da_iniziare", note: "" });
+
+  // Gantt computation
+  const gantt = useMemo(() => {
+    const fasiDate = fasi.filter(f => f.data_inizio && f.data_fine).map(f => ({ ...f, _start: new Date(f.data_inizio), _end: new Date(f.data_fine) }));
+    if (!fasiDate.length) return null;
+    const minD = new Date(Math.min(...fasiDate.map(f => f._start.getTime())));
+    const maxD = new Date(Math.max(...fasiDate.map(f => f._end.getTime())));
+    const totDays = Math.max(1, Math.round((maxD - minD) / 86400000) + 1);
+    const COL_W = Math.max(20, Math.min(40, 1100 / totDays));
+    return { fasiDate, minD, maxD, totDays, COL_W, width: COL_W * totDays };
+  }, [fasi]);
+
+  const STATO_COL = { da_iniziare: "#A1A1AA", in_corso: "#3B82F6", completata: "#10B981", sospesa: "#F59E0B" };
+
   return (
-    <div className="bg-white border border-zinc-200 rounded">
-      <div className="flex items-center justify-between p-4 border-b border-zinc-200">
-        <h3 className="font-semibold">Fasi cantiere <span className="ml-2 text-xs text-zinc-500">Pianifica chi fa cosa e quando</span></h3>
-        <Button size="sm" onClick={() => setOpen(true)} data-testid="fase-add"><Plus className="h-4 w-4 mr-1" /> Nuova fase</Button>
+    <div className="space-y-3">
+      <div className="bg-white border border-zinc-200 rounded">
+        <div className="flex items-center justify-between p-4 border-b border-zinc-200">
+          <h3 className="font-semibold">Fasi cantiere <span className="ml-2 text-xs text-zinc-500">Pianifica chi fa cosa e quando</span></h3>
+          <Button size="sm" onClick={() => setOpen(true)} data-testid="fase-add"><Plus className="h-4 w-4 mr-1" /> Nuova fase</Button>
+        </div>
+        {/* GANTT */}
+        {gantt && (
+          <div className="p-4 border-b border-zinc-200 overflow-x-auto" data-testid="gantt-svg-wrap">
+            <div className="text-xs text-zinc-500 mb-2 mono">Gantt — dal {gantt.minD.toLocaleDateString("it-IT")} al {gantt.maxD.toLocaleDateString("it-IT")} ({gantt.totDays} giorni)</div>
+            <svg width={gantt.width + 200} height={fasi.length * 32 + 40} style={{ minWidth: gantt.width + 200 }}>
+              {/* date header */}
+              {Array.from({ length: gantt.totDays }).map((_, i) => {
+                const d = new Date(gantt.minD); d.setDate(d.getDate() + i);
+                const x = 200 + i * gantt.COL_W;
+                const isMonday = d.getDay() === 1;
+                return <g key={i}>
+                  <line x1={x} y1={20} x2={x} y2={fasi.length * 32 + 40} stroke={isMonday ? "#A1A1AA" : "#E4E4E7"} strokeWidth={isMonday ? 1 : 0.5} />
+                  {isMonday && <text x={x + 2} y={14} fontSize="10" fontFamily="JetBrains Mono" fill="#525252">{d.getDate()}/{d.getMonth() + 1}</text>}
+                </g>;
+              })}
+              {/* fasi rows */}
+              {fasi.map((f, i) => {
+                const y = 30 + i * 32;
+                const txtRow = <text x={4} y={y + 16} fontSize="11" fill="#0A0A0A" fontWeight="600" style={{ pointerEvents: "none" }}>{f.titolo.slice(0, 24)}</text>;
+                if (!f.data_inizio || !f.data_fine) {
+                  return <g key={f.id}>
+                    {txtRow}
+                    <text x={210} y={y + 18} fontSize="10" fill="#A1A1AA" fontStyle="italic">— senza date —</text>
+                  </g>;
+                }
+                const startDays = Math.round((new Date(f.data_inizio) - gantt.minD) / 86400000);
+                const lenDays = Math.max(1, Math.round((new Date(f.data_fine) - new Date(f.data_inizio)) / 86400000) + 1);
+                const x = 200 + startDays * gantt.COL_W;
+                const w = lenDays * gantt.COL_W - 2;
+                return <g key={f.id} data-testid={`gantt-bar-${f.id}`}>
+                  {txtRow}
+                  <rect x={x} y={y + 4} width={w} height={22} rx={3} fill={STATO_COL[f.stato] || "#A1A1AA"} fillOpacity="0.85" stroke={STATO_COL[f.stato] || "#A1A1AA"} strokeWidth={1.5} />
+                  <text x={x + 6} y={y + 19} fontSize="11" fill="white" fontWeight="600" style={{ pointerEvents: "none" }}>{f.eseguito_da === "interno" ? "🏠" : "🔨"} {f.artigiano_nome || (f.eseguito_da === "interno" ? "Interni" : "")}</text>
+                </g>;
+              })}
+            </svg>
+            <div className="flex items-center gap-3 mt-2 text-[10px] uppercase tracking-widest text-zinc-500">
+              {Object.entries(STATO_COL).map(([k, c]) => <span key={k} className="flex items-center gap-1"><span className="w-3 h-3 inline-block" style={{ background: c }} /> {k}</span>)}
+            </div>
+          </div>
+        )}
+        <table className="w-full text-sm">
+          <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
+            <th className="px-3 py-2 text-left">Titolo</th><th className="px-3 py-2 text-left">Esecutore</th><th className="px-3 py-2 text-left">Inizio</th><th className="px-3 py-2 text-left">Fine</th><th className="px-3 py-2 text-center">Stato</th><th></th>
+          </tr></thead>
+          <tbody className="divide-y divide-zinc-100">
+            {fasi.map(f => (
+              <tr key={f.id}>
+                <td className="px-3 py-2 font-medium">{f.titolo}</td>
+                <td className="px-3 py-2 text-xs">{f.eseguito_da === "interno" ? "🏠 Interni" : `🔨 ${f.artigiano_nome || "Artigiano"}`}</td>
+                <td className="px-3 py-2 mono text-xs">{f.data_inizio || "-"}</td>
+                <td className="px-3 py-2 mono text-xs">{f.data_fine || "-"}</td>
+                <td className="px-3 py-2 text-center">
+                  <Select value={f.stato} onValueChange={async v => { await api.put(`/commesse/${cid}/workflow/fasi/${f.id}`, { ...f, stato: v }); reload(); }}>
+                    <SelectTrigger className="h-7 text-xs w-32 mx-auto"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="da_iniziare">Da iniziare</SelectItem>
+                      <SelectItem value="in_corso">In corso</SelectItem>
+                      <SelectItem value="completata">Completata</SelectItem>
+                      <SelectItem value="sospesa">Sospesa</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </td>
+                <td className="px-3 py-2 text-right"><button className="text-rose-600 p-1" onClick={async () => { await api.delete(`/commesse/${cid}/workflow/fasi/${f.id}`); reload(); }}><Trash2 className="h-4 w-4" /></button></td>
+              </tr>
+            ))}
+            {!fasi.length && <tr><td colSpan={6} className="px-3 py-12 text-center text-zinc-500">Nessuna fase. Pianifica il cantiere.</td></tr>}
+          </tbody>
+        </table>
       </div>
-      <table className="w-full text-sm">
-        <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
-          <th className="px-3 py-2 text-left">Titolo</th><th className="px-3 py-2 text-left">Esecutore</th><th className="px-3 py-2 text-left">Inizio</th><th className="px-3 py-2 text-left">Fine</th><th className="px-3 py-2 text-center">Stato</th><th></th>
-        </tr></thead>
-        <tbody className="divide-y divide-zinc-100">
-          {fasi.map(f => (
-            <tr key={f.id}>
-              <td className="px-3 py-2 font-medium">{f.titolo}</td>
-              <td className="px-3 py-2 text-xs">{f.eseguito_da === "interno" ? "🏠 Interni" : `🔨 ${f.artigiano_nome || "Artigiano"}`}</td>
-              <td className="px-3 py-2 mono text-xs">{f.data_inizio || "-"}</td>
-              <td className="px-3 py-2 mono text-xs">{f.data_fine || "-"}</td>
-              <td className="px-3 py-2 text-center"><span className="text-[11px] px-2 py-0.5 bg-zinc-100 rounded">{f.stato}</span></td>
-              <td className="px-3 py-2 text-right"><button className="text-rose-600 p-1" onClick={async () => { await api.delete(`/commesse/${cid}/workflow/fasi/${f.id}`); reload(); }}><Trash2 className="h-4 w-4" /></button></td>
-            </tr>
-          ))}
-          {!fasi.length && <tr><td colSpan={6} className="px-3 py-12 text-center text-zinc-500">Nessuna fase. Pianifica il cantiere.</td></tr>}
-        </tbody>
-      </table>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Nuova fase cantiere</DialogTitle></DialogHeader>

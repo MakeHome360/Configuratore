@@ -9,9 +9,14 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 import uuid
 import os
+import base64
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
+
+UPLOADS_DIR = "/app/backend/uploads"
+os.makedirs(UPLOADS_DIR, exist_ok=True)
 
 
 def build_commessa_workflow_router(db, get_current_user):
@@ -135,62 +140,40 @@ def build_commessa_workflow_router(db, get_current_user):
         modalita: str = "artigiano"  # "artigiano" | "interno"
 
     async def _ai_analizza(prev_data: Dict, voci_riferimento: List[Dict]) -> Dict[str, Any]:
-        """Confronta importo artigiano vs prezzo_acquisto delle voci. Aggiunge giudizio AI."""
+        """SOLO confronto matematico (no AI). Ritorna giudizio: ok / warning / blocco."""
         ref_acquisto = sum((float(v.get("prezzo_acquisto") or 0) * float(v.get("qty") or 1)) for v in voci_riferimento)
         ref_rivendita = sum((float(v.get("prezzo_rivendita") or 0) * float(v.get("qty") or 1)) for v in voci_riferimento)
         offerto = float(prev_data.get("importo_offerto") or 0)
-        # Scarto rispetto al riferimento di acquisto (valore atteso minimo)
         scarto_pct_su_acquisto = (offerto - ref_acquisto) / ref_acquisto * 100 if ref_acquisto > 0 else None
         scarto_pct_su_rivendita = (offerto - ref_rivendita) / ref_rivendita * 100 if ref_rivendita > 0 else None
-        # Soglia per autorizzazione: > 10% sopra prezzo rivendita
-        accettabile = (scarto_pct_su_rivendita is None) or (scarto_pct_su_rivendita <= 10)
-        giudizio = "OK"
+        # Stato in base a soglia matematica
+        # OK:       offerto ≤ rivendita+10%
+        # WARNING:  offerto > rivendita+10% ma ≤ rivendita+25%
+        # BLOCCO:   offerto > rivendita+25% (richiede autorizzazione)
         if scarto_pct_su_rivendita is None:
-            giudizio = "Riferimento mancante (voci non hanno prezzo)."
+            esito = "warning"
+            giudizio = "Riferimento mancante: le voci di computo non hanno prezzo. Verifica manualmente."
         elif scarto_pct_su_rivendita <= -5:
+            esito = "ok"
             giudizio = f"Eccellente: l'offerta è {abs(round(scarto_pct_su_rivendita, 1))}% sotto il prezzo di rivendita interno."
-        elif scarto_pct_su_rivendita <= 0:
-            giudizio = f"Buono: l'offerta è in linea con il rivendita interno (scarto {round(scarto_pct_su_rivendita, 1)}%)."
         elif scarto_pct_su_rivendita <= 10:
-            giudizio = f"Accettabile: +{round(scarto_pct_su_rivendita, 1)}% sopra rivendita. Margine ridotto ma non bloccante."
+            esito = "ok"
+            giudizio = f"OK: scarto +{round(scarto_pct_su_rivendita, 1)}% (≤10%, accettabile)."
+        elif scarto_pct_su_rivendita <= 25:
+            esito = "warning"
+            giudizio = f"WARNING: +{round(scarto_pct_su_rivendita, 1)}% sopra rivendita. Margine ridotto, considera trattativa."
         else:
-            giudizio = f"DA RIVEDERE: l'offerta è +{round(scarto_pct_su_rivendita, 1)}% sopra il rivendita interno. Richiedi sconto o autorizzazione."
-        # Eventuale arricchimento con LLM se disponibile
-        try:
-            key = os.environ.get("EMERGENT_LLM_KEY", "")
-            if key and prev_data.get("testo_estratto"):
-                from emergentintegrations.llm.chat import LlmChat, UserMessage
-                voci_txt = "\n".join([f"- {v.get('name')}: qty {v.get('qty')} {v.get('unit')}, prezzo riferimento € {v.get('prezzo_rivendita')}" for v in voci_riferimento[:30]])
-                prompt = f"""Sei un capocantiere esperto. Analizza il preventivo di un artigiano e dimmi se è congruo.
-
-VOCI DEL COMPUTO METRICO (riferimento prezzi):
-{voci_txt}
-
-PREVENTIVO ARTIGIANO (testo estratto):
-{(prev_data.get('testo_estratto') or '')[:3000]}
-
-IMPORTO OFFERTO: € {offerto}
-
-In 3-4 righe italiano professionale: il preventivo è congruo? Cosa controllare? Cosa chiedere all'artigiano?"""
-                chat = LlmChat(api_key=key, session_id=f"art-{uuid.uuid4().hex[:8]}",
-                               system_message="Sei un capocantiere italiano esperto e diretto.").with_model("gemini", "gemini-2.5-flash")
-                resp = await chat.send_message(UserMessage(text=prompt))
-                giudizio_ai = (resp.text if hasattr(resp, "text") else str(resp))[:1500]
-                return {
-                    "accettabile": accettabile, "giudizio": giudizio, "giudizio_ai": giudizio_ai,
-                    "ref_acquisto": round(ref_acquisto, 2), "ref_rivendita": round(ref_rivendita, 2),
-                    "offerto": offerto,
-                    "scarto_pct_su_acquisto": round(scarto_pct_su_acquisto or 0, 2),
-                    "scarto_pct_su_rivendita": round(scarto_pct_su_rivendita or 0, 2),
-                }
-        except Exception as e:
-            giudizio += f" [AI non disponibile: {e}]"
+            esito = "blocco"
+            giudizio = f"BLOCCO: +{round(scarto_pct_su_rivendita, 1)}% sopra rivendita (>25%). Richiede autorizzazione."
         return {
-            "accettabile": accettabile, "giudizio": giudizio, "giudizio_ai": None,
+            "accettabile": esito != "blocco",
+            "esito": esito,
+            "giudizio": giudizio,
             "ref_acquisto": round(ref_acquisto, 2), "ref_rivendita": round(ref_rivendita, 2),
             "offerto": offerto,
             "scarto_pct_su_acquisto": round(scarto_pct_su_acquisto or 0, 2) if scarto_pct_su_acquisto is not None else None,
             "scarto_pct_su_rivendita": round(scarto_pct_su_rivendita or 0, 2) if scarto_pct_su_rivendita is not None else None,
+            "differenza_eur": round(offerto - ref_rivendita, 2) if ref_rivendita else None,
         }
 
     @r.post("/commesse/{cid}/workflow/artigiani-preventivi")
@@ -210,12 +193,18 @@ In 3-4 righe italiano professionale: il preventivo è congruo? Cosa controllare?
             ref = {**it, "prezzo_acquisto": float((voce_back or {}).get("prezzo_acquisto") or 0),
                    "prezzo_rivendita": float(it.get("prezzo_unit") or 0)}
             voci_riferimento.append(ref)
-        # AI analisi
+        # AI analisi (controllo matematico)
         ai_result = await _ai_analizza({**body.dict()}, voci_riferimento)
-        # Autorizzazione richiesta?
-        stato = "ok" if ai_result["accettabile"] else "da_autorizzare"
+        # Stato basato su esito matematico
+        esito = ai_result.get("esito", "warning")
         if body.modalita == "interno":
             stato = "interno"
+        elif esito == "blocco":
+            stato = "da_autorizzare"
+        elif esito == "warning":
+            stato = "warning"
+        else:
+            stato = "ok"
         prev_doc = {
             "id": UID(), "commessa_id": cid,
             "artigiano_nome": body.artigiano_nome, "artigiano_id": body.artigiano_id,
@@ -425,6 +414,37 @@ In 3-4 righe italiano professionale: il preventivo è congruo? Cosa controllare?
     async def mark_letta(nid: str, user=Depends(get_current_user)):
         await db.notifiche.update_one({"id": nid}, {"$set": {"letta": True}})
         return {"ok": True}
+
+    # ---------- 12. UPLOAD FILE BINARI ----------
+    @r.post("/uploads")
+    async def upload_file(file: UploadFile = File(...), commessa_id: Optional[str] = Form(None), tipo: Optional[str] = Form(None), user=Depends(get_current_user)):
+        # Limite 20 MB
+        content = await file.read()
+        if len(content) > 20 * 1024 * 1024:
+            raise HTTPException(413, "File troppo grande (max 20 MB)")
+        ext = (file.filename.rsplit(".", 1)[-1] if "." in file.filename else "bin").lower()
+        fid = uuid.uuid4().hex
+        safe_name = f"{fid}.{ext}"
+        path = os.path.join(UPLOADS_DIR, safe_name)
+        with open(path, "wb") as f:
+            f.write(content)
+        meta = {
+            "id": fid, "name": file.filename, "size": len(content),
+            "content_type": file.content_type or "application/octet-stream",
+            "url": f"/api/uploads/{safe_name}",
+            "commessa_id": commessa_id, "tipo": tipo,
+            "uploaded_at": NOW(), "uploaded_by": user.get("id"),
+        }
+        await db.uploads.insert_one(dict(meta))
+        meta.pop("_id", None)
+        return meta
+
+    @r.get("/uploads/{filename}")
+    async def get_upload(filename: str):
+        path = os.path.join(UPLOADS_DIR, filename)
+        if not os.path.exists(path):
+            raise HTTPException(404, "File non trovato")
+        return FileResponse(path)
 
     # ---------- 11. WORKFLOW STATE (snapshot completo per UI) ----------
     @r.get("/commesse/{cid}/workflow")

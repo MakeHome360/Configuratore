@@ -1,5 +1,17 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 27 — Feb 2026 — No-AI + Gantt + Upload + Drag3D + Title forzato)
+- ✅ **Title browser FORZATO via JS**: `useEffect` in `App.js` con interval che riscrive `document.title` ogni 1.5s contro lo script Emergent esterno che lo sovrascrive. Fix definitivo.
+- ✅ **Rimossa AI da workflow artigiani**: ora SOLO controllo matematico:
+  - Scarto ≤ +10% rivendita → **OK** (verde)
+  - +10% < scarto ≤ +25% → **Warning** (ambra) 
+  - Scarto > +25% → **BLOCCO** (rosso) → richiede autorizzazione admin
+  - Mostra differenza in € + % e giudizio italiano chiaro
+- ✅ **Gantt visivo Fasi cantiere**: SVG bars colorate per stato (grigio/blu/verde/ambra) + asse temporale con marker settimanali (lunedì) + legenda. Cambio stato inline via dropdown.
+- ✅ **Upload file binari**: nuovo endpoint `POST /api/uploads` (multipart, max 20MB) + `GET /api/uploads/{filename}` con FileResponse. Storage su `/app/backend/uploads/`. Componente `UploadField` riutilizzabile integrato in: Contratto (PDF), Documenti (qualsiasi), Preventivi artigiani (PDF). Niente più solo URL esterni.
+- ✅ **Drag & Drop COMPLETO nel 3D**: `Picker3D` ora supporta sia `onSelect` (click→selezione) sia `onDrag` (trascinamento). Implementato con `THREE.Plane` orizzontale a y=0 e raycaster. Gli items (mobili/oggetti) si possono trascinare nel 3D e la posizione (x, y in cm CAD) viene salvata nello state del progetto. Sync automatico con 2D.
+- ✅ **6/6 pytest** PASSED (workflow E2E + provvigioni + round23).
+
 ## Recent Updates (Round 26 — Feb 2026 — 3D-only Mode + Workflow Commessa Completo)
 - ✅ **Toggle 2D/3D/Both**: nuovo selettore in Editor toolbar — l'utente può lavorare solo in 2D, solo in 3D, o entrambi affiancati. Sostituito il vecchio bottone "Mostra/Nascondi 3D".
 - ✅ **Workflow Commessa Completo** (`/commesse/:cid/workflow`):

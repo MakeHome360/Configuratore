@@ -940,7 +940,10 @@ export default function Editor() {
                 <span className="ml-auto mono text-xs text-zinc-500">trascina · zoom</span>
               </div>
               <div className="relative" style={{ height: "calc(100% - 2rem)" }}>
-                <Viewer3D ref={viewer3DRef} project={{ ...project.data, viewMode: editMode }} catalog={catalog} selected={selected} onSelect={(s) => { setSelected(s); setSidebarOpen(true); }} />
+                <Viewer3D ref={viewer3DRef} project={{ ...project.data, viewMode: editMode }} catalog={catalog} selected={selected} onSelect={(s) => { setSelected(s); setSidebarOpen(true); }} onDrag={({ kind, id, x, y }) => {
+                  if (kind !== "items") return;
+                  setProjectData(d => ({ ...d, items: (d.items || []).map(it => it.id === id ? { ...it, x, y } : it) }));
+                }} />
               </div>
             </div>
           )}

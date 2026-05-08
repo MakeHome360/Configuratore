@@ -1,5 +1,15 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 25 — Feb 2026 — 3D Interattivo + Drag Demolizione + Fix Tavole)
+- ✅ **3D Click → Selezione**: implementato `Picker3D` con raycaster Three.js. Cliccare su una stanza, muro o oggetto nel 3D ora apre il pannello proprietà a destra (sync con `selected` del 2D). Distinzione click vs orbit-drag (movimento <4px = click).
+- ✅ **3D Highlight selezionato**: nuovo `Highlight3D` che disegna `EdgesGeometry` arancione attorno all'elemento selezionato (sia da 2D che da 3D click).
+- ✅ **userData applicato a meshes**: rooms (pavimenti), walls e items hanno `userData = { kind, id }` per identificazione veloce.
+- ✅ **Drag interattivo demolizione muri parziale**: già presente in codebase (`demo-partial-drag` + handles `demo-handle`). Banner toolbar aggiornato a "🔨 Trascina sul muro per definire la porzione da demolire. Affina con maniglie/pannello."
+- ✅ **Conferma fix Round 23/24** (riepilogo per chiarezza utente):
+  - **Lato muro presa**: nel pannello proprietà degli impianti (electrical/plumbing/gas/hvac) c'è il selettore **"◀ Lato A | • Centro | Lato B ▶"** con freccia visiva colorata che parte dall'elemento e indica il lato sul muro più vicino. ✓
+  - **Tavole elettriche differenziate**: sigle distinte (P / P+ / TV / RJ / I / DV / L / LED / Q) con colori dedicati per tipo + cerchi più grandi su sigle 2-3 caratteri + anti-overlap badge `h=`. ✓
+  - **Pavimenti unificati**: 1 sola fonte di verità (tool Schema piastrelle), banner blu nel pannello che spiega la priorità, color picker + 12 preset, "Applica a TUTTA la casa", calcolo m² preciso. ✓
+
 ## Recent Updates (Round 24 — Feb 2026 — Unificazione Pavimento + 3D Allineato + UX Stanza)
 - ✅ **3D BUG pavimento fuori dalla stanza FIXATO**: `mesh.rotation.x = -π/2` invertiva l'asse Y rispetto a muri/oggetti. Cambiato a `+π/2` con `side: DoubleSide` per allineare correttamente il polygon-pavimento ai muri (mappa `(x,y) 2D → (x,0,y) 3D`).
 - ✅ **3D filtrato per phase (fatto/progetto)**: Viewer3D ora riceve `viewMode` da Editor.jsx e filtra `rooms`, `walls`, `doors`, `windows`, `items` con la stessa logica del 2D. Niente più bleeding "vedo nel 3D cose che non sono in questa fase".

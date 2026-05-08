@@ -74,6 +74,7 @@ function buildScene(project, catalog) {
     mesh.rotation.x = Math.PI / 2;
     mesh.position.y = 0.001;
     mesh.receiveShadow = true;
+    mesh.userData = { kind: "rooms", id: r.id };
     root.add(mesh);
 
     // Controsoffitto totale (riduce altezza utile a -30cm)
@@ -174,6 +175,7 @@ function buildScene(project, catalog) {
     mesh.rotation.y = -angle;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    mesh.userData = { kind: "walls", id: w.id };
     root.add(mesh);
 
     // Render porte dentro il varco (pannello porta inclinato 30° per simulare apertura)
@@ -258,7 +260,9 @@ function buildScene(project, catalog) {
     );
     mesh.position.y = h / 2;
     mesh.castShadow = true;
+    mesh.userData = { kind: "items", id: it.id };
     group.add(mesh);
+    group.userData = { kind: "items", id: it.id };
 
     if (isLight) {
       const pl = new THREE.PointLight(0xfef3c7, 0.5, 5);
@@ -288,6 +292,69 @@ function SceneRoot({ project, catalog }) {
       });
     };
   }, [project, catalog, scene]);
+  return null;
+}
+
+function Picker3D({ onSelect }) {
+  const { gl, camera, scene } = useThree();
+  useEffect(() => {
+    if (!onSelect) return;
+    const ray = new THREE.Raycaster();
+    let downX = 0, downY = 0, moved = false;
+    const onDown = (ev) => { downX = ev.clientX; downY = ev.clientY; moved = false; };
+    const onMove = (ev) => {
+      if (Math.hypot(ev.clientX - downX, ev.clientY - downY) > 4) moved = true;
+    };
+    const onUp = (ev) => {
+      if (moved) return; // era un drag della camera
+      const rect = gl.domElement.getBoundingClientRect();
+      const m = new THREE.Vector2(
+        ((ev.clientX - rect.left) / rect.width) * 2 - 1,
+        -((ev.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      ray.setFromCamera(m, camera);
+      const hits = ray.intersectObjects(scene.children, true);
+      // trova il primo hit con userData.kind
+      for (const h of hits) {
+        let o = h.object;
+        while (o && !o.userData?.kind) o = o.parent;
+        if (o?.userData?.kind && o.userData.id) {
+          onSelect({ kind: o.userData.kind, id: o.userData.id });
+          return;
+        }
+      }
+    };
+    gl.domElement.addEventListener("pointerdown", onDown);
+    gl.domElement.addEventListener("pointermove", onMove);
+    gl.domElement.addEventListener("pointerup", onUp);
+    return () => {
+      gl.domElement.removeEventListener("pointerdown", onDown);
+      gl.domElement.removeEventListener("pointermove", onMove);
+      gl.domElement.removeEventListener("pointerup", onUp);
+    };
+  }, [gl, camera, scene, onSelect]);
+  return null;
+}
+
+// Highlight visivo dell'elemento selezionato nel 3D (outline arancione)
+function Highlight3D({ selected }) {
+  const { scene } = useThree();
+  useEffect(() => {
+    if (!selected?.id || !selected.kind) return;
+    let target = null;
+    scene.traverse((obj) => {
+      if (obj.userData?.kind === selected.kind && obj.userData.id === selected.id) target = obj;
+    });
+    if (!target?.geometry) return;
+    const edges = new THREE.EdgesGeometry(target.geometry, 30);
+    const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xF59E0B, linewidth: 3 }));
+    target.add(line);
+    return () => {
+      target.remove(line);
+      edges.dispose();
+      line.material.dispose();
+    };
+  }, [selected, scene]);
   return null;
 }
 
@@ -372,7 +439,7 @@ function OrbitLite({ target = [0, 0, 0] }) {
   return null;
 }
 
-const Viewer3D = forwardRef(function Viewer3D({ project, catalog }, ref) {
+const Viewer3D = forwardRef(function Viewer3D({ project, catalog, onSelect, selected }, ref) {
   const glRef = useRef(null);
 
   useImperativeHandle(ref, () => ({
@@ -414,6 +481,8 @@ const Viewer3D = forwardRef(function Viewer3D({ project, catalog }, ref) {
       <Lights />
       <OrbitLite target={center} />
       <SceneRoot project={project} catalog={catalog} />
+      {onSelect && <Picker3D onSelect={onSelect} />}
+      {selected && <Highlight3D selected={selected} />}
     </Canvas>
   );
 });

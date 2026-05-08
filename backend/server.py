@@ -512,7 +512,9 @@ async def admin_status():
 # ---------------- Projects ----------------
 @api.get("/projects")
 async def list_projects(user: Dict[str, Any] = Depends(get_current_user)):
-    docs = await db.projects.find({"user_id": user["id"]}, {"_id": 0}).sort("updated_at", -1).to_list(200)
+    # Admin vede tutti i progetti, altri solo i propri
+    q = {} if user.get("role") == "admin" else {"user_id": user["id"]}
+    docs = await db.projects.find(q, {"_id": 0}).sort("updated_at", -1).to_list(500)
     return docs
 
 
@@ -565,7 +567,8 @@ async def create_project_from_preventivo(preventivo_id: str, user: Dict[str, Any
 
 @api.get("/projects/{project_id}")
 async def get_project(project_id: str, user: Dict[str, Any] = Depends(get_current_user)):
-    doc = await db.projects.find_one({"id": project_id, "user_id": user["id"]}, {"_id": 0})
+    q = {"id": project_id} if user.get("role") == "admin" else {"id": project_id, "user_id": user["id"]}
+    doc = await db.projects.find_one(q, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Progetto non trovato")
     # Auto-link: se preventivo_id mancante, cerca un preventivo che punta a questo progetto
@@ -591,19 +594,23 @@ async def update_project(project_id: str, body: ProjectIn, user: Dict[str, Any] 
     }
     if body.preventivo_id is not None:
         update_doc["preventivo_id"] = body.preventivo_id
-    result = await db.projects.update_one({"id": project_id, "user_id": user["id"]}, {"$set": update_doc})
+    # Admin può aggiornare progetti di chiunque; gli altri solo i propri
+    q = {"id": project_id} if user.get("role") == "admin" else {"id": project_id, "user_id": user["id"]}
+    result = await db.projects.update_one(q, {"$set": update_doc})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Progetto non trovato")
     # Sync inverso preventivi.project_id
     if body.preventivo_id:
-        await db.preventivi.update_one({"id": body.preventivo_id, "user_id": user["id"]}, {"$set": {"project_id": project_id}})
+        prev_q = {"id": body.preventivo_id} if user.get("role") == "admin" else {"id": body.preventivo_id, "user_id": user["id"]}
+        await db.preventivi.update_one(prev_q, {"$set": {"project_id": project_id}})
     doc = await db.projects.find_one({"id": project_id}, {"_id": 0})
     return doc
 
 
 @api.delete("/projects/{project_id}")
 async def delete_project(project_id: str, user: Dict[str, Any] = Depends(get_current_user)):
-    await db.projects.delete_one({"id": project_id, "user_id": user["id"]})
+    q = {"id": project_id} if user.get("role") == "admin" else {"id": project_id, "user_id": user["id"]}
+    await db.projects.delete_one(q)
     return {"ok": True}
 
 

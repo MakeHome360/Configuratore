@@ -40,6 +40,12 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
         from packages_seed import DEFAULT_PACKAGES, DEFAULT_OPTIONAL
         if await db.voci_backoffice.count_documents({}) == 0:
             await db.voci_backoffice.insert_many([dict(v) for v in DEFAULT_VOCI_BACKOFFICE])
+        else:
+            # Backfill: aggiunge voci nuove (per id) anche se la collection è già popolata
+            existing_ids = {d["id"] for d in await db.voci_backoffice.find({}, {"id": 1, "_id": 0}).to_list(5000)}
+            missing = [dict(v) for v in DEFAULT_VOCI_BACKOFFICE if v.get("id") and v["id"] not in existing_ids]
+            if missing:
+                await db.voci_backoffice.insert_many(missing)
         if await db.fasi_commessa.count_documents({}) == 0:
             await db.fasi_commessa.insert_many([dict(f) for f in DEFAULT_FASI_COMMESSA])
         if await db.template_email.count_documents({}) == 0:

@@ -1489,6 +1489,7 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
   }
   // Generic for impianti
   if (["electrical", "plumbing", "gas", "hvac"].includes(kind)) {
+    const sideVal = obj.wall_side || 0;
     return (
       <div className="space-y-3">
         <div className="label-kicker">Elemento impianto</div>
@@ -1503,6 +1504,28 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
             </div>
           </div>
         )}
+        {/* Lato muro: indica da quale lato del muro è installato l'elemento (visto da sopra) */}
+        <div className="bg-violet-50 border border-violet-300 p-2 space-y-1.5">
+          <Label className="text-xs uppercase tracking-widest text-violet-800">Lato muro (visto da sopra)</Label>
+          <div className="grid grid-cols-3 gap-1">
+            <button
+              onClick={() => updateObj({ wall_side: -1 })}
+              className={`text-[11px] mono py-1.5 border ${sideVal === -1 ? "bg-violet-700 text-white border-violet-700" : "bg-white text-violet-800 border-violet-300 hover:bg-violet-100"}`}
+              data-testid={`${kind}-wall-side-a`}
+            >◀ Lato A</button>
+            <button
+              onClick={() => updateObj({ wall_side: 0 })}
+              className={`text-[11px] mono py-1.5 border ${sideVal === 0 ? "bg-violet-700 text-white border-violet-700" : "bg-white text-violet-800 border-violet-300 hover:bg-violet-100"}`}
+              data-testid={`${kind}-wall-side-center`}
+            >• Centro</button>
+            <button
+              onClick={() => updateObj({ wall_side: 1 })}
+              className={`text-[11px] mono py-1.5 border ${sideVal === 1 ? "bg-violet-700 text-white border-violet-700" : "bg-white text-violet-800 border-violet-300 hover:bg-violet-100"}`}
+              data-testid={`${kind}-wall-side-b`}
+            >Lato B ▶</button>
+          </div>
+          <div className="text-[10px] text-violet-700 mono">Una freccetta sul CAD indica il lato del muro su cui è installato l'elemento.</div>
+        </div>
         {/* Punto acqua composito: scegli quali tubazioni includere (F+C+S, sotto-insiemi) */}
         {kind === "plumbing" && (obj.type === "punto-completo" || obj.type === "acqua-completo") && (
           <div className="bg-cyan-50 border border-cyan-300 p-2 space-y-1.5" data-testid="plumb-completo-flags">

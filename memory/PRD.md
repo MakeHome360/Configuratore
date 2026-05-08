@@ -1,5 +1,27 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 23 — Feb 2026 — CAD Save Fix + Elettrico Specifico + Lato Muro + Configuratore Infissi)
+- ✅ **Bug CRITICO salvataggio CAD**: `/api/projects/{id}` filtrava per `user_id` → admin che apriva progetto di un altro utente otteneva 404 sul Salva. Ora admin può read/update/delete qualsiasi progetto; gli altri ruoli restano scoped al proprio user_id (`server.py`).
+- ✅ **Voci elettriche specifiche** mappate a preventivo: 5 nuove voci backoffice (`voce-punto-presa-tv`, `voce-punto-rj45`, `voce-punto-presa-cucina`, `voce-punto-deviatore`, `voce-punto-luce-led`) + backfill automatico se DB già seedato + mapping `utils.js` aggiornato. Prima questi tipi venivano "aggiunti" al progetto ma erano invisibili nel canvas e mappati erroneamente a `punto_luce`.
+- ✅ **Simboli CAD distintivi** in `Canvas2D.jsx`: 
+  - `presa` (cerchio + due stecche · viola)
+  - `presa-cucina` ("16A" · arancio · linea dedicata)
+  - `presa-tv` (triangolino antenna · ciano)
+  - `presa-rj45` (rettangolo con pin · teal)
+  - `deviatore` ("DV" · violet)
+  - `punto-luce-led` ("LED" · ambra)
+  - `interruttore` / `luce` / `quadro` / `scatola` come prima
+  - Fallback "?" per tipi non riconosciuti (così non spariscono più).
+- ✅ **Lato muro (visto da sopra)**: nuova proprietà `wall_side ∈ {-1, 0, 1}` su electrical/plumbing/gas/hvac. Pannello proprietà ha 3 bottoni "◀ Lato A | • Centro | Lato B ▶". `WallSideIndicator` calcola la normale del muro più vicino e disegna una freccia colorata che indica il lato.
+- ✅ **Prospetti differenziati**: `symbolFor()` riformato (P, P+, TV, RJ, I, DV, L, LED, Q, F, C, S) e `colorFor()` con colore dedicato per ogni tipo elettrico/idraulico. Anti-overlap badge `h=` (sposta sopra il simbolo se 2 punti entro 60cm a stessa altezza).
+- ✅ **Configuratore Infissi rinnovato** (`PreventivoInfissi.jsx`):
+  - Maniglia tipo "cremonese" (barra verticale + sfera + indicatore alto) ben visibile.
+  - 3 cerniere sul lato sinistro del telaio.
+  - Davanzale grigio per finestre/porte-finestre (etichetta DAVANZALE).
+  - Riflesso vetro diagonale + ombra del frame (filter dropShadow) per realismo.
+  - Anteprima colore nel select (quadrato accanto al menu).
+- ✅ **Test pytest** `tests/test_round23_fixes.py` (2 test) + `test_provvigioni_dashboard.py` → 5/5 PASSED.
+
 ## Recent Updates (Round 22 — Feb 2026 — Brand + Dashboard Venditori & Provvigioni)
 - ✅ **Brand title**: cambiato `<title>` da "Emergent | Fullstack App" → **"Sa di Casa | Ristrutturazioni e Arredo"** (`/app/frontend/public/index.html`) + meta description coerente.
 - ✅ **Dashboard Venditori personalizzata** (`/app/frontend/src/pages/DashboardVenditore.jsx`):

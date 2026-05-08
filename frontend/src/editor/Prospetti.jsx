@@ -222,25 +222,35 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
         const ovr = heightOverrides?.[p.id];
         const h = (typeof ovr === "number" && !isNaN(ovr)) ? ovr : stdH;
         const y = H - h;
-        const color = COLORS[p.kind] || "#525252";
+        const color = colorFor(p);
         const dxFromLeft = Math.round(p.t * W);
         const dxFromRight = Math.round((1 - p.t) * W);
+        // Cerca il punto precedente con distanza orizzontale ravvicinata: se entro 60cm e simile altezza, sposta il badge h sopra invece che a destra.
+        const prevSorted = points.slice().sort((a, b) => (a.t - b.t));
+        const idxSort = prevSorted.findIndex((q) => q.id === p.id);
+        const prev = idxSort > 0 ? prevSorted[idxSort - 1] : null;
+        const tooClose = prev && Math.abs((prev.t - p.t) * W) < 60 && Math.abs((heightOverrides?.[prev.id] ?? STD_HEIGHTS[prev.type || prev.kind] ?? 110) - h) < 50;
+        const badgeH_x = tooClose ? x - 32 : x + 14;
+        const badgeH_y = tooClose ? y - 30 : y - 11;
         // OFFSET VERTICALE: MEP quotes partono DOPO le quote door/window (sotto H+80) per evitare sovrapposizioni
         const BASE = H + 90;
         const ySxRow = BASE + idx * 28;
         const yDxRow = BASE + idx * 28 + 14;
+        // Cerchio leggermente più grande quando la sigla è più di 1 carattere
+        const sym = symbolFor(p);
+        const r = sym.length >= 2 ? 16 : 14;
         return (
           <g key={p.id} style={{ cursor: editable ? "move" : "default" }}
              onPointerDown={editable ? (e) => { e.preventDefault(); e.stopPropagation(); setDragging(p.id); } : undefined}
              data-testid={`prospetto-point-${p.id}`}
           >
             <line x1={x} y1={H} x2={x} y2={y} stroke={color} strokeWidth="1.2" strokeDasharray="3,3" opacity="0.6" />
-            <circle cx={x} cy={y} r="14" fill="white" stroke={color} strokeWidth="2.5" />
-            <text x={x} y={y + 4} textAnchor="middle" fontSize="12" fontWeight="900" fontFamily="JetBrains Mono" fill={color} pointerEvents="none">{symbolFor(p)}</text>
-            {/* QUOTA H altezza dal pavimento — badge bianco a destra del simbolo */}
+            <circle cx={x} cy={y} r={r} fill="white" stroke={color} strokeWidth="2.5" />
+            <text x={x} y={y + 4} textAnchor="middle" fontSize={sym.length >= 3 ? "10" : "12"} fontWeight="900" fontFamily="JetBrains Mono" fill={color} pointerEvents="none">{sym}</text>
+            {/* QUOTA H altezza dal pavimento — badge bianco con anti-overlap */}
             <g pointerEvents="none">
-              <rect x={x + 14} y={y - 11} width={64} height={22} rx={2} fill="white" stroke="#0A0A0A" strokeWidth="1" />
-              <text x={x + 46} y={y + 5} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="13" fontWeight="700" fill="#0A0A0A">{`h=${h}`}</text>
+              <rect x={badgeH_x} y={badgeH_y} width={64} height={22} rx={2} fill="white" stroke="#0A0A0A" strokeWidth="1" />
+              <text x={badgeH_x + 32} y={badgeH_y + 16} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="13" fontWeight="700" fill="#0A0A0A">{`h=${h}`}</text>
             </g>
             {/* QUOTA SX: distanza dal bordo sinistro — riga unica per punto, su livelli scalati */}
             <g pointerEvents="none">
@@ -280,7 +290,7 @@ export function ProspettoInputs({ entry, heightOverrides, onChangeHeight, onChan
         const stdKey = p.type || p.kind;
         const stdH = STD_HEIGHTS[stdKey] ?? 110;
         const h = heightOverrides?.[p.id] ?? stdH;
-        const color = COLORS[p.kind] || "#525252";
+        const color = colorFor(p);
         const posCm = Math.round((p.t || 0) * W);
         return (
           <div key={p.id} className="flex items-center gap-2 bg-white border border-zinc-200 px-2 py-1.5">
@@ -308,9 +318,14 @@ export function ProspettoInputs({ entry, heightOverrides, onChangeHeight, onChan
 
 function symbolFor(p) {
   const t = p.type || p.kind;
-  if (t === "presa" || t === "presa-cucina" || t === "presa-tv" || t === "presa-rj45") return "P";
-  if (t === "interruttore" || t === "deviatore") return "I";
-  if (t === "luce" || t === "punto-luce" || t === "punto-luce-led") return "L";
+  if (t === "presa") return "P";
+  if (t === "presa-cucina") return "P+";
+  if (t === "presa-tv") return "TV";
+  if (t === "presa-rj45") return "RJ";
+  if (t === "interruttore") return "I";
+  if (t === "deviatore") return "DV";
+  if (t === "punto-luce-led") return "LED";
+  if (t === "luce" || t === "punto-luce") return "L";
   if (t === "scatola") return "■";
   if (t === "quadro" || t === "quadro-elettrico") return "Q";
   if (t === "acqua-calda") return "C";
@@ -323,6 +338,24 @@ function symbolFor(p) {
   if (t === "esterna") return "U";
   if (t === "predisposizione") return "P";
   return "•";
+}
+
+// Colore dedicato per ogni tipo elettrico (oltre al colore-kind generico)
+function colorFor(p) {
+  const t = p.type || p.kind;
+  if (t === "presa") return "#7C3AED";
+  if (t === "presa-cucina") return "#EA580C";
+  if (t === "presa-tv") return "#0E7490";
+  if (t === "presa-rj45") return "#0F766E";
+  if (t === "deviatore") return "#9333EA";
+  if (t === "punto-luce-led") return "#F59E0B";
+  if (t === "interruttore") return "#7C3AED";
+  if (t === "luce" || t === "punto-luce") return "#7C3AED";
+  if (t === "quadro" || t === "quadro-elettrico") return "#7C3AED";
+  if (t === "acqua-calda") return "#DC2626";
+  if (t === "acqua-fredda") return "#0EA5E9";
+  if (t === "scarico") return "#0891B2";
+  return COLORS[p.kind] || "#525252";
 }
 
 function DimLine({ x1, y1, x2, y2, label, color = "#16A34A", big = false, small = false }) {

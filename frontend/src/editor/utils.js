@@ -104,8 +104,13 @@ export const VOCE_MAP = {
   battiscopa: "Posa Battiscopa",
   impianto_elettrico_mq: "Impianto elettrico completo",
   punto_luce: "Punto luce LED",
+  punto_luce_led: "Punto luce LED dimmerabile",
   punto_presa: "Punto presa",
+  punto_presa_tv: "Punto presa TV / antenna",
+  punto_presa_cucina: "Punto presa cucina (linea dedicata)",
+  punto_rj45: "Punto presa RJ45 / dati",
   punto_interruttore: "Punto interruttore",
+  punto_deviatore: "Punto deviatore / commutatore",
   quadro_elettrico: "Quadro elettrico",
   impianto_idraulico_mq: "Impianto idraulico completo",
   punto_acqua: "Punto acqua",
@@ -478,11 +483,18 @@ export function estimateProjectV2(project, voci, packageRef) {
 
   // Impianti dettagliati — tutti contati per billing (anche se phase=fatto: l'impianto è sempre nuova fornitura)
   (data.electrical || []).forEach((e) => {
-    if (e.type === "presa") add("punto_presa", 1);
-    else if (e.type === "interruttore") add("punto_interruttore", 1);
-    else if (e.type === "luce" || e.type === "punto-luce") add("punto_luce", 1);
-    else if (e.type === "quadro" || e.type === "quadro-elettrico") add("quadro_elettrico", 1);
-    else add("punto_luce", 1); // fallback per altri tipi
+    const t = e.type;
+    if (t === "presa") add("punto_presa", 1);
+    else if (t === "presa-cucina") add("punto_presa_cucina", 1);
+    else if (t === "presa-tv") add("punto_presa_tv", 1);
+    else if (t === "presa-rj45") add("punto_rj45", 1);
+    else if (t === "interruttore") add("punto_interruttore", 1);
+    else if (t === "deviatore") add("punto_deviatore", 1);
+    else if (t === "punto-luce-led") add("punto_luce_led", 1);
+    else if (t === "luce" || t === "punto-luce") add("punto_luce", 1);
+    else if (t === "quadro" || t === "quadro-elettrico") add("quadro_elettrico", 1);
+    else if (t === "scatola") add("punto_interruttore", 1); // scatola di derivazione ≈ punto interruttore
+    else add("punto_luce", 1);
   });
   (data.plumbing || []).forEach((p) => {
     if (p.type === "punto-completo" || p.type === "acqua-completo") {

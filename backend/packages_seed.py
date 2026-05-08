@@ -97,6 +97,12 @@ DEFAULT_VOCI_BACKOFFICE = [
     {"id": "voce-pellicolatura-pvc", "category": "INFISSI", "name": "Pellicolatura infissi PVC (maggiorazione)", "prezzo_acquisto": 0.0, "ricarico": 1.0, "unit": "%", "modificabile_dal_venditore": True, "maggiorazione_pct": 25.0, "note": "Imposta la % di maggiorazione applicata al prezzo degli infissi PVC quando si sceglie pellicolatura"},
     # Punto acqua composito (fredda/calda/scarico) — un solo punto contato in qty
     {"id": "voce-punto-acqua-completo", "category": "IMPIANTI", "name": "Punto acqua completo (F+C+S)", "prezzo_acquisto": 80.0, "ricarico": 1.8, "unit": "pz", "cad_category": "TERMO_IDRAULICO"},
+    # Round 22 — voci elettriche specifiche (presa TV, dati, deviatore, LED, presa cucina maggiorata)
+    {"id": "voce-punto-presa-tv", "category": "IMPIANTI", "name": "Punto presa TV / antenna", "prezzo_acquisto": 75.0, "ricarico": 1.8, "unit": "pz", "cad_category": "ELETTRICO"},
+    {"id": "voce-punto-rj45", "category": "IMPIANTI", "name": "Punto presa RJ45 / dati", "prezzo_acquisto": 90.0, "ricarico": 1.8, "unit": "pz", "cad_category": "ELETTRICO"},
+    {"id": "voce-punto-presa-cucina", "category": "IMPIANTI", "name": "Punto presa cucina (linea dedicata)", "prezzo_acquisto": 95.0, "ricarico": 1.8, "unit": "pz", "cad_category": "ELETTRICO"},
+    {"id": "voce-punto-deviatore", "category": "IMPIANTI", "name": "Punto deviatore / commutatore", "prezzo_acquisto": 72.0, "ricarico": 1.8, "unit": "pz", "cad_category": "ELETTRICO"},
+    {"id": "voce-punto-luce-led", "category": "IMPIANTI", "name": "Punto luce LED dimmerabile", "prezzo_acquisto": 95.0, "ricarico": 1.8, "unit": "pz", "cad_category": "ELETTRICO"},
 ]
 
 # ---------------- Pacchetti (BASIC / SMART / PREMIUM / ELITE) ----------------

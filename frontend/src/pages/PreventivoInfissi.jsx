@@ -125,14 +125,17 @@ export default function PreventivoInfissi() {
                       </select>
                     </div>
                     <div className="col-span-6 sm:col-span-3 lg:col-span-2"><Label className="text-xs">Colore</Label>
-                      <select className="w-full border border-zinc-300 rounded h-10 px-2 text-sm" value={it.colore || "bianco"} onChange={(e) => upd(i, "colore", e.target.value)} data-testid={`inf-colore-${i}`}>
-                        <option value="bianco">Bianco</option>
-                        <option value="antracite">Antracite</option>
-                        <option value="grigio">Grigio</option>
-                        <option value="marrone">Marrone</option>
-                        <option value="noce">Noce</option>
-                        <option value="rovere">Rovere</option>
-                      </select>
+                      <div className="flex items-center gap-1.5">
+                        <span className="inline-block w-7 h-7 border border-zinc-400 rounded shrink-0" style={{ background: ({ bianco: "#FAFAFA", antracite: "#3F3F46", grigio: "#A1A1AA", marrone: "#78350F", noce: "#5B3A1A", rovere: "#A87C4F" })[it.colore || "bianco"] }} />
+                        <select className="flex-1 border border-zinc-300 rounded h-10 px-2 text-sm" value={it.colore || "bianco"} onChange={(e) => upd(i, "colore", e.target.value)} data-testid={`inf-colore-${i}`}>
+                          <option value="bianco">Bianco</option>
+                          <option value="antracite">Antracite</option>
+                          <option value="grigio">Grigio</option>
+                          <option value="marrone">Marrone</option>
+                          <option value="noce">Noce</option>
+                          <option value="rovere">Rovere</option>
+                        </select>
+                      </div>
                     </div>
                     <div className="col-span-6 sm:col-span-2 lg:col-span-1"><Label className="text-xs">Ante</Label>
                       <select className="w-full border border-zinc-300 rounded h-10 px-2 text-sm font-mono font-bold" value={it.ante || 1} onChange={(e) => upd(i, "ante", Number(e.target.value))} data-testid={`inf-ante-${i}`}>
@@ -237,8 +240,13 @@ function AbacoInfisso({ tipologia, colore, larghezza, altezza, materiale, vetro,
   const frameW = 6;
   const tappColor = COLOR_MAP[tapparella_colore] || "#3F3F46";
   return (
-    <div className="bg-zinc-50 border border-zinc-200 rounded p-2 flex items-center gap-3">
+    <div className="bg-white border border-zinc-300 rounded p-2 flex items-center gap-3">
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} data-testid="abaco-svg" style={{ maxWidth: "100%" }}>
+        <defs>
+          <filter id="frame-shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="2" floodOpacity="0.18" />
+          </filter>
+        </defs>
         {/* Cassonetto tapparella (sopra il telaio) */}
         {tapparella && (
           <g>
@@ -264,8 +272,10 @@ function AbacoInfisso({ tipologia, colore, larghezza, altezza, materiale, vetro,
           <line x1={x - 8} y1={y + hh + 4} x2={x + ww + 8} y2={y + hh + 4} stroke="#71717A" strokeWidth="2" />
         )}
         {/* frame */}
-        <rect x={x} y={y} width={ww} height={hh} fill={frameColor} stroke={stroke} strokeWidth="2" />
-        <rect x={x + frameW} y={y + frameW} width={ww - 2 * frameW} height={hh - 2 * frameW} fill="#DBEAFE" fillOpacity="0.45" stroke={stroke} strokeWidth="1" />
+        <rect x={x} y={y} width={ww} height={hh} fill={frameColor} stroke={stroke} strokeWidth="2.5" filter="url(#frame-shadow)" />
+        <rect x={x + frameW} y={y + frameW} width={ww - 2 * frameW} height={hh - 2 * frameW} fill="#DBEAFE" fillOpacity="0.55" stroke={stroke} strokeWidth="1.2" />
+        {/* riflesso vetro (linea diagonale leggera) */}
+        <line x1={x + frameW + 6} y1={y + frameW + 4} x2={x + ww - frameW - 6} y2={y + hh - frameW - 4} stroke="#FFFFFF" strokeOpacity="0.55" strokeWidth="3" />
         {/* anta dividers - support 1, 2, 3, 4 ante */}
         {!isScorrevole && antaCount > 1 && Array.from({ length: antaCount - 1 }).map((_, k) => {
           const dx = x + (ww / antaCount) * (k + 1);
@@ -289,8 +299,38 @@ function AbacoInfisso({ tipologia, colore, larghezza, altezza, materiale, vetro,
             <text x={cx + ww / 4} y={cy + 4} textAnchor="middle" fontSize="14" fill={stroke}>←</text>
           </>
         )}
-        {/* maniglia (su anta destra) */}
-        {!isScorrevole && <circle cx={x + ww - frameW - 8} cy={cy} r="3" fill={stroke} />}
+        {/* MANIGLIA realistica (cremonese): barra verticale con sfera/cilindro centrale */}
+        {!isScorrevole && (() => {
+          // posizionata a metà altezza dell'anta destra (l'ultima)
+          const anteN = antaCount;
+          const lastAnteRight = x + (ww / anteN) * anteN;
+          const handleX = lastAnteRight - frameW - 10;
+          const handleY = cy;
+          const isLightFrame = colore === "bianco" || colore === "grigio";
+          const handleColor = isLightFrame ? "#3F3F46" : "#E5E7EB";
+          return (
+            <g pointerEvents="none">
+              <rect x={handleX - 2} y={handleY - 13} width={4} height={26} rx={2} fill={handleColor} stroke="#0A0A0A" strokeWidth="0.5" />
+              <circle cx={handleX} cy={handleY} r={3.6} fill={handleColor} stroke="#0A0A0A" strokeWidth="0.6" />
+              <circle cx={handleX} cy={handleY - 11} r={1.5} fill="#0A0A0A" />
+            </g>
+          );
+        })()}
+        {/* Cardini / cerniere (3 puntini sul lato sinistro) */}
+        {!isScorrevole && (
+          <g pointerEvents="none">
+            {[0.18, 0.5, 0.82].map((p, k) => (
+              <rect key={k} x={x + frameW + 1} y={y + hh * p - 4} width={3} height={8} fill="#9CA3AF" stroke="#0A0A0A" strokeWidth="0.4" />
+            ))}
+          </g>
+        )}
+        {/* DAVANZALE per finestre o porte finestre (riga grigia spessa sotto al telaio) */}
+        {!isPorta && (
+          <g pointerEvents="none">
+            <rect x={x - 6} y={y + hh + 2} width={ww + 12} height={6} fill="#A1A1AA" stroke="#52525B" strokeWidth="0.8" />
+            <text x={cx} y={y + hh + 18} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="9" fontWeight="700" fill="#525252">DAVANZALE</text>
+          </g>
+        )}
         {/* Zanzariera schematic (linee sottili oblique sul lato sinistro del telaio) */}
         {zanzariera && (
           <g pointerEvents="none">

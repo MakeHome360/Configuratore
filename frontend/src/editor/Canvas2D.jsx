@@ -4,6 +4,44 @@ import { snap, uid, polygonArea, polygonPerimeter, fmtNum, pointInPolygon, split
 const GRID = 10;
 const INITIAL_VIEW = { x: -300, y: -200, w: 2200, h: 1600 };
 
+// Helper: trova la normale unitaria del muro più vicino al punto (x, y).
+// Ritorna { nx, ny } dove (nx, ny) è perpendicolare al muro più vicino.
+// Usato per gli indicatori "Lato muro" sugli elementi impianto.
+function nearestWallNormal(walls, x, y) {
+  let best = null;
+  for (const w of walls || []) {
+    const dx = w.x2 - w.x1, dy = w.y2 - w.y1;
+    const len2 = dx * dx + dy * dy || 1;
+    let t = ((x - w.x1) * dx + (y - w.y1) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const px = w.x1 + t * dx, py = w.y1 + t * dy;
+    const dist2 = (x - px) * (x - px) + (y - py) * (y - py);
+    if (!best || dist2 < best.dist2) {
+      const len = Math.sqrt(len2);
+      best = { dist2, nx: -dy / len, ny: dx / len };
+    }
+  }
+  return best ? { nx: best.nx, ny: best.ny } : { nx: 0, ny: 1 };
+}
+
+// Disegna una "linguetta" che indica il lato del muro su cui è installato un elemento.
+// side: -1 lato A, 0 nessuna, 1 lato B (uguale e contraria a -1).
+function WallSideIndicator({ walls, x, y, side, color = "#7C3AED" }) {
+  if (!side) return null;
+  const { nx, ny } = nearestWallNormal(walls, x, y);
+  const L = 18;
+  const tipX = side * nx * L;
+  const tipY = side * ny * L;
+  // perpendicolare alla freccia per disegnare la base del triangolo
+  const px = -ny * 5, py = nx * 5;
+  return (
+    <g pointerEvents="none">
+      <line x1={0} y1={0} x2={tipX} y2={tipY} stroke={color} strokeWidth={2} />
+      <polygon points={`${tipX + side * nx * 4},${tipY + side * ny * 4} ${tipX + px},${tipY + py} ${tipX - px},${tipY - py}`} fill={color} />
+    </g>
+  );
+}
+
 function Measurement({ x1, y1, x2, y2, big = false, color = "#0A0A0A" }) {
   const dx = x2 - x1, dy = y2 - y1;
   const len = Math.hypot(dx, dy);
@@ -44,15 +82,54 @@ function ElectricalSymbol({ e, isSel }) {
     return <g><rect x={-10} y={-10} width={20} height={20} fill="white" stroke={c} strokeWidth="1.5" strokeDasharray="2,2" /><text x={0} y={4} fontSize="9px" textAnchor="middle" fontWeight="700" fill={c}>D</text></g>;
   }
   if (e.type === "presa") {
+    // presa standard: cerchio bianco con due "stecche" verticali
     return <g><circle cx={0} cy={0} r={12} fill="white" stroke={c} strokeWidth="2" /><line x1={-4} y1={-4} x2={-4} y2={4} stroke={c} strokeWidth="2" /><line x1={4} y1={-4} x2={4} y2={4} stroke={c} strokeWidth="2" /><text x={0} y={22} fontSize="8px" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>PRESA</text></g>;
+  }
+  if (e.type === "presa-cucina") {
+    // presa cucina: cerchio + sigla "16A" + bordo arancio per linea dedicata
+    const cc = isSel ? "#2563EB" : "#EA580C";
+    return <g><circle cx={0} cy={0} r={13} fill="white" stroke={cc} strokeWidth="2.5" /><text x={0} y={4} fontSize="10px" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="900" fill={cc}>16A</text><text x={0} y={24} fontSize="8px" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={cc}>P.CUCINA</text></g>;
+  }
+  if (e.type === "presa-tv") {
+    // presa TV: cerchio + triangolo "antenna"
+    const cc = isSel ? "#2563EB" : "#0E7490";
+    return <g>
+      <circle cx={0} cy={0} r={12} fill="white" stroke={cc} strokeWidth="2" />
+      <polygon points="-5,-5 5,-5 0,5" fill="white" stroke={cc} strokeWidth="1.6" />
+      <line x1={0} y1={-7} x2={0} y2={-10} stroke={cc} strokeWidth="1.6" />
+      <text x={0} y={22} fontSize="8px" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={cc}>TV</text>
+    </g>;
+  }
+  if (e.type === "presa-rj45") {
+    // RJ45/dati: rettangolo con piccoli "pin"
+    const cc = isSel ? "#2563EB" : "#0F766E";
+    return <g>
+      <rect x={-11} y={-9} width={22} height={18} fill="white" stroke={cc} strokeWidth="2" rx={2} />
+      <line x1={-7} y1={9} x2={-7} y2={6} stroke={cc} strokeWidth="1.4" />
+      <line x1={-3} y1={9} x2={-3} y2={6} stroke={cc} strokeWidth="1.4" />
+      <line x1={3} y1={9} x2={3} y2={6} stroke={cc} strokeWidth="1.4" />
+      <line x1={7} y1={9} x2={7} y2={6} stroke={cc} strokeWidth="1.4" />
+      <text x={0} y={22} fontSize="8px" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={cc}>RJ45</text>
+    </g>;
   }
   if (e.type === "interruttore") {
     return <g><circle cx={0} cy={0} r={10} fill="white" stroke={c} strokeWidth="2" /><line x1={-4} y1={4} x2={4} y2={-4} stroke={c} strokeWidth="2" /><text x={0} y={20} fontSize="8px" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>INT</text></g>;
   }
+  if (e.type === "deviatore") {
+    // deviatore: doppia "linea" che cambia direzione
+    const cc = isSel ? "#2563EB" : "#9333EA";
+    return <g><circle cx={0} cy={0} r={11} fill="white" stroke={cc} strokeWidth="2" /><line x1={-5} y1={4} x2={0} y2={-4} stroke={cc} strokeWidth="2" /><line x1={0} y1={-4} x2={5} y2={3} stroke={cc} strokeWidth="2" /><text x={0} y={21} fontSize="8px" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={cc}>DEV</text></g>;
+  }
+  if (e.type === "punto-luce-led") {
+    // punto luce LED: cerchio + simbolo lampadina + sigla LED
+    const cc = isSel ? "#2563EB" : "#F59E0B";
+    return <g><circle cx={0} cy={0} r={12} fill="white" stroke={cc} strokeWidth="2" /><circle cx={0} cy={-1} r={5} fill={cc} /><line x1={-6} y1={-6} x2={6} y2={6} stroke={cc} strokeWidth="1.2" /><line x1={-6} y1={6} x2={6} y2={-6} stroke={cc} strokeWidth="1.2" /><text x={0} y={22} fontSize="8px" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={cc}>LED</text></g>;
+  }
   if (e.type === "luce" || e.type === "punto-luce") {
     return <g><circle cx={0} cy={0} r={12} fill="white" stroke={c} strokeWidth="2" /><line x1={-8} y1={-8} x2={8} y2={8} stroke={c} strokeWidth="1.5" /><line x1={-8} y1={8} x2={8} y2={-8} stroke={c} strokeWidth="1.5" /><text x={0} y={22} fontSize="8px" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>LUCE</text></g>;
   }
-  return null;
+  // fallback: cerchio piccolo neutro per non far sparire elementi sconosciuti
+  return <g><circle cx={0} cy={0} r={9} fill="white" stroke={c} strokeWidth="1.5" /><text x={0} y={3} fontSize="8px" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="700" fill={c}>?</text></g>;
 }
 
 function PlumbingSymbol({ p, isSel }) {
@@ -1438,7 +1515,10 @@ export default function Canvas2D({
               }}
               style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
               data-testid={`elec-${e.id}`}
-            ><ElectricalSymbol e={e} isSel={isSel} /></g>
+            >
+              <WallSideIndicator walls={walls} x={e.x} y={e.y} side={e.wall_side || 0} color={isSel ? "#2563EB" : "#7C3AED"} />
+              <ElectricalSymbol e={e} isSel={isSel} />
+            </g>
           );
         })}
 
@@ -1457,7 +1537,10 @@ export default function Canvas2D({
               }}
               style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
               data-testid={`plumb-${p.id}`}
-            ><PlumbingSymbol p={p} isSel={isSel} /></g>
+            >
+              <WallSideIndicator walls={walls} x={p.x} y={p.y} side={p.wall_side || 0} color={isSel ? "#2563EB" : "#0EA5E9"} />
+              <PlumbingSymbol p={p} isSel={isSel} />
+            </g>
           );
         })}
 
@@ -1476,7 +1559,10 @@ export default function Canvas2D({
               }}
               style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
               data-testid={`gas-${g.id}`}
-            ><GasSymbol g={g} isSel={isSel} /></g>
+            >
+              <WallSideIndicator walls={walls} x={g.x} y={g.y} side={g.wall_side || 0} color={isSel ? "#2563EB" : "#EAB308"} />
+              <GasSymbol g={g} isSel={isSel} />
+            </g>
           );
         })}
 
@@ -1495,7 +1581,10 @@ export default function Canvas2D({
               }}
               style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
               data-testid={`hvac-${h.id}`}
-            ><HvacSymbol h={h} isSel={isSel} /></g>
+            >
+              <WallSideIndicator walls={walls} x={h.x} y={h.y} side={h.wall_side || 0} color={isSel ? "#2563EB" : "#0F766E"} />
+              <HvacSymbol h={h} isSel={isSel} />
+            </g>
           );
         })}
 

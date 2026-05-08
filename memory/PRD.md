@@ -1,5 +1,26 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 26 — Feb 2026 — 3D-only Mode + Workflow Commessa Completo)
+- ✅ **Toggle 2D/3D/Both**: nuovo selettore in Editor toolbar — l'utente può lavorare solo in 2D, solo in 3D, o entrambi affiancati. Sostituito il vecchio bottone "Mostra/Nascondi 3D".
+- ✅ **Workflow Commessa Completo** (`/commesse/:cid/workflow`):
+  - Nuova pagina `CommessaWorkflow.jsx` con **8 tab**: Contratto · Documenti · Materiali · Computo · Artigiani · Fasi cantiere · Cassa · Resoconto.
+  - 6 KPI cards live in alto: Preventivato · Costo previsto · Costo confermato · Incassato (+ saldo da incassare) · Uscite · Margine attuale.
+  - **Tab 1 Contratto**: link/testo + check "Firmato dal cliente" + data firma.
+  - **Tab 2 Documenti**: tabella con tipi (progetto/tavola/doc_casa/doc_cliente/altro), link a Drive/Dropbox, note.
+  - **Tab 3 Materiali**: tabella editabile con voci backoffice + qty + prezzo + firma cliente.
+  - **Tab 4 Computo Metrico**: rigenerato auto-magic dal preventivo collegato. Ogni riga ha `stato_assegnazione` (da_assegnare/artigiano/interno/autorizzato).
+  - **Tab 5 Artigiani**: upload preventivi (link PDF + testo estratto). **AI confronta** con voci backoffice e ritorna giudizio + scarto%. Soglia +10% rivendita → richiede autorizzazione admin/responsabile/area_manager. Modalità "Operai interni" (no preventivo, costo = prezzo_acquisto).
+  - **Tab 6 Fasi cantiere**: chi (interno/artigiano) fa cosa (titolo + voci) quando (data inizio/fine + stato).
+  - **Tab 7 Cassa**: incassi (cliente) + uscite (artigiani/fornitori) + grafico saldo.
+  - **Tab 8 Resoconto**: confronto Partenza vs Arrivo con Δ vs atteso, alert rosso se margine < previsto, alert verde se cantiere chiuso in attivo.
+- ✅ **Backend completo** (`routes_commessa_workflow.py`, ~430 righe):
+  - Endpoint per ognuno dei 8 tab + `/marginalita` (live) + `/resoconto`.
+  - **AI analisi** preventivi artigiani: confronto vs `prezzo_acquisto` e `prezzo_rivendita` delle voci backoffice + giudizio testuale italiano + giudizio AI (Gemini Flash, opzionale, se `EMERGENT_LLM_KEY` configurato).
+  - **Notifiche automatiche**: quando un preventivo supera la soglia, viene creata una `notifiche` per ruolo `admin` con link al workflow.
+  - **Endpoint autorizzazione** (`/autorizza`): solo admin/responsabile/area_manager possono autorizzare un preventivo artigiano sopra soglia.
+  - **Notifiche utente** (`GET /notifiche/me`, `POST /notifiche/{id}/letta`): filtra per `target_user_id` o `target_role`.
+- ✅ **Test pytest** `tests/test_workflow_commessa.py` (E2E 10 step: contratto → documento → computo → artigiano OK → artigiano da_autorizzare → notifica → autorizza → cassa → fase → marginalità + resoconto): **PASSED**. Totale 6/6 test PASSED.
+
 ## Recent Updates (Round 25 — Feb 2026 — 3D Interattivo + Drag Demolizione + Fix Tavole)
 - ✅ **3D Click → Selezione**: implementato `Picker3D` con raycaster Three.js. Cliccare su una stanza, muro o oggetto nel 3D ora apre il pannello proprietà a destra (sync con `selected` del 2D). Distinzione click vs orbit-drag (movimento <4px = click).
 - ✅ **3D Highlight selezionato**: nuovo `Highlight3D` che disegna `EdgesGeometry` arancione attorno all'elemento selezionato (sia da 2D che da 3D click).

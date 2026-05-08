@@ -86,7 +86,9 @@ export default function Editor() {
   const [tool, setTool] = useState("select");
   const [selected, setSelected] = useState(null);
   const [selectedMaterial, setSelectedMaterial] = useState("furn-sofa");
-  const [show3D, setShow3D] = useState(true);
+  const [viewLayout, setViewLayout] = useState("both"); // "2d" | "3d" | "both"
+  const show2D = viewLayout === "2d" || viewLayout === "both";
+  const show3D = viewLayout === "3d" || viewLayout === "both";
   const [saving, setSaving] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
@@ -407,7 +409,7 @@ export default function Editor() {
         }
       } else {
         // Per interior_room/exterior usiamo lo snapshot 3D
-        if (!show3D) { setShow3D(true); await new Promise((res) => setTimeout(res, 900)); }
+        if (!show3D) { setViewLayout("both"); await new Promise((res) => setTimeout(res, 900)); }
         if (!viewer3DRef.current) { toast.error("Vista 3D non disponibile."); setAiLoading(false); return; }
         await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
         snap = viewer3DRef.current.snapshot();
@@ -711,7 +713,11 @@ export default function Editor() {
           <Button size="sm" variant="ghost" className="rounded-sm h-8 px-2" onClick={redo} title="Ripristina (Ctrl+Shift+Z)" data-testid="redo-btn"><RotateCw size={14} /></Button>
           <div className="w-px h-5 bg-zinc-200 mx-1"></div>
           <Button size="sm" variant="outline" className="rounded-sm h-8 px-2" onClick={() => setFloorplanOpen(true)} title="Importa Pianta da immagine (AI)" data-testid="open-floorplan-import"><Upload size={14} /></Button>
-          <Button size="sm" variant="outline" className="rounded-sm h-8 px-2" onClick={() => setShow3D(v => !v)} title={show3D ? "Nascondi 3D" : "Mostra 3D"} data-testid="toggle-3d">{show3D ? <EyeOff size={14} /> : <Eye size={14} />}</Button>
+          <div className="flex border border-zinc-300 rounded-sm overflow-hidden h-8" data-testid="view-layout-toggle">
+            <button onClick={() => setViewLayout("2d")} className={`px-2 text-[10px] uppercase tracking-widest ${viewLayout === "2d" ? "bg-zinc-900 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"}`} title="Solo planimetria 2D" data-testid="view-2d-only">2D</button>
+            <button onClick={() => setViewLayout("both")} className={`px-2 text-[10px] uppercase tracking-widest border-l border-r border-zinc-300 ${viewLayout === "both" ? "bg-zinc-900 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"}`} title="Affiancato" data-testid="view-both">2D+3D</button>
+            <button onClick={() => setViewLayout("3d")} className={`px-2 text-[10px] uppercase tracking-widest ${viewLayout === "3d" ? "bg-zinc-900 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"}`} title="Solo vista 3D" data-testid="view-3d-only">3D</button>
+          </div>
           <Button size="sm" variant="outline" className="rounded-sm h-8 px-2" onClick={() => setAiOpen(true)} title="Render AI fotorealistico" data-testid="open-ai-render"><Sparkles size={14} /></Button>
           <Button size="sm" variant="outline" className="rounded-sm h-8 px-2" onClick={() => setTavoleOpen(true)} title="Tavole di Progetto" data-testid="open-tavole"><FileImage size={14} /></Button>
           <Button size="sm" variant="outline" className="rounded-sm h-8 px-2" onClick={exportPDF} title="Esporta preventivo PDF" data-testid="export-pdf-button"><Download size={14} /></Button>
@@ -885,6 +891,7 @@ export default function Editor() {
 
         {/* Center */}
         <main className="flex-1 flex min-w-0">
+          {show2D && (
           <div className={show3D ? "flex-1 min-w-0 border-r border-zinc-200" : "flex-1 min-w-0"}>
             <div className="h-8 border-b border-zinc-200 flex items-center px-3 bg-zinc-50">
               <Ruler size={12} className="mr-1.5 text-zinc-500" />
@@ -925,6 +932,7 @@ export default function Editor() {
               </div>
             </div>
           </div>
+          )}
           {show3D && (
             <div className="flex-1 min-w-0">
               <div className="h-8 border-b border-zinc-200 flex items-center px-3 bg-zinc-50">

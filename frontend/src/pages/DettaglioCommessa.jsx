@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Check, Save, Plus, Trash2, FileText, Upload, Edit2, X } from "lucide-react";
+import { Check, Save, Plus, Trash2, FileText, Upload, Edit2, X, Hammer } from "lucide-react";
 
 const TABS = ["Preventivo","Calendario","Checklist","Materiali","Computo Metrico","Voci e Acquisti","Documenti","Dati Economici"];
 const PKG_NAMES = { "pkg-basic": "BASIC", "pkg-smart": "SMART", "pkg-premium": "PREMIUM", "pkg-elite": "ELITE" };
@@ -63,6 +63,7 @@ export default function DettaglioCommessa() {
               <option value="completata">Completata</option>
               <option value="sospesa">Sospesa</option>
             </select>
+            <Button onClick={() => nav(`/commesse/${c.id}/workflow`)} variant="outline" className="border-blue-500 text-blue-700" data-testid="open-workflow-btn"><Hammer className="h-4 w-4 mr-2" />Workflow Cantiere</Button>
             <Button onClick={invitaCliente} variant="outline" data-testid="invita-cliente-btn" className="border-emerald-500 text-emerald-700"><FileText className="h-4 w-4 mr-2" />Invita cliente al portale</Button>
             <Button onClick={() => save({})} data-testid="com-save" style={{ background: "var(--brand)", color: "white" }}><Save className="h-4 w-4 mr-2" />Salva</Button>
           </div>

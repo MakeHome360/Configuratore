@@ -56,3 +56,4 @@ export const statoCommessaBadge = (stato) => {
 
 export const fmtEur = (n) => `€ ${Number(n || 0).toLocaleString("it-IT", { maximumFractionDigits: 0 })}`;
 export const fmtEur2 = (n) => `€ ${Number(n || 0).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+export const fmtNum = (n, dec = 2) => Number(n || 0).toLocaleString("it-IT", { minimumFractionDigits: dec, maximumFractionDigits: dec });

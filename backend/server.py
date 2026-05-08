@@ -1128,6 +1128,9 @@ _r10 = build_round10_router(db, get_current_user, create_access_token)
 app.include_router(_r10, prefix="/api")
 _render = build_render_router(db, get_current_user)
 app.include_router(_render, prefix="/api")
+from routes_commessa_workflow import build_commessa_workflow_router
+_cwf = build_commessa_workflow_router(db, get_current_user)
+app.include_router(_cwf, prefix="/api")
 
 app.add_middleware(
     CORSMiddleware,

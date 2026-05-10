@@ -1,5 +1,25 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 28 — Feb 2026 — Fix critici Round 27 utente)
+- ✅ **Extras Pacchetto: regola corretta** — gli extras ora vengono conteggiati SOLO se `qty_richiesta > included_qty` oppure se `included_qty === 0`. Rimossa la vecchia logica "price-over-soglia su qty inclusa" che gonfiava il preventivo. La soglia pacchetto resta come avviso informativo amber sopra l'input (non genera più extra).
+  - Caso A: qty=10, incl=15, prezzo=30€ → Extra: 0€ ✓
+  - Caso B: qty=20, incl=15, prezzo=30€ → Extra: 5 × 30 = 150€ ✓
+  - Caso C: qty=10, incl=0, prezzo=30€ → Extra: 10 × 30 = 300€ ✓
+- ✅ **Input numerici NON vanno più negativi**: aggiunto `min={0}` a TUTTI gli input number in PreventivoPacchetto, PreventivoInfissi, PreventivoBagno, PreventivoComposite, InfissoQuickConfigurator (mq, qty, sconto, IVA, prezzo, larghezza, altezza, sicurezza%, dir. lavori%). Validazione anche on-change con `Math.max(0, …)`.
+- ✅ **Configuratore Infissi ANTE visibili**: separatori spessi (rect 6px) + cerchi numerati `1/2/3/4` in basso a ogni anta nell'AbacoInfisso SVG (sia PreventivoInfissi sia InfissoQuickConfigurator). Adesso un infisso a "2 ante" è inconfondibilmente a 2 ante.
+- ✅ **3D Viewer FIX CRITICO scena vuota**: il `center` della camera ora considera SIA `walls` SIA `rooms.points` (prima solo walls → progetti senza muri = camera puntata a origine = stanze fuori vista). Aggiunta anche posizione iniziale camera adattiva alla bbox e ground/grid dimensionati alla casa (non più 60m × 60m fissi).
+- ✅ **3D Drag&Drop COMPLETO** (richiesta utente "Tutto"): il `Picker3D` ora supporta drag di **items, rooms, walls, doors, windows** (non più solo items). Ogni kind ha la sua logica di commit:
+  - items → aggiorna (x, y)
+  - rooms → trasla tutti i `points` di delta(x, y)
+  - walls → trasla entrambi gli endpoint x1,y1,x2,y2
+  - doors/windows → ricalcola `t` proiettando il punto sul segmento del muro
+  - Editor.jsx dispatcha onDrag per `kind` aggiornando lo state corretto.
+- ✅ **Porte 3D allineate**: refactor del rendering porte con `THREE.Group` con pivot al cardine. Il pannello porta è ora offset dal cardine (non più dal centro del muro) e la rotazione (apertura 30°) avviene attorno al cardine corretto, rispettando `d.hinge` (left/right) e `d.swing` (inside/outside). Maniglia posizionata sul lato opposto al cardine.
+- ✅ **Finestre 3D con ante**: aggiunti divider verticali per finestre con `ante > 1`.
+- ✅ **WallSideIndicator sempre visibile + rotation-aware**: la freccia "Lato A/B" è counter-rotata per rispettare la rotazione dell'elemento (prima per electrical/hvac con rotation != 0 puntava nella direzione sbagliata). Quando `wall_side = 0` (Centro), mostra un cerchio tratteggiato grigio invece di scomparire. Aggiunta label "A"/"B" sopra la freccia.
+- ✅ **Fix /preventivoinfissi/new** (trovato dal testing agent): `isNew = !id || id === 'new'` (prima `!id` falliva perché useParams ritorna la stringa 'new' come id → 404 + crash UI).
+- ✅ **Tests**: `pytest` 89/97 passed (3 stale fixtures pre-esistenti, 1 fixture-env minore). Frontend smoke validato via screenshot tool.
+
 ## Recent Updates (Round 27 — Feb 2026 — No-AI + Gantt + Upload + Drag3D + Title forzato)
 - ✅ **Title browser FORZATO via JS**: `useEffect` in `App.js` con interval che riscrive `document.title` ogni 1.5s contro lo script Emergent esterno che lo sovrascrive. Fix definitivo.
 - ✅ **Rimossa AI da workflow artigiani**: ora SOLO controllo matematico:

@@ -23,18 +23,38 @@ function buildScene(project, catalog) {
     };
   });
 
-  // Ground
+  // Ground & grid: dimensioni adattate alla bbox del progetto (così non "soffoca" la casa)
+  let gMinX = Infinity, gMinZ = Infinity, gMaxX = -Infinity, gMaxZ = -Infinity;
+  (project.walls || []).forEach((w) => {
+    gMinX = Math.min(gMinX, w.x1, w.x2); gMaxX = Math.max(gMaxX, w.x1, w.x2);
+    gMinZ = Math.min(gMinZ, w.y1, w.y2); gMaxZ = Math.max(gMaxZ, w.y1, w.y2);
+  });
+  (project.rooms || []).forEach((r) => (r.points || []).forEach((p) => {
+    if (typeof p.x !== "number") return;
+    gMinX = Math.min(gMinX, p.x); gMaxX = Math.max(gMaxX, p.x);
+    gMinZ = Math.min(gMinZ, p.y); gMaxZ = Math.max(gMaxZ, p.y);
+  }));
+  let groundSize = 20; // default 20m
+  let groundCenterX = 0, groundCenterZ = 0;
+  if (isFinite(gMinX)) {
+    const sx = (gMaxX - gMinX) * CM;
+    const sz = (gMaxZ - gMinZ) * CM;
+    groundSize = Math.max(sx, sz, 6) + 8; // margine 4m per lato
+    groundCenterX = ((gMinX + gMaxX) / 2) * CM;
+    groundCenterZ = ((gMinZ + gMaxZ) / 2) * CM;
+  }
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(60, 60),
+    new THREE.PlaneGeometry(groundSize, groundSize),
     new THREE.MeshStandardMaterial({ color: 0xfafafa, roughness: 0.9 })
   );
   ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -0.002;
+  ground.position.set(groundCenterX, -0.002, groundCenterZ);
   ground.receiveShadow = true;
   root.add(ground);
 
-  const grid = new THREE.GridHelper(60, 60, 0xd4d4d8, 0xe4e4e7);
-  grid.position.y = 0;
+  const gridDivs = Math.max(10, Math.round(groundSize));
+  const grid = new THREE.GridHelper(groundSize, gridDivs, 0xd4d4d8, 0xe4e4e7);
+  grid.position.set(groundCenterX, 0, groundCenterZ);
   root.add(grid);
 
   // Room floors + ceilings
@@ -608,9 +628,9 @@ const Viewer3D = forwardRef(function Viewer3D({ project, catalog, onSelect, onDr
     },
   }));
 
-  const center = useMemo(() => {
+  const { center, initialCam } = useMemo(() => {
     const walls = project.walls || [];
-    if (!walls.length) return [0, 0, 0];
+    const rooms = project.rooms || [];
     let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
     walls.forEach((w) => {
       minX = Math.min(minX, w.x1, w.x2);
@@ -618,13 +638,32 @@ const Viewer3D = forwardRef(function Viewer3D({ project, catalog, onSelect, onDr
       minZ = Math.min(minZ, w.y1, w.y2);
       maxZ = Math.max(maxZ, w.y1, w.y2);
     });
-    return [((minX + maxX) / 2) * CM, 0, ((minZ + maxZ) / 2) * CM];
-  }, [project.walls]);
+    rooms.forEach((r) => {
+      (r.points || []).forEach((p) => {
+        if (typeof p.x !== "number" || typeof p.y !== "number") return;
+        minX = Math.min(minX, p.x);
+        maxX = Math.max(maxX, p.x);
+        minZ = Math.min(minZ, p.y);
+        maxZ = Math.max(maxZ, p.y);
+      });
+    });
+    if (!isFinite(minX)) return { center: [0, 0, 0], initialCam: [8, 6, 10] };
+    const cx = ((minX + maxX) / 2) * CM;
+    const cz = ((minZ + maxZ) / 2) * CM;
+    const sizeX = (maxX - minX) * CM;
+    const sizeZ = (maxZ - minZ) * CM;
+    const size = Math.max(sizeX, sizeZ, 4);
+    const camDist = size * 1.3 + 4;
+    return {
+      center: [cx, 0, cz],
+      initialCam: [cx + camDist * 0.6, camDist * 0.65, cz + camDist],
+    };
+  }, [project.walls, project.rooms]);
 
   return (
     <Canvas
       shadows
-      camera={{ position: [8, 6, 10], fov: 45, near: 0.1, far: 500 }}
+      camera={{ position: initialCam, fov: 45, near: 0.1, far: 500 }}
       gl={{ preserveDrawingBuffer: true, antialias: true }}
       onCreated={({ gl, scene, camera }) => {
         glRef.current = { gl, scene, camera };

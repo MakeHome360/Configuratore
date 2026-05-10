@@ -50,7 +50,21 @@ function AbacoInfissoMini({ tipologia, colore, larghezza, altezza, ante, tappare
       <rect x={x + frameW} y={y + frameW} width={ww - 2 * frameW} height={hh - 2 * frameW} fill="#DBEAFE" fillOpacity="0.45" stroke={stroke} strokeWidth="1" />
       {!isScorrevole && antaCount > 1 && Array.from({ length: antaCount - 1 }).map((_, k) => {
         const dx = x + (ww / antaCount) * (k + 1);
-        return <line key={k} x1={dx} y1={y + frameW} x2={dx} y2={y + hh - frameW} stroke={stroke} strokeWidth="2" />;
+        return (
+          <g key={k}>
+            <rect x={dx - 3} y={y + frameW} width={6} height={hh - 2 * frameW} fill={frameColor} stroke={stroke} strokeWidth="1.2" />
+            <line x1={dx} y1={y + frameW + 2} x2={dx} y2={y + hh - frameW - 2} stroke={stroke} strokeWidth="0.5" />
+          </g>
+        );
+      })}
+      {!isScorrevole && antaCount > 1 && Array.from({ length: antaCount }).map((_, k) => {
+        const ax = x + (ww / antaCount) * (k + 0.5);
+        return (
+          <g key={`n-${k}`} pointerEvents="none">
+            <circle cx={ax} cy={y + hh - 12} r={8} fill="white" stroke={stroke} strokeWidth="1" opacity="0.92" />
+            <text x={ax} y={y + hh - 8} textAnchor="middle" fontSize="11" fontWeight="900" fontFamily="JetBrains Mono" fill={stroke}>{k + 1}</text>
+          </g>
+        );
       })}
       {zanzariera && (
         <rect x={x + frameW + 1} y={y + frameW + 1} width={(ww - 2 * frameW - 2) / 2} height={hh - 2 * frameW - 2} fill="url(#mesh-z)" opacity="0.7" />
@@ -182,9 +196,9 @@ export function InfissoQuickConfigurator({ open, onClose, onConfirm }) {
                     <option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={4}>4</option>
                   </select>
                 </div>
-                <div className="col-span-4 sm:col-span-3 lg:col-span-1"><Label className="text-xs">L (cm)</Label><Input type="number" className="h-10 text-base font-mono font-bold text-center" value={it.larghezza} onChange={(e) => upd(i, "larghezza", Number(e.target.value))} /></div>
-                <div className="col-span-4 sm:col-span-3 lg:col-span-1"><Label className="text-xs">H (cm)</Label><Input type="number" className="h-10 text-base font-mono font-bold text-center" value={it.altezza} onChange={(e) => upd(i, "altezza", Number(e.target.value))} /></div>
-                <div className="col-span-4 sm:col-span-2 lg:col-span-1"><Label className="text-xs">Qty</Label><Input type="number" className="h-10 text-base font-mono font-bold text-center" value={it.qty} onChange={(e) => upd(i, "qty", Number(e.target.value))} /></div>
+                <div className="col-span-4 sm:col-span-3 lg:col-span-1"><Label className="text-xs">L (cm)</Label><Input type="number" min={20} step="1" className="h-10 text-base font-mono font-bold text-center" value={it.larghezza} onChange={(e) => upd(i, "larghezza", Math.max(20, Number(e.target.value) || 20))} /></div>
+                <div className="col-span-4 sm:col-span-3 lg:col-span-1"><Label className="text-xs">H (cm)</Label><Input type="number" min={20} step="1" className="h-10 text-base font-mono font-bold text-center" value={it.altezza} onChange={(e) => upd(i, "altezza", Math.max(20, Number(e.target.value) || 20))} /></div>
+                <div className="col-span-4 sm:col-span-2 lg:col-span-1"><Label className="text-xs">Qty</Label><Input type="number" min={1} step="1" className="h-10 text-base font-mono font-bold text-center" value={it.qty} onChange={(e) => upd(i, "qty", Math.max(1, Number(e.target.value) || 1))} /></div>
                 <div className="col-span-12 mt-1 flex flex-wrap items-center gap-3 bg-zinc-50 border border-dashed border-zinc-300 rounded p-2 text-xs">
                   <span className="font-semibold text-zinc-700">Accessori:</span>
                   <label className="flex items-center gap-1.5 cursor-pointer">

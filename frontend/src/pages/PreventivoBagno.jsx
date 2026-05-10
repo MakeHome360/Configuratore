@@ -112,8 +112,8 @@ export default function PreventivoBagno() {
 
             <Section title="Piastrelle">
               <div className="grid grid-cols-3 gap-3">
-                <Field label="MQ Piastrelle"><Input type="number" value={piastrelleMq} onChange={(e) => setPiastrelleMq(Number(e.target.value))} /></Field>
-                <Field label="Prezzo €/MQ"><Input type="number" value={piastrellePrezzo} onChange={(e) => setPiastrellePrezzo(Number(e.target.value))} /></Field>
+                <Field label="MQ Piastrelle"><Input type="number" min={0} step="0.5" value={piastrelleMq} onChange={(e) => setPiastrelleMq(Math.max(0, Number(e.target.value) || 0))} /></Field>
+                <Field label="Prezzo €/MQ"><Input type="number" min={0} step="1" value={piastrellePrezzo} onChange={(e) => setPiastrellePrezzo(Math.max(0, Number(e.target.value) || 0))} /></Field>
                 <Field label="Totale"><Input disabled value={fmtEur2(piastrelleTotal)} /></Field>
               </div>
             </Section>
@@ -124,8 +124,8 @@ export default function PreventivoBagno() {
                 {extras.map((x, i) => (
                   <div key={i} className="grid grid-cols-12 gap-2 items-center">
                     <Input className="col-span-6" placeholder="Descrizione" value={x.nome} onChange={(e) => { const c = [...extras]; c[i].nome = e.target.value; setExtras(c); }} />
-                    <Input className="col-span-2" type="number" placeholder="Prezzo" value={x.prezzo} onChange={(e) => { const c = [...extras]; c[i].prezzo = Number(e.target.value); setExtras(c); }} />
-                    <Input className="col-span-2" type="number" placeholder="Qty" value={x.qty} onChange={(e) => { const c = [...extras]; c[i].qty = Number(e.target.value); setExtras(c); }} />
+                    <Input className="col-span-2" type="number" min={0} step="1" placeholder="Prezzo" value={x.prezzo} onChange={(e) => { const c = [...extras]; c[i].prezzo = Math.max(0, Number(e.target.value) || 0); setExtras(c); }} />
+                    <Input className="col-span-2" type="number" min={1} step="1" placeholder="Qty" value={x.qty} onChange={(e) => { const c = [...extras]; c[i].qty = Math.max(1, Number(e.target.value) || 1); setExtras(c); }} />
                     <div className="col-span-1 text-right font-mono text-sm">{fmtEur((x.prezzo || 0) * (x.qty || 1))}</div>
                     <button className="col-span-1 p-1 rounded hover:bg-rose-50" onClick={() => setExtras(extras.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4 text-rose-600" /></button>
                   </div>
@@ -143,8 +143,8 @@ export default function PreventivoBagno() {
               {extrasTotal > 0 && <Row label="Extra" value={fmtEur(extrasTotal)} />}
               <Row label="Totale IVA Esclusa" value={fmtEur2(subtotal)} bold />
               <div className="grid grid-cols-2 gap-2">
-                <Field label="Sconto €"><Input type="number" value={sconto} onChange={(e) => setSconto(Number(e.target.value))} /></Field>
-                <Field label="IVA %"><Input type="number" value={ivaPct} onChange={(e) => setIvaPct(Number(e.target.value))} /></Field>
+                <Field label="Sconto €"><Input type="number" min={0} step="1" value={sconto} onChange={(e) => setSconto(Math.max(0, Number(e.target.value) || 0))} /></Field>
+                <Field label="IVA %"><Input type="number" min={0} max={100} step="0.5" value={ivaPct} onChange={(e) => setIvaPct(Math.max(0, Math.min(100, Number(e.target.value) || 10)))} /></Field>
               </div>
               <Row label="TOTALE IVA INCLUSA" value={fmtEur2(totale)} bold big />
               <Field label="Note"><Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} /></Field>

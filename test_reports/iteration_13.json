@@ -1,0 +1,50 @@
+{
+  "summary": "Round 27 testing — extras logic, number inputs min=0, infissi ante dividers, view toggle PASS. Found 1 critical bug in PreventivoInfissi /new route (treated 'new' as ID → 404, blocking page with runtime error overlay) — FIXED inline. 3D scene visibility on Quote4Lati project is concerning: 3D canvas mounts and renders grid but no walls/room floors visible despite 3 rooms present. WallSideIndicator and 3D drag&drop NOT fully exercised (require seed project with electrical elements + canvas drag is unreliable in headless).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/voci", "issue": "test_biz expects 47 voci but DB has 107 (stale assertion, pre-existing, not Round 27 regression)"},
+      {"endpoint": "/api/voci (test_iter7)", "issue": "Demolizione rivestimento prezzo_acquisto 18 vs expected 16.5 (stale fixture)"},
+      {"endpoint": "/api/assegnazioni (test_iter10)", "issue": "test_full_flow now requires firmed contratto_subappalto (business rule changed since fixture)"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "PreventivoInfissi.jsx (route /preventivoinfissi/new)", "issue": "isNew = !id is wrong because react-router-dom passes id='new' (truthy) → triggers GET /api/preventivi/new → 404 → red runtime error overlay blocks entire UI on page load", "selector": "/preventivoinfissi/new", "priority": "CRITICAL — FIXED by testing agent (one-line change: const isNew = !id || id === 'new')"},
+      {"component": "Viewer3D / Editor 3D pane", "issue": "Quote4Lati project (3 rooms) opened in 3D-only mode shows ONLY the grey grid floor plane; no room walls, no room floor polygons, no elements visible. Camera may be misplaced OR rooms not rendered in 'stato di fatto' default tab.", "selector": "[data-testid=view-3d-only]", "priority": "HIGH — needs verification by main agent (matches user complaint 'doors misaligned 2D/3D' and '3D drag broken')"},
+      {"component": "PreventivoInfissi anta header label", "issue": "When user selects Ante=4 the descriptive text still reads 'Finestra 1 anta' (it's the tipologia name). Cosmetic — but confusing UX in screenshots.", "selector": "abaco preview <text>ante: N</text>", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/ (existing pytest suite — 89 passed, 3 stale failures, 12 fixture-env errors)"
+  ],
+  "action_items": [
+    "VERIFY main agent: 3D Viewer renders walls + room floors when project has rooms. Open /editor/28ed180d-6354-48ae-8ef4-6b3f36e2d659 → click view-3d-only → currently shows only grey grid. Check Viewer3D.jsx room/wall rendering and default camera target/distance.",
+    "Investigate 3D drag&drop on canvas — couldn't be exercised via Playwright; main agent should manually drag a wall/door/room in 3D and verify state commits.",
+    "Re-test WallSideIndicator with a project that has electrical 'presa' near a wall (requires seed creation).",
+    "Consider updating pytest fixtures to use BASE_URL fallback (some tests fail at import on os.environ['REACT_APP_BACKEND_URL'] / ['MONGO_URL']) — minor cleanup.",
+    "Consider auto-syncing tipologia label with ante count in InfissoQuickConfigurator / PreventivoInfissi abaco preview header text."
+  ],
+  "critical_code_review_comments": [
+    "PreventivoInfissi.jsx: `const isNew = !id;` is fragile when /new is used as sentinel route. The fix `id === 'new'` works but a route guard or two routes (/preventivoinfissi/new vs /preventivoinfissi/:id) would be cleaner.",
+    "Editor.jsx still 2523 lines — over 700 LOC threshold. Splitting recommended (toolbar, view layout, drag handlers) for maintainability.",
+    "PreventivoPacchetto extras logic (lines 186-205) correctly implements user spec: extras=0 when qty <= incl && incl>0; extras=qty*price when incl=0; extras=(qty-incl)*price otherwise. Validated at multiple boundaries.",
+    "InfissoQuickConfigurator + PreventivoInfissi SVG anta dividers (rects 6px wide) + numbered circles (1..N) render correctly for ante=2,3,4 — visually confirmed via screenshot.",
+    "view-2d-only / view-3d-only / view-both data-testids present and work as designed (verified canvas/svg counts in each state)."
+  ],
+  "updated_files": [
+    "/app/frontend/src/pages/PreventivoInfissi.jsx (line 14: isNew = !id || id === 'new')"
+  ],
+  "success_rate": {
+    "backend": "92% (89/97 effective tests passed; 3 stale assertions + env-fixture errors)",
+    "frontend": "extras logic 100%, min=0 inputs 100%, ante dividers 100% (visual), view toggle 100%; 3D scene rendering NEEDS REVIEW; WallSideIndicator + 3D drag NOT TESTED"
+  },
+  "test_credentials": "admin@ristruttura.app / Admin12345! (working)",
+  "seed_data_creation": "None. Used existing project Quote4Lati (id 28ed180d-6354-48ae-8ef4-6b3f36e2d659) for editor tests.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "PreventivoInfissi /new bug fix applied. PreventivoPacchetto extras logic confirmed at boundaries: incl=25, qty=30 → extra='+5,00 m² × 32 € = 162 €' ✓; qty=25 (==incl) → extra='—' ✓. All number inputs have min=0. View toggle works. 3D Viewer on Quote4Lati only shows grid (no walls/floors) — main concern remaining. WallSideIndicator + 3D drag not tested due to seed/Playwright limitations.",
+  "rca of the issue": "PreventivoInfissi /new 404 bug: useParams returns 'new' as the id value when URL is /preventivoinfissi/new. The component used `isNew = !id` which evaluates false for the truthy string 'new', causing api.get('/preventivi/new') to fire and 404. Mitigation: changed to `isNew = !id || id === 'new'`. Verified by reload — page now renders form, ante selector works, abaco SVG draws dividers and numbered circles correctly for 2/3/4 ante."
+}

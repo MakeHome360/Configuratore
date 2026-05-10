@@ -11,7 +11,7 @@ import { toast } from "sonner";
 
 export default function PreventivoInfissi() {
   const { id } = useParams();
-  const isNew = !id;
+  const isNew = !id || id === "new";
   const nav = useNavigate();
   const [conf, setConf] = useState({ tipologie: [], materiali: [], vetri: [] });
   const [cliente, setCliente] = useState({ nome: "", telefono: "", email: "", indirizzo: "" });
@@ -145,9 +145,9 @@ export default function PreventivoInfissi() {
                         <option value={4}>4</option>
                       </select>
                     </div>
-                    <div className="col-span-4 sm:col-span-3 lg:col-span-1"><Label className="text-xs">L (cm)</Label><Input type="number" className="h-10 text-base font-mono font-bold text-center" value={it.larghezza} onChange={(e) => upd(i, "larghezza", Number(e.target.value))} /></div>
-                    <div className="col-span-4 sm:col-span-3 lg:col-span-1"><Label className="text-xs">H (cm)</Label><Input type="number" className="h-10 text-base font-mono font-bold text-center" value={it.altezza} onChange={(e) => upd(i, "altezza", Number(e.target.value))} /></div>
-                    <div className="col-span-4 sm:col-span-2 lg:col-span-1"><Label className="text-xs">Qty</Label><Input type="number" className="h-10 text-base font-mono font-bold text-center" value={it.qty} onChange={(e) => upd(i, "qty", Number(e.target.value))} /></div>
+                    <div className="col-span-4 sm:col-span-3 lg:col-span-1"><Label className="text-xs">L (cm)</Label><Input type="number" min={20} step="1" className="h-10 text-base font-mono font-bold text-center" value={it.larghezza} onChange={(e) => upd(i, "larghezza", Math.max(20, Number(e.target.value) || 20))} /></div>
+                    <div className="col-span-4 sm:col-span-3 lg:col-span-1"><Label className="text-xs">H (cm)</Label><Input type="number" min={20} step="1" className="h-10 text-base font-mono font-bold text-center" value={it.altezza} onChange={(e) => upd(i, "altezza", Math.max(20, Number(e.target.value) || 20))} /></div>
+                    <div className="col-span-4 sm:col-span-2 lg:col-span-1"><Label className="text-xs">Qty</Label><Input type="number" min={1} step="1" className="h-10 text-base font-mono font-bold text-center" value={it.qty} onChange={(e) => upd(i, "qty", Math.max(1, Number(e.target.value) || 1))} /></div>
                     <div className="col-span-1 text-right font-mono text-sm pt-5">{fmtEur2(it.price)}</div>
                     <button className="col-span-12 lg:col-span-1 p-1 rounded hover:bg-rose-50 self-end flex items-center justify-center" onClick={() => setItems(items.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4 text-rose-600" /></button>
                     {/* Mini-configuratore Tapparelle + Zanzariere */}
@@ -196,8 +196,8 @@ export default function PreventivoInfissi() {
               <h3 className="font-semibold pb-2 border-b border-zinc-200">Riepilogo</h3>
               <Row label="Subtotale" value={fmtEur2(subtotal)} bold />
               <div className="grid grid-cols-2 gap-2">
-                <div><Label className="text-xs">Sconto €</Label><Input type="number" value={sconto} onChange={(e) => setSconto(Number(e.target.value))} /></div>
-                <div><Label className="text-xs">IVA %</Label><Input type="number" value={ivaPct} onChange={(e) => setIvaPct(Number(e.target.value))} /></div>
+                <div><Label className="text-xs">Sconto €</Label><Input type="number" min={0} step="1" value={sconto} onChange={(e) => setSconto(Math.max(0, Number(e.target.value) || 0))} /></div>
+                <div><Label className="text-xs">IVA %</Label><Input type="number" min={0} max={100} step="0.5" value={ivaPct} onChange={(e) => setIvaPct(Math.max(0, Math.min(100, Number(e.target.value) || 10)))} /></div>
               </div>
               <Row label="TOTALE IVA INCLUSA" value={fmtEur2(totale)} bold big />
               <div><Label className="text-xs">Note</Label><Textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} /></div>
@@ -276,10 +276,26 @@ function AbacoInfisso({ tipologia, colore, larghezza, altezza, materiale, vetro,
         <rect x={x + frameW} y={y + frameW} width={ww - 2 * frameW} height={hh - 2 * frameW} fill="#DBEAFE" fillOpacity="0.55" stroke={stroke} strokeWidth="1.2" />
         {/* riflesso vetro (linea diagonale leggera) */}
         <line x1={x + frameW + 6} y1={y + frameW + 4} x2={x + ww - frameW - 6} y2={y + hh - frameW - 4} stroke="#FFFFFF" strokeOpacity="0.55" strokeWidth="3" />
-        {/* anta dividers - support 1, 2, 3, 4 ante */}
+        {/* anta dividers - support 1, 2, 3, 4 ante - SPESSI per essere visibili */}
         {!isScorrevole && antaCount > 1 && Array.from({ length: antaCount - 1 }).map((_, k) => {
           const dx = x + (ww / antaCount) * (k + 1);
-          return <line key={k} x1={dx} y1={y + frameW} x2={dx} y2={y + hh - frameW} stroke={stroke} strokeWidth="2" />;
+          return (
+            <g key={k}>
+              {/* Telaio verticale spesso che separa le ante */}
+              <rect x={dx - 3} y={y + frameW} width={6} height={hh - 2 * frameW} fill={frameColor} stroke={stroke} strokeWidth="1.2" />
+              <line x1={dx} y1={y + frameW + 2} x2={dx} y2={y + hh - frameW - 2} stroke={stroke} strokeWidth="0.5" />
+            </g>
+          );
+        })}
+        {/* Numero anta in basso a ogni pannello */}
+        {!isScorrevole && antaCount > 1 && Array.from({ length: antaCount }).map((_, k) => {
+          const ax = x + (ww / antaCount) * (k + 0.5);
+          return (
+            <g key={`n-${k}`} pointerEvents="none">
+              <circle cx={ax} cy={y + hh - 12} r={8} fill="white" stroke={stroke} strokeWidth="1" opacity="0.92" />
+              <text x={ax} y={y + hh - 8} textAnchor="middle" fontSize="11" fontWeight="900" fontFamily="JetBrains Mono" fill={stroke}>{k + 1}</text>
+            </g>
+          );
         })}
         {/* anta opening triangles (per anta) */}
         {!isScorrevole && Array.from({ length: antaCount }).map((_, k) => {

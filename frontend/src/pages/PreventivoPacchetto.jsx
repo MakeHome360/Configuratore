@@ -191,18 +191,17 @@ export default function PreventivoPacchetto() {
     const base = pkg.price_per_m2 * (prev.mq || 0);
     const extras = activeItems.reduce((s, it) => {
       const incl = it.included_qty || 0;
-      const reqs = it.qty_richiesta || 0;
+      const reqs = Math.max(0, it.qty_richiesta || 0);
+      const unitPrice = Math.max(0, it.unit_price || 0);
+      // REGOLA UTENTE: gli extra esistono SOLO quando qty richiesta supera le incluse,
+      // oppure quando la voce non era inclusa nel pacchetto (incl === 0).
+      // Nessun "extra prezzo soglia" sulla quota già inclusa.
+      if (incl === 0) {
+        // Voce non inclusa nel pacchetto → tutta extra (qty × prezzo)
+        return s + reqs * unitPrice;
+      }
       const extraQty = Math.max(0, reqs - incl);
-      const unitPrice = it.unit_price || 0;
-      // Extra QTY: paghi il costo pieno per l'eccedenza in quantità
-      const extraQtyCost = extraQty * unitPrice;
-      // Extra PREZZO (soglia pacchetto): paghi solo l'eccedenza di prezzo sulla quota INCLUSA
-      // se la voce è modificabile e la SOGLIA pacchetto unit_price_pkg è stata impostata in AdminPacchetti
-      const soglia = it.unit_price_pkg;
-      const extraPrezzoCost = (soglia != null && soglia > 0 && unitPrice > soglia)
-        ? (unitPrice - soglia) * incl
-        : 0;
-      return s + extraQtyCost + extraPrezzoCost;
+      return s + extraQty * unitPrice;
     }, 0);
     const optional = (prev.optional || []).reduce((s, o) => s + (o.total || 0), 0);
     const bagno = prev.bathroom_surcharge || 0;
@@ -331,8 +330,10 @@ export default function PreventivoPacchetto() {
                   <Label className="label-kicker">Metri quadri</Label>
                   <Input
                     type="number"
+                    min={0}
+                    step="0.5"
                     value={prev.mq}
-                    onChange={(e) => setPrev((s) => ({ ...s, mq: parseFloat(e.target.value) || 0 }))}
+                    onChange={(e) => setPrev((s) => ({ ...s, mq: Math.max(0, parseFloat(e.target.value) || 0) }))}
                     className="rounded-sm h-16 mono text-4xl mt-2"
                     data-testid="mq-input"
                   />
@@ -406,12 +407,15 @@ export default function PreventivoPacchetto() {
                         </thead>
                         <tbody>
                           {activeList.map((it) => {
-                            const extraQty = Math.max(0, (it.qty_richiesta || 0) - (it.included_qty || 0));
-                            const extraQtyCost = extraQty * (it.unit_price || 0);
+                            const incl = it.included_qty || 0;
+                            const reqs = Math.max(0, it.qty_richiesta || 0);
+                            const unitPrice = Math.max(0, it.unit_price || 0);
+                            // REGOLA UTENTE: extra SOLO se qty > incluse oppure incluse === 0.
+                            const extraQty = incl === 0 ? reqs : Math.max(0, reqs - incl);
+                            const extraQtyCost = extraQty * unitPrice;
+                            const extraCost = extraQtyCost;
                             const soglia = it.unit_price_pkg;
-                            const extraPrezzoUnit = (soglia != null && soglia > 0 && it.unit_price > soglia) ? (it.unit_price - soglia) : 0;
-                            const extraPrezzoCost = extraPrezzoUnit * (it.included_qty || 0);
-                            const extraCost = extraQtyCost + extraPrezzoCost;
+                            const overSoglia = soglia != null && soglia > 0 && unitPrice > soglia;
                             return (
                               <tr key={it.id} className="border-t border-zinc-100" data-testid={`lav-row-${it.id}`}>
                                 <td className="py-2 px-2 text-center">
@@ -435,9 +439,9 @@ export default function PreventivoPacchetto() {
                                 <td className="py-2 px-3 text-right mono text-xs text-zinc-500">{it.unit}</td>
                                 <td className="py-2 px-3 text-right mono text-zinc-500">{fmtNum(it.included_qty, 2)}</td>
                                 <td className="py-2 px-3 text-right">
-                                  <Input type="number" value={it.qty_richiesta}
+                                  <Input type="number" min={0} step="0.01" value={it.qty_richiesta}
                                     onChange={(e) => {
-                                      const v = parseFloat(e.target.value) || 0;
+                                      const v = Math.max(0, parseFloat(e.target.value) || 0);
                                       setPrev((s) => ({ ...s, items: s.items.map((x) => x.id === it.id ? { ...x, qty_richiesta: v } : x) }));
                                     }}
                                     className="rounded-sm h-7 text-right mono text-xs w-20 ml-auto"
@@ -446,12 +450,12 @@ export default function PreventivoPacchetto() {
                                 </td>
                                 <td className="py-2 px-3 text-right">
                                   {it.modificabile_dal_venditore ? (
-                                    <Input type="number" step="0.01" value={it.unit_price}
+                                    <Input type="number" min={0} step="0.01" value={it.unit_price}
                                       onChange={(e) => {
-                                        const v = parseFloat(e.target.value) || 0;
+                                        const v = Math.max(0, parseFloat(e.target.value) || 0);
                                         setPrev((s) => ({ ...s, items: s.items.map((x) => x.id === it.id ? { ...x, unit_price: v } : x) }));
                                       }}
-                                      className={`rounded-sm h-7 text-right mono text-xs w-20 ml-auto ${extraPrezzoUnit > 0 ? "border-orange-400 bg-orange-50" : ""}`}
+                                      className={`rounded-sm h-7 text-right mono text-xs w-20 ml-auto ${overSoglia ? "border-amber-400 bg-amber-50" : ""}`}
                                       data-testid={`lav-price-${it.id}`}
                                     />
                                   ) : (
@@ -464,8 +468,10 @@ export default function PreventivoPacchetto() {
                                 <td className={`py-2 px-3 text-right mono text-xs ${extraCost > 0 ? "text-orange-600 font-semibold" : "text-zinc-400"}`}>
                                   {extraCost > 0 ? (
                                     <div>
-                                      {extraQty > 0 && <div>{`+${fmtNum(extraQty, 2)} qty × ${fmtEuro(it.unit_price)} = ${fmtEuro(extraQtyCost)}`}</div>}
-                                      {extraPrezzoUnit > 0 && <div className="text-amber-700">{`+${fmtEuro(extraPrezzoUnit)}/${it.unit} × ${fmtNum(it.included_qty, 2)} (sopra soglia) = ${fmtEuro(extraPrezzoCost)}`}</div>}
+                                      <div>{`+${fmtNum(extraQty, 2)} ${it.unit} × ${fmtEuro(unitPrice)} = ${fmtEuro(extraQtyCost)}`}</div>
+                                      {overSoglia && (
+                                        <div className="text-amber-700 text-[10px]">⚠ Prezzo {fmtEuro(unitPrice)}/{it.unit} sopra soglia pacchetto {fmtEuro(soglia)}/{it.unit} (informativo)</div>
+                                      )}
                                       <div className="font-bold mt-0.5">Tot. extra: {fmtEuro(extraCost)}</div>
                                     </div>
                                   ) : "—"}
@@ -530,9 +536,9 @@ export default function PreventivoPacchetto() {
                           </div>
                         </div>
                         {selected && o.per_m2 && (
-                          <Input type="number" value={qty}
+                          <Input type="number" min={0} step="0.5" value={qty}
                             onChange={(e) => {
-                              const v = parseFloat(e.target.value) || 0;
+                              const v = Math.max(0, parseFloat(e.target.value) || 0);
                               const t = v * (o.unit_price_scontato || 0);
                               setPrev((s) => ({ ...s, optional: s.optional.map((x) => x.id === o.id ? { ...x, qty: v, total: t } : x) }));
                             }}
@@ -606,11 +612,11 @@ export default function PreventivoPacchetto() {
                   </div>
                   <div>
                     <Label className="label-kicker">Sconto %</Label>
-                    <Input type="number" value={prev.sconto_pct} onChange={(e) => setPrev((s) => ({ ...s, sconto_pct: parseFloat(e.target.value) || 0 }))} className="rounded-sm h-10 mt-1 mono" />
+                    <Input type="number" min={0} max={100} step="0.5" value={prev.sconto_pct} onChange={(e) => setPrev((s) => ({ ...s, sconto_pct: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) }))} className="rounded-sm h-10 mt-1 mono" />
                   </div>
                   <div>
                     <Label className="label-kicker">IVA %</Label>
-                    <Input type="number" value={prev.iva_pct} onChange={(e) => setPrev((s) => ({ ...s, iva_pct: parseFloat(e.target.value) || 10 }))} className="rounded-sm h-10 mt-1 mono" />
+                    <Input type="number" min={0} max={100} step="0.5" value={prev.iva_pct} onChange={(e) => setPrev((s) => ({ ...s, iva_pct: Math.max(0, Math.min(100, parseFloat(e.target.value) || 10)) }))} className="rounded-sm h-10 mt-1 mono" />
                   </div>
                 </div>
               </div>
@@ -750,11 +756,14 @@ function exportPDF(prev, pkg, totals, numero) {
   doc.text(fmtEuro(totals.base), W - 20, y, { align: "right" });
   y += 5;
 
-  // Extras
+  // Extras (allineato alla regola: extra solo se qty > incluse oppure incluse===0)
   (prev.items || []).forEach((it) => {
-    const extra = Math.max(0, (it.qty_richiesta || 0) - (it.included_qty || 0));
+    if (it.excluded) return;
+    const incl = it.included_qty || 0;
+    const reqs = Math.max(0, it.qty_richiesta || 0);
+    const extra = incl === 0 ? reqs : Math.max(0, reqs - incl);
     if (extra <= 0) return;
-    const cost = extra * (it.unit_price || 0);
+    const cost = extra * (Math.max(0, it.unit_price || 0));
     if (y > 275) { doc.addPage(); y = 20; }
     doc.text(`Extra ${it.name}`, 20, y);
     doc.text(fmtNum(extra, 2), 110, y, { align: "right" });

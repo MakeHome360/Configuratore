@@ -26,18 +26,32 @@ function nearestWallNormal(walls, x, y) {
 
 // Disegna una "linguetta" che indica il lato del muro su cui è installato un elemento.
 // side: -1 lato A, 0 nessuna, 1 lato B (uguale e contraria a -1).
-function WallSideIndicator({ walls, x, y, side, color = "#7C3AED" }) {
-  if (!side) return null;
+function WallSideIndicator({ walls, x, y, side, color = "#7C3AED", rotation = 0 }) {
   const { nx, ny } = nearestWallNormal(walls, x, y);
-  const L = 18;
-  const tipX = side * nx * L;
-  const tipY = side * ny * L;
-  // perpendicolare alla freccia per disegnare la base del triangolo
-  const px = -ny * 5, py = nx * 5;
+  const L = 24;
+  // Compensa la rotazione del parent <g rotate(...)> ricalcolando la freccia in coordinate locali
+  const rad = (-rotation * Math.PI) / 180;
+  const cos = Math.cos(rad), sin = Math.sin(rad);
+  // Vettore normale ruotato nello spazio LOCALE dell'elemento (counter-rotazione)
+  const lnx = nx * cos - ny * sin;
+  const lny = nx * sin + ny * cos;
+  if (side === 0 || side === undefined || side === null) {
+    // Mostra un piccolo dot grigio quando Centro (per indicare il selettore esiste ma non è scelto)
+    return (
+      <g pointerEvents="none">
+        <circle cx={0} cy={0} r={3} fill="none" stroke="#9CA3AF" strokeWidth={1} strokeDasharray="2,2" />
+      </g>
+    );
+  }
+  const tipX = side * lnx * L;
+  const tipY = side * lny * L;
+  const px = -lny * 6, py = lnx * 6;
   return (
     <g pointerEvents="none">
-      <line x1={0} y1={0} x2={tipX} y2={tipY} stroke={color} strokeWidth={2} />
-      <polygon points={`${tipX + side * nx * 4},${tipY + side * ny * 4} ${tipX + px},${tipY + py} ${tipX - px},${tipY - py}`} fill={color} />
+      <line x1={0} y1={0} x2={tipX} y2={tipY} stroke={color} strokeWidth={2.5} />
+      <polygon points={`${tipX + side * lnx * 5},${tipY + side * lny * 5} ${tipX + px},${tipY + py} ${tipX - px},${tipY - py}`} fill={color} stroke="white" strokeWidth={0.5} />
+      {/* Label "A" o "B" sul lato */}
+      <text x={tipX + side * lnx * 11} y={tipY + side * lny * 11 + 3} fontSize="9px" fontWeight="800" fontFamily="JetBrains Mono" textAnchor="middle" fill="white" stroke={color} strokeWidth="2.5" paintOrder="stroke fill">{side > 0 ? "B" : "A"}</text>
     </g>
   );
 }
@@ -1521,7 +1535,7 @@ export default function Canvas2D({
               style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
               data-testid={`elec-${e.id}`}
             >
-              <WallSideIndicator walls={walls} x={e.x} y={e.y} side={e.wall_side || 0} color={isSel ? "#2563EB" : "#7C3AED"} />
+              <WallSideIndicator walls={walls} x={e.x} y={e.y} side={e.wall_side || 0} color={isSel ? "#2563EB" : "#7C3AED"} rotation={e.rotation || 0} />
               <ElectricalSymbol e={e} isSel={isSel} />
             </g>
           );
@@ -1587,7 +1601,7 @@ export default function Canvas2D({
               style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
               data-testid={`hvac-${h.id}`}
             >
-              <WallSideIndicator walls={walls} x={h.x} y={h.y} side={h.wall_side || 0} color={isSel ? "#2563EB" : "#0F766E"} />
+              <WallSideIndicator walls={walls} x={h.x} y={h.y} side={h.wall_side || 0} color={isSel ? "#2563EB" : "#0F766E"} rotation={h.rotation || 0} />
               <HvacSymbol h={h} isSel={isSel} />
             </g>
           );

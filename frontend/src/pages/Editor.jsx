@@ -940,9 +940,19 @@ export default function Editor() {
                 <span className="ml-auto mono text-xs text-zinc-500">trascina · zoom</span>
               </div>
               <div className="relative" style={{ height: "calc(100% - 2rem)" }}>
-                <Viewer3D ref={viewer3DRef} project={{ ...project.data, viewMode: editMode }} catalog={catalog} selected={selected} onSelect={(s) => { setSelected(s); setSidebarOpen(true); }} onDrag={({ kind, id, x, y }) => {
-                  if (kind !== "items") return;
-                  setProjectData(d => ({ ...d, items: (d.items || []).map(it => it.id === id ? { ...it, x, y } : it) }));
+                <Viewer3D ref={viewer3DRef} project={{ ...project.data, viewMode: editMode }} catalog={catalog} selected={selected} onSelect={(s) => { setSelected(s); setSidebarOpen(true); }} onDrag={(payload) => {
+                  const { kind, id } = payload;
+                  if (kind === "items") {
+                    setProjectData(d => ({ ...d, items: (d.items || []).map(it => it.id === id ? { ...it, x: payload.x, y: payload.y } : it) }));
+                  } else if (kind === "rooms") {
+                    setProjectData(d => ({ ...d, rooms: (d.rooms || []).map(r => r.id === id ? { ...r, points: payload.points } : r) }));
+                  } else if (kind === "walls") {
+                    setProjectData(d => ({ ...d, walls: (d.walls || []).map(w => w.id === id ? { ...w, x1: payload.x1, y1: payload.y1, x2: payload.x2, y2: payload.y2 } : w) }));
+                  } else if (kind === "doors") {
+                    setProjectData(d => ({ ...d, doors: (d.doors || []).map(dr => dr.id === id ? { ...dr, t: payload.t } : dr) }));
+                  } else if (kind === "windows") {
+                    setProjectData(d => ({ ...d, windows: (d.windows || []).map(wn => wn.id === id ? { ...wn, t: payload.t } : wn) }));
+                  }
                 }} />
               </div>
             </div>

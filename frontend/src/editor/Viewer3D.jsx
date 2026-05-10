@@ -7,14 +7,12 @@ const CM = 1 / 100;
 function buildScene(project, catalog) {
   const root = new THREE.Group();
   const byId = Object.fromEntries((catalog || []).map((m) => [m.id, m]));
-  const viewMode = project.viewMode || "progetto"; // "fatto" | "progetto"
-  // Filtro phase coerente col 2D: in "fatto" → solo elementi esistenti, in "progetto" → tutto tranne demoliti.
+  const viewMode = project.viewMode || "progetto";
   const phaseOK = (el) => {
     const ph = el?.phase || "fatto";
     if (viewMode === "fatto") return ph === "fatto";
     return true;
   };
-  // Tiling map: roomId → { color, voceName }
   const tilingByRoom = {};
   (project.tiling || []).forEach((t) => {
     if (!t.roomId) return;
@@ -39,17 +37,13 @@ function buildScene(project, catalog) {
   grid.position.y = 0;
   root.add(grid);
 
-  // Room floors + ceilings (controsoffitto totale stanza) — filtrate per phase
+  // Room floors + ceilings
   (project.rooms || []).filter(phaseOK).forEach((r) => {
     if (!r.points || r.points.length < 3) return;
-    // PRIORITÀ COLORE PAVIMENTO:
-    // 1. Se viewMode=progetto e c'è tiling specifico per la stanza → colore voce piastrella (catalog) o tiling.color
-    // 2. Se viewMode=progetto e r.progetto.floorMaterial → mat.color
-    // 3. Altrimenti r.floorTileColor → mat.color (stato fatto)
     const tilingHere = tilingByRoom[r.id];
     let baseFloorColor;
     if (viewMode === "progetto" && tilingHere) {
-      baseFloorColor = tilingHere.color || "#D4A574"; // colore scelto dall'utente nel tool
+      baseFloorColor = tilingHere.color || "#D4A574";
     } else if (viewMode === "progetto" && r.progetto?.floorMaterial) {
       const pmat = byId[r.progetto.floorMaterial];
       baseFloorColor = r.progetto.floorTileColor || pmat?.color || "#E4E4E7";
@@ -58,6 +52,9 @@ function buildScene(project, catalog) {
       baseFloorColor = r.floorTileColor || mat?.color || "#E4E4E7";
     }
     const color = new THREE.Color(baseFloorColor);
+    // FIX FLOOR: usa Shape in piano XZ-like (con Y invertita per matchare il rotation +PI/2)
+    // Three.js ShapeGeometry crea triangoli in piano XY. Dopo rotation.x = +PI/2:
+    //   (px, py, 0) → (px, 0, py). World z = py. Quindi mappa (x_cad, y_cad) → (x*CM, 0, y*CM) ✓
     const shape = new THREE.Shape();
     r.points.forEach((p, i) => {
       const x = p.x * CM;
@@ -65,19 +62,18 @@ function buildScene(project, catalog) {
       if (i === 0) shape.moveTo(x, z);
       else shape.lineTo(x, z);
     });
+    shape.closePath();
     const geom = new THREE.ShapeGeometry(shape);
     const mesh = new THREE.Mesh(
       geom,
       new THREE.MeshStandardMaterial({ color, roughness: 0.6, side: THREE.DoubleSide })
     );
-    // FIX: rotation +PI/2 (non -PI/2) per allineare il pavimento ai muri (mappa (x,y) 2D → (x,0,y) 3D)
     mesh.rotation.x = Math.PI / 2;
     mesh.position.y = 0.001;
     mesh.receiveShadow = true;
     mesh.userData = { kind: "rooms", id: r.id };
     root.add(mesh);
 
-    // Controsoffitto totale (riduce altezza utile a -30cm)
     if (r.controsoffitto) {
       const ceilGeom = new THREE.ShapeGeometry(shape);
       const ceilColor = new THREE.Color(r.ceilingPaintColor || "#FAFAFA");
@@ -86,7 +82,6 @@ function buildScene(project, catalog) {
       ceil.position.y = (project.roomHeight || 270) * CM - 30 * CM;
       root.add(ceil);
     } else if (r.ceilingPaintColor) {
-      // colore soffitto anche senza controsoffitto
       const ceilGeom = new THREE.ShapeGeometry(shape);
       const ceil = new THREE.Mesh(ceilGeom, new THREE.MeshStandardMaterial({ color: new THREE.Color(r.ceilingPaintColor), roughness: 0.9, side: THREE.DoubleSide }));
       ceil.rotation.x = Math.PI / 2;
@@ -95,7 +90,6 @@ function buildScene(project, catalog) {
     }
   });
 
-  // Controsoffitti AD AREA (poligoni custom)
   (project.controsoffitti || []).forEach((c) => {
     if (!c.polygon || c.polygon.length < 3) return;
     const shape = new THREE.Shape();
@@ -105,6 +99,7 @@ function buildScene(project, catalog) {
       if (i === 0) shape.moveTo(x, z);
       else shape.lineTo(x, z);
     });
+    shape.closePath();
     const ceilGeom = new THREE.ShapeGeometry(shape);
     const ceil = new THREE.Mesh(ceilGeom, new THREE.MeshStandardMaterial({ color: 0xfafafa, roughness: 0.9, side: THREE.DoubleSide }));
     ceil.rotation.x = Math.PI / 2;
@@ -112,7 +107,6 @@ function buildScene(project, catalog) {
     root.add(ceil);
   });
 
-  // Walls with door/window holes — filtrati per phase coerente col 2D
   const doors = (project.doors || []).filter(phaseOK);
   const windows = (project.windows || []).filter(phaseOK);
   const height = (project.roomHeight || 270) * CM;
@@ -178,38 +172,49 @@ function buildScene(project, catalog) {
     mesh.userData = { kind: "walls", id: w.id };
     root.add(mesh);
 
-    // Render porte dentro il varco (pannello porta inclinato 30° per simulare apertura)
+    // FIX PORTE 3D: gruppo con pivot al cardine, pannello offset, rotazione corretta
     doors
       .filter((d) => d.wallId === w.id)
       .forEach((d) => {
         const cxLocal = (d.t - 0.5) * length;
         const hw = (d.width * CM) / 2;
         const hh = (d.height || 210) * CM;
+        const hingeSign = d.hinge === "right" ? +1 : -1; // -1 = sinistra
+        const swingSign = d.swing === "outside" ? -1 : +1; // +1 = interno
+
+        // Group con pivot al cardine, sul piano del muro
+        const hingeGroup = new THREE.Group();
+        // Posiziona il cardine nel sistema mondo: parto dal centro del muro, sposto lungo X locale (lunghezza muro) di cxLocal + hingeSign*hw
+        const localHingeX = cxLocal + hingeSign * hw;
+        // Coordinate mondo (allineate al muro)
+        const hx = mx + Math.cos(angle) * localHingeX;
+        const hz = mz + Math.sin(angle) * localHingeX;
+        hingeGroup.position.set(hx, 0, hz);
+        // Allinea l'orientamento al muro
+        hingeGroup.rotation.y = -angle;
+        // Aperto a 30° (swing)
+        hingeGroup.rotation.y += swingSign * hingeSign * Math.PI / 6;
+
+        // Pannello porta: offset positivo lungo X locale di +hw*(-hingeSign) per andare dal cardine verso l'esterno
         const doorGeom = new THREE.BoxGeometry(d.width * CM, hh, 4 * CM);
         const doorMat = new THREE.MeshStandardMaterial({ color: d.color ? new THREE.Color(d.color) : 0xb08968, roughness: 0.7 });
         const doorMesh = new THREE.Mesh(doorGeom, doorMat);
-        // Posiziona nel sistema locale del muro (x lungo il muro, z in profondità)
-        const sin = Math.sin(angle), cos = Math.cos(angle);
-        const wx = mx + cxLocal * cos;
-        const wz = mz - cxLocal * sin;
-        doorMesh.position.set(wx, hh / 2, wz);
-        doorMesh.rotation.y = -angle + (d.swing === "left" ? Math.PI / 6 : -Math.PI / 6);
-        // Sposta il pivot al cardine
-        doorMesh.position.x += (d.hinge === "left" ? -hw : hw) * Math.cos(-angle);
-        doorMesh.position.z -= (d.hinge === "left" ? -hw : hw) * Math.sin(-angle);
+        doorMesh.position.set(-hingeSign * hw, hh / 2, th / 2);
         doorMesh.castShadow = true;
-        root.add(doorMesh);
-        // Maniglia
+        doorMesh.userData = { kind: "doors", id: d.id };
+        hingeGroup.add(doorMesh);
+
         const handleGeom = new THREE.CylinderGeometry(2 * CM, 2 * CM, 8 * CM, 8);
         const handleMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af, metalness: 0.7, roughness: 0.3 });
         const handle = new THREE.Mesh(handleGeom, handleMat);
         handle.rotation.z = Math.PI / 2;
-        handle.position.copy(doorMesh.position);
-        handle.position.y = 100 * CM;
-        root.add(handle);
+        handle.position.set(-hingeSign * (d.width * CM - 8 * CM), 100 * CM, th / 2 + 3 * CM);
+        hingeGroup.add(handle);
+
+        hingeGroup.userData = { kind: "doors", id: d.id };
+        root.add(hingeGroup);
       });
 
-    // Render finestre dentro il varco (vetro azzurrato + cornice)
     windows
       .filter((wn) => wn.wallId === w.id)
       .forEach((wn) => {
@@ -218,25 +223,41 @@ function buildScene(project, catalog) {
         const winH = (wn.height || 140) * CM;
         const sin = Math.sin(angle), cos = Math.cos(angle);
         const wx = mx + cxLocal * cos;
-        const wz = mz - cxLocal * sin;
-        // Telaio (cornice)
+        const wz = mz + cxLocal * sin;
         const frameGeom = new THREE.BoxGeometry(wn.width * CM, winH, th * 1.05);
         const frameMat = new THREE.MeshStandardMaterial({ color: wn.color ? new THREE.Color(wn.color) : 0xffffff, roughness: 0.5 });
         const frame = new THREE.Mesh(frameGeom, frameMat);
         frame.position.set(wx, sill + winH / 2, wz);
         frame.rotation.y = -angle;
+        frame.userData = { kind: "windows", id: wn.id };
         root.add(frame);
-        // Vetro (azzurrato semitrasparente)
         const glassGeom = new THREE.BoxGeometry((wn.width - 8) * CM, winH - 8 * CM, 1 * CM);
         const glassMat = new THREE.MeshStandardMaterial({ color: 0xa5d8e6, roughness: 0.05, metalness: 0.4, transparent: true, opacity: 0.55 });
         const glass = new THREE.Mesh(glassGeom, glassMat);
         glass.position.copy(frame.position);
         glass.rotation.y = -angle;
+        glass.userData = { kind: "windows", id: wn.id };
         root.add(glass);
+        // Divider verticale interno per ante>1
+        const ante = Math.max(1, Math.min(4, Number(wn.ante) || 1));
+        if (ante > 1) {
+          for (let k = 1; k < ante; k++) {
+            const dvGeom = new THREE.BoxGeometry(4 * CM, winH - 8 * CM, th * 1.1);
+            const dvMat = new THREE.MeshStandardMaterial({ color: wn.color ? new THREE.Color(wn.color) : 0xffffff, roughness: 0.5 });
+            const dv = new THREE.Mesh(dvGeom, dvMat);
+            // posizione lungo larghezza locale dell'infisso
+            const offsetLocal = (-wn.width / 2 + (wn.width / ante) * k) * CM;
+            const dx2 = offsetLocal * cos;
+            const dz2 = offsetLocal * sin;
+            dv.position.set(wx + dx2, sill + winH / 2, wz + dz2);
+            dv.rotation.y = -angle;
+            dv.userData = { kind: "windows", id: wn.id };
+            root.add(dv);
+          }
+        }
       });
   });
 
-  // Items
   (project.items || []).filter(phaseOK).forEach((it) => {
     const mat = byId[it.materialId];
     const color = new THREE.Color(mat?.color || "#71717A");
@@ -295,14 +316,24 @@ function SceneRoot({ project, catalog }) {
   return null;
 }
 
-function Picker3D({ onSelect, onDrag }) {
+/**
+ * Picker3D — Drag & Drop completo:
+ * - items: drag libero su X/Z
+ * - rooms: drag traslazione del poligono (delta su tutti i punti)
+ * - walls: drag traslazione di entrambi gli endpoint
+ * - doors/windows: drag lungo il muro → aggiorna `t` (proiezione sul segmento)
+ * Selezione click su tutto.
+ */
+function Picker3D({ onSelect, onDrag, projectRef }) {
   const { gl, camera, scene } = useThree();
   useEffect(() => {
     const ray = new THREE.Raycaster();
     const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     let downX = 0, downY = 0, moved = false;
     let dragTarget = null;
-    let dragOffset = new THREE.Vector3();
+    let dragKind = null;
+    let dragStart = new THREE.Vector3();
+    let originalData = null; // snapshot dati al mousedown
 
     const screenToWorld = (ev) => {
       const rect = gl.domElement.getBoundingClientRect();
@@ -311,24 +342,49 @@ function Picker3D({ onSelect, onDrag }) {
         -((ev.clientY - rect.top) / rect.height) * 2 + 1
       );
       ray.setFromCamera(m, camera);
-      return { rect, m };
+    };
+
+    const intersectGround = () => {
+      const hit = new THREE.Vector3();
+      ray.ray.intersectPlane(groundPlane, hit);
+      return hit;
     };
 
     const onDown = (ev) => {
       downX = ev.clientX; downY = ev.clientY; moved = false;
       screenToWorld(ev);
-      // Cerca un item draggabile sotto il puntatore (solo "items": mobili)
       const hits = ray.intersectObjects(scene.children, true);
       for (const h of hits) {
         let o = h.object;
         while (o && !o.userData?.kind) o = o.parent;
-        if (o?.userData?.kind === "items" && o.userData.id && onDrag) {
+        if (!o?.userData?.kind || !o.userData.id) continue;
+        const kind = o.userData.kind;
+        const id = o.userData.id;
+        if (!onDrag) break;
+        // Aggancia il drag per tutti i kind supportati
+        if (["items", "rooms", "walls", "doors", "windows"].includes(kind)) {
           dragTarget = o;
-          // calcola offset tra centro oggetto e punto colpito sul piano y=0
-          const groundHit = new THREE.Vector3();
-          ray.ray.intersectPlane(groundPlane, groundHit);
-          dragOffset.copy(groundHit).sub(o.position);
-          // disabilita orbit controls
+          dragKind = kind;
+          dragStart.copy(intersectGround());
+          const proj = projectRef.current || {};
+          if (kind === "items") {
+            const item = (proj.items || []).find((x) => x.id === id);
+            if (item) originalData = { x: item.x, y: item.y };
+          } else if (kind === "rooms") {
+            const room = (proj.rooms || []).find((x) => x.id === id);
+            if (room) originalData = { points: room.points.map((p) => ({ x: p.x, y: p.y })) };
+          } else if (kind === "walls") {
+            const wall = (proj.walls || []).find((x) => x.id === id);
+            if (wall) originalData = { x1: wall.x1, y1: wall.y1, x2: wall.x2, y2: wall.y2 };
+          } else if (kind === "doors") {
+            const door = (proj.doors || []).find((x) => x.id === id);
+            const wall = door ? (proj.walls || []).find((w) => w.id === door.wallId) : null;
+            if (door && wall) originalData = { t: door.t, wall };
+          } else if (kind === "windows") {
+            const win = (proj.windows || []).find((x) => x.id === id);
+            const wall = win ? (proj.walls || []).find((w) => w.id === win.wallId) : null;
+            if (win && wall) originalData = { t: win.t, wall };
+          }
           gl.domElement.style.cursor = "grabbing";
           ev.stopPropagation();
           break;
@@ -338,31 +394,79 @@ function Picker3D({ onSelect, onDrag }) {
 
     const onMove = (ev) => {
       if (Math.hypot(ev.clientX - downX, ev.clientY - downY) > 4) moved = true;
-      if (dragTarget) {
-        screenToWorld(ev);
-        const groundHit = new THREE.Vector3();
-        if (ray.ray.intersectPlane(groundPlane, groundHit)) {
-          const newPos = groundHit.sub(dragOffset);
-          dragTarget.position.x = newPos.x;
-          dragTarget.position.z = newPos.z;
-        }
-        ev.stopPropagation();
+      if (!dragTarget || !originalData) return;
+      screenToWorld(ev);
+      const cur = intersectGround();
+      const deltaX = (cur.x - dragStart.x) * 100; // m → cm
+      const deltaZ = (cur.z - dragStart.z) * 100;
+
+      if (dragKind === "items") {
+        dragTarget.position.x = (originalData.x + deltaX) * CM;
+        dragTarget.position.z = (originalData.y + deltaZ) * CM;
+      } else if (dragKind === "rooms") {
+        // sposta visualmente la mesh (rapido) — il commit aggiornerà i points
+        dragTarget.position.x = deltaX * CM;
+        dragTarget.position.z = deltaZ * CM;
+      } else if (dragKind === "walls") {
+        dragTarget.position.x = ((originalData.x1 + originalData.x2) / 2 + deltaX) * CM;
+        dragTarget.position.z = ((originalData.y1 + originalData.y2) / 2 + deltaZ) * CM;
+      } else if (dragKind === "doors" || dragKind === "windows") {
+        // proiezione del punto cur sul segmento del muro per ottenere il nuovo t
+        const w = originalData.wall;
+        const wdx = w.x2 - w.x1, wdy = w.y2 - w.y1;
+        const wlen2 = wdx * wdx + wdy * wdy || 1;
+        const px = cur.x * 100, py = cur.z * 100;
+        let t = ((px - w.x1) * wdx + (py - w.y1) * wdy) / wlen2;
+        t = Math.max(0.02, Math.min(0.98, t));
+        // riposiziona visivamente lungo il muro
+        const len = Math.sqrt(wlen2);
+        const angle = Math.atan2(wdy, wdx);
+        const cxLocal = (t - 0.5) * len;
+        const mx = ((w.x1 + w.x2) / 2);
+        const mz = ((w.y1 + w.y2) / 2);
+        dragTarget.position.x = (mx + Math.cos(angle) * cxLocal) * CM;
+        dragTarget.position.z = (mz + Math.sin(angle) * cxLocal) * CM;
       }
+      ev.stopPropagation();
     };
 
     const onUp = (ev) => {
-      if (dragTarget && onDrag && moved) {
-        // commit posizione finale (in cm CAD: x/CM, z/CM)
-        const px = dragTarget.position.x * 100; // 1m = 100cm; CM=1/100 quindi *100 inverte
-        const pz = dragTarget.position.z * 100;
-        onDrag({ kind: "items", id: dragTarget.userData.id, x: Math.round(px), y: Math.round(pz) });
+      if (dragTarget && onDrag && moved && originalData) {
+        screenToWorld(ev);
+        const cur = intersectGround();
+        const deltaX = (cur.x - dragStart.x) * 100;
+        const deltaZ = (cur.z - dragStart.z) * 100;
+        const payload = { kind: dragKind, id: dragTarget.userData.id };
+        if (dragKind === "items") {
+          payload.x = Math.round(originalData.x + deltaX);
+          payload.y = Math.round(originalData.y + deltaZ);
+        } else if (dragKind === "rooms") {
+          payload.points = originalData.points.map((p) => ({ x: Math.round(p.x + deltaX), y: Math.round(p.y + deltaZ) }));
+        } else if (dragKind === "walls") {
+          payload.x1 = Math.round(originalData.x1 + deltaX);
+          payload.y1 = Math.round(originalData.y1 + deltaZ);
+          payload.x2 = Math.round(originalData.x2 + deltaX);
+          payload.y2 = Math.round(originalData.y2 + deltaZ);
+        } else if (dragKind === "doors" || dragKind === "windows") {
+          const w = originalData.wall;
+          const wdx = w.x2 - w.x1, wdy = w.y2 - w.y1;
+          const wlen2 = wdx * wdx + wdy * wdy || 1;
+          const px = cur.x * 100, py = cur.z * 100;
+          let t = ((px - w.x1) * wdx + (py - w.y1) * wdy) / wlen2;
+          payload.t = Math.max(0.02, Math.min(0.98, t));
+        }
+        onDrag(payload);
         dragTarget = null;
+        dragKind = null;
+        originalData = null;
         gl.domElement.style.cursor = "default";
         return;
       }
       dragTarget = null;
+      dragKind = null;
+      originalData = null;
       gl.domElement.style.cursor = "default";
-      if (moved || !onSelect) return; // era un drag della camera
+      if (moved || !onSelect) return;
       screenToWorld(ev);
       const hits = ray.intersectObjects(scene.children, true);
       for (const h of hits) {
@@ -382,11 +486,10 @@ function Picker3D({ onSelect, onDrag }) {
       gl.domElement.removeEventListener("pointermove", onMove);
       gl.domElement.removeEventListener("pointerup", onUp);
     };
-  }, [gl, camera, scene, onSelect, onDrag]);
+  }, [gl, camera, scene, onSelect, onDrag, projectRef]);
   return null;
 }
 
-// Highlight visivo dell'elemento selezionato nel 3D (outline arancione)
 function Highlight3D({ selected }) {
   const { scene } = useThree();
   useEffect(() => {
@@ -427,7 +530,7 @@ function Lights() {
   return null;
 }
 
-function OrbitLite({ target = [0, 0, 0] }) {
+function OrbitLite({ target = [0, 0, 0], enabledRef }) {
   const { camera, gl } = useThree();
   const isDown = useRef(false);
   const last = useRef({ x: 0, y: 0 });
@@ -446,6 +549,8 @@ function OrbitLite({ target = [0, 0, 0] }) {
 
     const dom = gl.domElement;
     const down = (e) => {
+      // Se il drag interno è attivo, non orbitare
+      if (enabledRef && enabledRef.current === false) return;
       isDown.current = true;
       last.current = { x: e.clientX, y: e.clientY };
     };
@@ -491,6 +596,8 @@ function OrbitLite({ target = [0, 0, 0] }) {
 
 const Viewer3D = forwardRef(function Viewer3D({ project, catalog, onSelect, onDrag, selected }, ref) {
   const glRef = useRef(null);
+  const projectRef = useRef(project);
+  useEffect(() => { projectRef.current = project; }, [project]);
 
   useImperativeHandle(ref, () => ({
     snapshot: () => {
@@ -504,10 +611,7 @@ const Viewer3D = forwardRef(function Viewer3D({ project, catalog, onSelect, onDr
   const center = useMemo(() => {
     const walls = project.walls || [];
     if (!walls.length) return [0, 0, 0];
-    let minX = Infinity,
-      minZ = Infinity,
-      maxX = -Infinity,
-      maxZ = -Infinity;
+    let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
     walls.forEach((w) => {
       minX = Math.min(minX, w.x1, w.x2);
       maxX = Math.max(maxX, w.x1, w.x2);
@@ -531,7 +635,7 @@ const Viewer3D = forwardRef(function Viewer3D({ project, catalog, onSelect, onDr
       <Lights />
       <OrbitLite target={center} />
       <SceneRoot project={project} catalog={catalog} />
-      {(onSelect || onDrag) && <Picker3D onSelect={onSelect} onDrag={onDrag} />}
+      {(onSelect || onDrag) && <Picker3D onSelect={onSelect} onDrag={onDrag} projectRef={projectRef} />}
       {selected && <Highlight3D selected={selected} />}
     </Canvas>
   );

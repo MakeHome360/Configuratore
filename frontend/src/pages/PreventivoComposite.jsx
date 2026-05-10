@@ -108,7 +108,7 @@ export default function PreventivoComposite() {
     <div>
       <PageHeader title="Preventivo Composite" subtitle="Configura la tua ristrutturazione pezzo per pezzo"
         actions={<div className="flex gap-4 items-center text-right">
-          <div><div className="text-[10px] uppercase text-zinc-500">MQ</div><Input type="number" className="w-20 h-8" value={mq} onChange={(e) => setMq(Number(e.target.value))} /></div>
+          <div><div className="text-[10px] uppercase text-zinc-500">MQ</div><Input type="number" min={0} step="0.5" className="w-20 h-8" value={mq} onChange={(e) => setMq(Math.max(0, Number(e.target.value) || 0))} /></div>
           <div><div className="text-[10px] uppercase text-zinc-500">€/MQ</div><div className="text-sm font-mono">{mq ? fmtEur2(totaleVoci / mq) : "0.00 €"}</div></div>
           <div><div className="text-[10px] uppercase text-zinc-500">Sicurezza {sicurezzaPct}%</div><div className="text-sm font-mono">{fmtEur(sicurezzaAmt)}</div></div>
           <div><div className="text-[10px] uppercase text-zinc-500">Dir. Lav {direzionePct}%</div><div className="text-sm font-mono">{fmtEur(direzioneAmt)}</div></div>
@@ -215,7 +215,7 @@ export default function PreventivoComposite() {
                             }} data-testid={`comp-check-${v.id}`} />
                           </td>
                           <td className="px-3 py-2 text-center">
-                            {sel && <Input type="number" className="h-8 w-20 mx-auto" value={sel.qty} onChange={(e) => setSelections({ ...selections, [v.id]: { qty: Number(e.target.value) } })} />}
+                            {sel && <Input type="number" min={0} step="0.5" className="h-8 w-20 mx-auto" value={sel.qty} onChange={(e) => setSelections({ ...selections, [v.id]: { qty: Math.max(0, Number(e.target.value) || 0) } })} />}
                           </td>
                           <td className="px-3 py-2 text-right font-mono">{sel ? fmtEur((sel.qty || 0) * v.price) : "-"}</td>
                         </tr>
@@ -228,10 +228,10 @@ export default function PreventivoComposite() {
           </div>
         </div>
         <div className="bg-white border border-zinc-200 rounded-lg p-4 mt-5 grid grid-cols-5 gap-3 items-end">
-          <div><Label className="text-xs">Sicurezza %</Label><Input type="number" value={sicurezzaPct} onChange={(e) => setSicurezzaPct(Number(e.target.value))} /></div>
-          <div><Label className="text-xs">Dir. Lavori %</Label><Input type="number" value={direzionePct} onChange={(e) => setDirezionePct(Number(e.target.value))} /></div>
-          <div><Label className="text-xs">Sconto €</Label><Input type="number" value={sconto} onChange={(e) => setSconto(Number(e.target.value))} /></div>
-          <div><Label className="text-xs">IVA %</Label><Input type="number" value={ivaPct} onChange={(e) => setIvaPct(Number(e.target.value))} /></div>
+          <div><Label className="text-xs">Sicurezza %</Label><Input type="number" min={0} max={100} step="0.5" value={sicurezzaPct} onChange={(e) => setSicurezzaPct(Math.max(0, Math.min(100, Number(e.target.value) || 0)))} /></div>
+          <div><Label className="text-xs">Dir. Lavori %</Label><Input type="number" min={0} max={100} step="0.5" value={direzionePct} onChange={(e) => setDirezionePct(Math.max(0, Math.min(100, Number(e.target.value) || 0)))} /></div>
+          <div><Label className="text-xs">Sconto €</Label><Input type="number" min={0} step="1" value={sconto} onChange={(e) => setSconto(Math.max(0, Number(e.target.value) || 0))} /></div>
+          <div><Label className="text-xs">IVA %</Label><Input type="number" min={0} max={100} step="0.5" value={ivaPct} onChange={(e) => setIvaPct(Math.max(0, Math.min(100, Number(e.target.value) || 10)))} /></div>
           <Button onClick={save} data-testid="comp-save" style={{ background: "var(--brand)", color: "white" }}><Save className="h-4 w-4 mr-2" />Salva Preventivo</Button>
         </div>
         <div className="mt-3"><Label className="text-xs">Note</Label><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></div>

@@ -24,6 +24,15 @@ function nearestWallNormal(walls, x, y) {
   return best ? { nx: best.nx, ny: best.ny } : { nx: 0, ny: 1 };
 }
 
+// Calcola la posizione DI RENDER (con offset 15cm sul lato del muro) per un elemento con wall_side != 0.
+// L'elemento resta logicamente alle coordinate (x, y) salvate in DB, ma in canvas viene reso spostato sul lato A o B del muro.
+function sidePosition(walls, x, y, side) {
+  if (!side) return { x, y };
+  const { nx, ny } = nearestWallNormal(walls, x, y);
+  const OFFSET = 18; // cm di spostamento visivo sul lato del muro
+  return { x: x + side * nx * OFFSET, y: y + side * ny * OFFSET };
+}
+
 // Disegna una "linguetta" che indica il lato del muro su cui è installato un elemento.
 // side: -1 lato A, 0 nessuna, 1 lato B (uguale e contraria a -1).
 function WallSideIndicator({ walls, x, y, side, color = "#7C3AED", rotation = 0 }) {
@@ -1522,8 +1531,9 @@ export default function Canvas2D({
         {/* electrical */}
         {L.electrical && electrical.map((e) => {
           const isSel = selected?.kind === "electrical" && selected.id === e.id;
+          const pos = sidePosition(walls, e.x, e.y, e.wall_side || 0);
           return (
-            <g key={e.id} transform={`translate(${e.x},${e.y}) rotate(${e.rotation || 0})`}
+            <g key={e.id} transform={`translate(${pos.x},${pos.y}) rotate(${e.rotation || 0})`}
               onMouseDown={(ev) => {
                 if (isPlacementTool) return;
                 ev.stopPropagation();
@@ -1544,8 +1554,9 @@ export default function Canvas2D({
         {/* plumbing */}
         {L.plumbing && plumbing.map((p) => {
           const isSel = selected?.kind === "plumbing" && selected.id === p.id;
+          const pos = sidePosition(walls, p.x, p.y, p.wall_side || 0);
           return (
-            <g key={p.id} transform={`translate(${p.x},${p.y})`}
+            <g key={p.id} transform={`translate(${pos.x},${pos.y})`}
               onMouseDown={(ev) => {
                 if (isPlacementTool) return;
                 ev.stopPropagation();
@@ -1566,8 +1577,9 @@ export default function Canvas2D({
         {/* gas */}
         {L.gas && gas.map((g) => {
           const isSel = selected?.kind === "gas" && selected.id === g.id;
+          const pos = sidePosition(walls, g.x, g.y, g.wall_side || 0);
           return (
-            <g key={g.id} transform={`translate(${g.x},${g.y})`}
+            <g key={g.id} transform={`translate(${pos.x},${pos.y})`}
               onMouseDown={(ev) => {
                 if (isPlacementTool) return;
                 ev.stopPropagation();
@@ -1588,8 +1600,9 @@ export default function Canvas2D({
         {/* hvac */}
         {L.hvac && hvac.map((h) => {
           const isSel = selected?.kind === "hvac" && selected.id === h.id;
+          const pos = sidePosition(walls, h.x, h.y, h.wall_side || 0);
           return (
-            <g key={h.id} transform={`translate(${h.x},${h.y}) rotate(${h.rotation || 0})`}
+            <g key={h.id} transform={`translate(${pos.x},${pos.y}) rotate(${h.rotation || 0})`}
               onMouseDown={(ev) => {
                 if (isPlacementTool) return;
                 ev.stopPropagation();

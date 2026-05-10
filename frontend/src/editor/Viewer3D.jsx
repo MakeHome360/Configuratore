@@ -344,7 +344,7 @@ function SceneRoot({ project, catalog }) {
  * - doors/windows: drag lungo il muro → aggiorna `t` (proiezione sul segmento)
  * Selezione click su tutto.
  */
-function Picker3D({ onSelect, onDrag, projectRef }) {
+function Picker3D({ onSelect, onDrag, projectRef, dragActiveRef }) {
   const { gl, camera, scene } = useThree();
   useEffect(() => {
     const ray = new THREE.Raycaster();
@@ -406,7 +406,9 @@ function Picker3D({ onSelect, onDrag, projectRef }) {
             if (win && wall) originalData = { t: win.t, wall };
           }
           gl.domElement.style.cursor = "grabbing";
+          if (dragActiveRef) dragActiveRef.current = true;
           ev.stopPropagation();
+          ev.preventDefault();
           break;
         }
       }
@@ -479,12 +481,14 @@ function Picker3D({ onSelect, onDrag, projectRef }) {
         dragTarget = null;
         dragKind = null;
         originalData = null;
+        if (dragActiveRef) dragActiveRef.current = false;
         gl.domElement.style.cursor = "default";
         return;
       }
       dragTarget = null;
       dragKind = null;
       originalData = null;
+      if (dragActiveRef) dragActiveRef.current = false;
       gl.domElement.style.cursor = "default";
       if (moved || !onSelect) return;
       screenToWorld(ev);
@@ -506,7 +510,7 @@ function Picker3D({ onSelect, onDrag, projectRef }) {
       gl.domElement.removeEventListener("pointermove", onMove);
       gl.domElement.removeEventListener("pointerup", onUp);
     };
-  }, [gl, camera, scene, onSelect, onDrag, projectRef]);
+  }, [gl, camera, scene, onSelect, onDrag, projectRef, dragActiveRef]);
   return null;
 }
 
@@ -550,7 +554,7 @@ function Lights() {
   return null;
 }
 
-function OrbitLite({ target = [0, 0, 0], enabledRef }) {
+function OrbitLite({ target = [0, 0, 0], dragActiveRef }) {
   const { camera, gl } = useThree();
   const isDown = useRef(false);
   const last = useRef({ x: 0, y: 0 });
@@ -569,8 +573,8 @@ function OrbitLite({ target = [0, 0, 0], enabledRef }) {
 
     const dom = gl.domElement;
     const down = (e) => {
-      // Se il drag interno è attivo, non orbitare
-      if (enabledRef && enabledRef.current === false) return;
+      // Se Picker3D sta gestendo un drag di un elemento, NON orbitare
+      if (dragActiveRef && dragActiveRef.current) return;
       isDown.current = true;
       last.current = { x: e.clientX, y: e.clientY };
     };
@@ -579,6 +583,8 @@ function OrbitLite({ target = [0, 0, 0], enabledRef }) {
     };
     const move = (e) => {
       if (!isDown.current) return;
+      // Se il drag interno si è attivato durante il movimento, interrompi l'orbit
+      if (dragActiveRef && dragActiveRef.current) { isDown.current = false; return; }
       const dx = e.clientX - last.current.x;
       const dy = e.clientY - last.current.y;
       last.current = { x: e.clientX, y: e.clientY };
@@ -617,6 +623,7 @@ function OrbitLite({ target = [0, 0, 0], enabledRef }) {
 const Viewer3D = forwardRef(function Viewer3D({ project, catalog, onSelect, onDrag, selected }, ref) {
   const glRef = useRef(null);
   const projectRef = useRef(project);
+  const dragActiveRef = useRef(false);
   useEffect(() => { projectRef.current = project; }, [project]);
 
   useImperativeHandle(ref, () => ({
@@ -672,9 +679,9 @@ const Viewer3D = forwardRef(function Viewer3D({ project, catalog, onSelect, onDr
       data-testid="canvas-3d"
     >
       <Lights />
-      <OrbitLite target={center} />
+      <OrbitLite target={center} dragActiveRef={dragActiveRef} />
       <SceneRoot project={project} catalog={catalog} />
-      {(onSelect || onDrag) && <Picker3D onSelect={onSelect} onDrag={onDrag} projectRef={projectRef} />}
+      {(onSelect || onDrag) && <Picker3D onSelect={onSelect} onDrag={onDrag} projectRef={projectRef} dragActiveRef={dragActiveRef} />}
       {selected && <Highlight3D selected={selected} />}
     </Canvas>
   );

@@ -1,5 +1,27 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 29 — Feb 2026 — Fix dolorosi Round 28 utente)
+- ✅ **3D Orbit non più ruba il drag**: shared `dragActiveRef` tra `Picker3D` e `OrbitLite`. Quando l'utente afferra un muro/stanza/oggetto la camera NON orbita più. Era la causa di "muovo un muro e gira tutta la stanza".
+- ✅ **WallSideIndicator funziona davvero**: aggiunto **offset visivo fisico** dell'elemento di 18cm in direzione del lato del muro selezionato (lato A / Centro / lato B). Prima la freccia si vedeva ma l'elemento restava sul muro — ora si sposta visibilmente nel lato della stanza scelto. Helper `sidePosition(walls, x, y, side)` applicato a electrical/plumbing/gas/hvac. Pannello proprietà riscritto con bordo violetto spesso, descrizione chiara "Su quale lato del muro?" e bottoni più grandi.
+- ✅ **Extras prezzo SOLO per MATERIALI modificabili**: ripristinata la logica eccedenza prezzo sopra soglia pacchetto, ma con regola precisa:
+  - Materiali (`modificabile_dal_venditore = true`): extras = qty_extras × prezzo + (prezzo > soglia ? (prezzo − soglia) × incluse : 0)
+  - Lavorazioni (non modificabili: muratura, impianti, etc): SOLO qty_extras (mai extras prezzo)
+  - Voce non inclusa nel pacchetto (incl=0): tutta extra (qty × prezzo)
+- ✅ **Configuratore Infissi RIDISEGNATO**:
+  - LEFT: **Tipologia** dropdown a solo 2 opzioni (Finestra · Porta-finestra)
+  - RIGHT: **Apertura** (Battente · Scorrevole +20%) + **Numero ante** (1/2/3/4)
+  - Misure GROSSE in cassetto giallo dedicato (Larghezza / Altezza / Qty input h-12 text-2xl font-extrabold)
+  - Anteprima SVG molto più grande (560×360) con quote numeriche **visibili** (era il bug `{larghezza} cm` come 2 child SVG → ora `{`${larghezza} cm`}` template literal)
+  - Etichetta riepilogativa in basso al SVG: `FINESTRA · BATTENTE · 2 ANTAE · PVC bianco · Doppio vetro`
+  - Cerchi numerati 1/2/3/4 sulle ante chiari
+  - tipologia_id calcolato automaticamente da `resolveTipologiaId(categoria, apertura, ante, tipologie)` per il pricing backend
+  - Backward-compat per preventivi infissi salvati prima del refactor (deriva categoria/apertura da tipologia_id legacy)
+
+## Pending / Da fare in prossimo round (per chiarezza)
+- 🟡 **Voci Backoffice — split materiali pavimentazione**: togliere "Gres / Laminato / Parquet" dalla categoria MURATURA e creare categorie dedicate (PAVIMENTAZIONE_GRES, PAVIMENTAZIONE_LAMINATO, PAVIMENTAZIONE_PARQUET) — richiede migrazione DB + UI AdminVociBackoffice. Il listino voci_backoffice ha già le voci tile-specific (voce-gres-*, voce-laminato-*, voce-parquet-*) ma sono sotto "MURATURA".
+- 🟡 **Sezione Infissi nel Voci Backoffice**: oggi i prezzi infissi sono via `/api/infissi-config` (admin endpoint separato). Linkare con voci_backoffice (voce-infissi-pvc, voce-infissi-alluminio, voce-infissi-legno esistono già).
+- 🟡 **Auto-snap al muro durante posa impianti**: quando si piazza un elettrico/idraulico, lo snap dovrebbe essere automatico al muro più vicino + impostare wall_side = lato della stanza nella quale si è cliccato.
+
 ## Recent Updates (Round 28 — Feb 2026 — Fix critici Round 27 utente)
 - ✅ **Extras Pacchetto: regola corretta** — gli extras ora vengono conteggiati SOLO se `qty_richiesta > included_qty` oppure se `included_qty === 0`. Rimossa la vecchia logica "price-over-soglia su qty inclusa" che gonfiava il preventivo. La soglia pacchetto resta come avviso informativo amber sopra l'input (non genera più extra).
   - Caso A: qty=10, incl=15, prezzo=30€ → Extra: 0€ ✓

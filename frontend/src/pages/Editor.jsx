@@ -1591,26 +1591,30 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
           </div>
         )}
         {/* Lato muro: indica da quale lato del muro è installato l'elemento (visto da sopra) */}
-        <div className="bg-violet-50 border border-violet-300 p-2 space-y-1.5">
-          <Label className="text-xs uppercase tracking-widest text-violet-800">Lato muro (visto da sopra)</Label>
+        <div className="bg-violet-50 border-2 border-violet-400 p-3 space-y-2">
+          <Label className="text-xs uppercase tracking-widest text-violet-900 font-bold">📍 Su quale lato del muro?</Label>
+          <div className="text-[11px] text-violet-800 leading-tight">
+            Se hai un muro che divide 2 stanze, scegli da quale stanza far entrare questo elemento.
+            <br />L'elemento verrà spostato visivamente di ~18cm sul lato scelto.
+          </div>
           <div className="grid grid-cols-3 gap-1">
             <button
               onClick={() => updateObj({ wall_side: -1 })}
-              className={`text-[11px] mono py-1.5 border ${sideVal === -1 ? "bg-violet-700 text-white border-violet-700" : "bg-white text-violet-800 border-violet-300 hover:bg-violet-100"}`}
+              className={`text-[11px] mono py-2 border-2 font-semibold ${sideVal === -1 ? "bg-violet-700 text-white border-violet-700 ring-2 ring-violet-300" : "bg-white text-violet-900 border-violet-300 hover:bg-violet-100"}`}
               data-testid={`${kind}-wall-side-a`}
             >◀ Lato A</button>
             <button
               onClick={() => updateObj({ wall_side: 0 })}
-              className={`text-[11px] mono py-1.5 border ${sideVal === 0 ? "bg-violet-700 text-white border-violet-700" : "bg-white text-violet-800 border-violet-300 hover:bg-violet-100"}`}
+              className={`text-[11px] mono py-2 border-2 font-semibold ${sideVal === 0 ? "bg-zinc-700 text-white border-zinc-700" : "bg-white text-zinc-700 border-zinc-300 hover:bg-zinc-100"}`}
               data-testid={`${kind}-wall-side-center`}
-            >• Centro</button>
+            >• Sul muro</button>
             <button
               onClick={() => updateObj({ wall_side: 1 })}
-              className={`text-[11px] mono py-1.5 border ${sideVal === 1 ? "bg-violet-700 text-white border-violet-700" : "bg-white text-violet-800 border-violet-300 hover:bg-violet-100"}`}
+              className={`text-[11px] mono py-2 border-2 font-semibold ${sideVal === 1 ? "bg-violet-700 text-white border-violet-700 ring-2 ring-violet-300" : "bg-white text-violet-900 border-violet-300 hover:bg-violet-100"}`}
               data-testid={`${kind}-wall-side-b`}
             >Lato B ▶</button>
           </div>
-          <div className="text-[10px] text-violet-700 mono">Una freccetta sul CAD indica il lato del muro su cui è installato l'elemento.</div>
+          <div className="text-[10px] text-violet-700 mono pt-1">💡 Una freccia colorata sul canvas indica il lato. Se vedi A e ti serve B (o viceversa), basta cliccare l'altro bottone.</div>
         </div>
         {/* Punto acqua composito: scegli quali tubazioni includere (F+C+S, sotto-insiemi) */}
         {kind === "plumbing" && (obj.type === "punto-completo" || obj.type === "acqua-completo") && (

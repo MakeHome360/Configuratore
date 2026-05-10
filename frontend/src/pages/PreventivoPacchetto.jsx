@@ -193,15 +193,25 @@ export default function PreventivoPacchetto() {
       const incl = it.included_qty || 0;
       const reqs = Math.max(0, it.qty_richiesta || 0);
       const unitPrice = Math.max(0, it.unit_price || 0);
-      // REGOLA UTENTE: gli extra esistono SOLO quando qty richiesta supera le incluse,
-      // oppure quando la voce non era inclusa nel pacchetto (incl === 0).
-      // Nessun "extra prezzo soglia" sulla quota già inclusa.
+      // Extras = (eccedenza qty + eccedenza prezzo sopra soglia).
+      // L'eccedenza prezzo si applica SOLO ai MATERIALI (modificabile_dal_venditore=true),
+      // mai alle LAVORAZIONI (muratura/impianti/etc che NON sono modificabili).
+      let extraVal = 0;
       if (incl === 0) {
-        // Voce non inclusa nel pacchetto → tutta extra (qty × prezzo)
-        return s + reqs * unitPrice;
+        // Voce non inclusa → tutta extra (qty × prezzo)
+        extraVal = reqs * unitPrice;
+      } else {
+        const extraQty = Math.max(0, reqs - incl);
+        extraVal = extraQty * unitPrice;
+        // Eccedenza prezzo SOLO per materiali modificabili sopra soglia
+        if (it.modificabile_dal_venditore) {
+          const soglia = it.unit_price_pkg;
+          if (soglia != null && soglia > 0 && unitPrice > soglia) {
+            extraVal += (unitPrice - soglia) * incl;
+          }
+        }
       }
-      const extraQty = Math.max(0, reqs - incl);
-      return s + extraQty * unitPrice;
+      return s + extraVal;
     }, 0);
     const optional = (prev.optional || []).reduce((s, o) => s + (o.total || 0), 0);
     const bagno = prev.bathroom_surcharge || 0;
@@ -410,12 +420,14 @@ export default function PreventivoPacchetto() {
                             const incl = it.included_qty || 0;
                             const reqs = Math.max(0, it.qty_richiesta || 0);
                             const unitPrice = Math.max(0, it.unit_price || 0);
-                            // REGOLA UTENTE: extra SOLO se qty > incluse oppure incluse === 0.
+                            // REGOLA: extra qty + extra prezzo soglia. Eccedenza prezzo SOLO se materiale modificabile.
                             const extraQty = incl === 0 ? reqs : Math.max(0, reqs - incl);
                             const extraQtyCost = extraQty * unitPrice;
-                            const extraCost = extraQtyCost;
                             const soglia = it.unit_price_pkg;
-                            const overSoglia = soglia != null && soglia > 0 && unitPrice > soglia;
+                            const isMaterialeMod = !!it.modificabile_dal_venditore;
+                            const overSoglia = isMaterialeMod && soglia != null && soglia > 0 && unitPrice > soglia;
+                            const extraPrezzoCost = overSoglia && incl > 0 ? (unitPrice - soglia) * incl : 0;
+                            const extraCost = extraQtyCost + extraPrezzoCost;
                             return (
                               <tr key={it.id} className="border-t border-zinc-100" data-testid={`lav-row-${it.id}`}>
                                 <td className="py-2 px-2 text-center">
@@ -468,9 +480,9 @@ export default function PreventivoPacchetto() {
                                 <td className={`py-2 px-3 text-right mono text-xs ${extraCost > 0 ? "text-orange-600 font-semibold" : "text-zinc-400"}`}>
                                   {extraCost > 0 ? (
                                     <div>
-                                      <div>{`+${fmtNum(extraQty, 2)} ${it.unit} × ${fmtEuro(unitPrice)} = ${fmtEuro(extraQtyCost)}`}</div>
-                                      {overSoglia && (
-                                        <div className="text-amber-700 text-[10px]">⚠ Prezzo {fmtEuro(unitPrice)}/{it.unit} sopra soglia pacchetto {fmtEuro(soglia)}/{it.unit} (informativo)</div>
+                                      {extraQty > 0 && <div>{`+${fmtNum(extraQty, 2)} ${it.unit} × ${fmtEuro(unitPrice)} = ${fmtEuro(extraQtyCost)}`}</div>}
+                                      {overSoglia && incl > 0 && (
+                                        <div className="text-amber-700">{`+${fmtEuro(unitPrice - soglia)}/${it.unit} (sopra soglia ${fmtEuro(soglia)}) × ${fmtNum(incl, 2)} = ${fmtEuro(extraPrezzoCost)}`}</div>
                                       )}
                                       <div className="font-bold mt-0.5">Tot. extra: {fmtEuro(extraCost)}</div>
                                     </div>

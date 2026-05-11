@@ -179,7 +179,8 @@ function buildScene(project, catalog) {
         shape.holes.push(hole);
       });
 
-    const wallColor = w.paintColor ? new THREE.Color(w.paintColor) : new THREE.Color(0xf4f4f5);
+    const effPaintColor = (viewMode === "progetto" && w.progetto?.paintColor) ? w.progetto.paintColor : w.paintColor;
+    const wallColor = effPaintColor ? new THREE.Color(effPaintColor) : new THREE.Color(0xf4f4f5);
     const geom = new THREE.ExtrudeGeometry(shape, { depth: th, bevelEnabled: false });
     const mesh = new THREE.Mesh(
       geom,

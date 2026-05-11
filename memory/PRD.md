@@ -1,5 +1,23 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 32 — Feb 2026 — Wall color override, Voci Pavimentazione split, JWT 8h)
+- ✅ **Wall color NON sbava più sullo "Stato di Fatto"**: in modalità "Progetto" tutte le modifiche (paintColor / decorVoceId / decorVoceName / decorVocePrice) vengono salvate come **override in `wall.progetto.*`** invece di mutare l'oggetto base. Lo Stato di Fatto resta intatto. Banner amber sul pannello in modalità Progetto:  "⚙️ Modalità Progetto: il colore/decorazione viene salvato SOLO come override progetto (lo Stato di Fatto resta intatto)". Anche il bottone "Applica a tutta la casa" rispetta il viewMode.
+- ✅ **Rendering 2D + 3D** legge `wall.progetto.paintColor` quando viewMode='progetto' (con fallback a `wall.paintColor`).
+- ✅ **Voci Backoffice — SPLIT PAVIMENTAZIONE** (richiesto utente più volte):
+  - Nuove categorie: `PAVIMENTAZIONE_GRES`, `PAVIMENTAZIONE_PARQUET`, `PAVIMENTAZIONE_LAMINATO`, `PAVIMENTAZIONE_MARMO`, `RIVESTIMENTO_PIASTRELLE`
+  - Endpoint `POST /api/voci-backoffice/migrate-pavimentazione` (admin) eseguito → 14 voci spostate da MURATURA alle nuove categorie + `modificabile_dal_venditore=true` applicato. Cosi puoi:
+    - Includere nei pacchetti "X m² di Gres con prezzo MAX €Y" indipendentemente dalla scelta del cliente (può scegliere tra tutti i Gres della categoria)
+    - L'extra scatta sia su quantità sia su prezzo (riservato ai materiali modificabili)
+- ✅ **JWT access token esteso da 60 min → 8 ore** + **auto-refresh** nel client API axios (response interceptor 401 → POST `/auth/refresh` → ripeti). Risolve l'errore "token scaduto" durante sessioni lunghe (rendering AI, modellazione, ecc.).
+- ✅ **"Listino personalizzato" rinominato "🏷️ Prezzi NEGOZIATI con il tuo fornitore"** e nascosto in `<details>` collassato di default con helper esplicativo: distingue **scegliere il TIPO** (catalogo) da **cambiare il PREZZO** (override). Tolto il box blu "Per aggiungere voci dal catalogo…" perché ridondante.
+
+## Pending / Da fare nel prossimo round
+- 🟡 **AI sul 2D — modifica spazi via comando** (feature nuova grande):
+  - Chat AI in cui chiedi "togli il muro tra cucina e soggiorno" / "ridisegna 2 stanze da una grande" → l'AI ha tool-call per `addWall / removeWall / addRoom / moveWindow / ecc.` e modifica direttamente `project.data`. Richiede LLM con function calling (Claude Sonnet 4.5 o GPT-5.2) + un set di tools mappati a operazioni sul progetto. Stima: 1 round di lavoro dedicato.
+- 🟡 **AI rendering**: la chiamata Gemini funziona, ma se vedi ancora errori dopo questo fix, è probabilmente esaurimento credito Emergent LLM. Verifica balance dal Profilo → Universal Key.
+- 🟡 Auto-snap impianti su muro più vicino
+- 🟡 Email reale (SendGrid/Resend) per OTP
+
 ## Recent Updates (Round 31 — Feb 2026 — Configuratore Infissi unificato)
 - ✅ **Componente condiviso `AbacoInfisso`** in `/app/frontend/src/components/AbacoInfisso.jsx`: stessa anteprima usata in 3 punti (PreventivoInfissi, InfissoQuickConfigurator, CAD finestre).
   - Supporta size `big` (560×360 per pagina dedicata) e `mini` (360×220 per dialog/pannelli)

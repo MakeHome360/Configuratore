@@ -1354,10 +1354,13 @@ export default function Canvas2D({
                 opacity={w.demolito ? 0.65 : 1}
               />
               {/* paint color overlay (decorazione parete) */}
-              {w.paintColor && !w.demolito && (
-                <line x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2}
-                  stroke={w.paintColor} strokeWidth={(w.thickness || 10) - 3} strokeLinecap="round" opacity="0.85" />
-              )}
+              {(() => {
+                const effPaint = VM === "progetto" && w.progetto?.paintColor ? w.progetto.paintColor : w.paintColor;
+                return effPaint && !w.demolito ? (
+                  <line x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2}
+                    stroke={effPaint} strokeWidth={(w.thickness || 10) - 3} strokeLinecap="round" opacity="0.85" />
+                ) : null;
+              })()}
               {/* corner cap */}
               <circle cx={w.x1} cy={w.y1} r={(w.thickness || 10) / 2} fill={stroke} pointerEvents="none" />
               <circle cx={w.x2} cy={w.y2} r={(w.thickness || 10) / 2} fill={stroke} pointerEvents="none" />

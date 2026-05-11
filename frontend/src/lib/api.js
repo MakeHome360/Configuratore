@@ -36,6 +36,48 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Auto-refresh su 401 "Token expired" — chiama /auth/refresh (usa cookie httponly) e ripete la richiesta
+let _refreshing = null;
+async function _doRefresh() {
+  if (_refreshing) return _refreshing;
+  _refreshing = (async () => {
+    try {
+      const r = await axios.post(`${API}/auth/refresh`, {}, { withCredentials: true });
+      const newTok = r?.data?.access_token;
+      if (newTok) {
+        setToken(newTok);
+        return newTok;
+      }
+    } catch { /* refresh fallito */ }
+    return null;
+  })();
+  try {
+    return await _refreshing;
+  } finally {
+    _refreshing = null;
+  }
+}
+api.interceptors.response.use(
+  (res) => res,
+  async (err) => {
+    const status = err?.response?.status;
+    const cfg = err?.config || {};
+    const isAuthEp = (cfg.url || "").includes("/auth/login") || (cfg.url || "").includes("/auth/refresh");
+    if (status === 401 && !cfg._retried && !isAuthEp) {
+      cfg._retried = true;
+      const newTok = await _doRefresh();
+      if (newTok) {
+        cfg.headers = cfg.headers || {};
+        cfg.headers.Authorization = `Bearer ${newTok}`;
+        return api.request(cfg);
+      }
+      // Refresh fallito → pulisci token e lascia che l'UI rediriga al login
+      setToken(null);
+    }
+    return Promise.reject(err);
+  }
+);
+
 export function formatApiErrorDetail(detail) {
   if (detail == null) return "Qualcosa è andato storto. Riprova.";
   if (typeof detail === "string") return detail;

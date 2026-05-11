@@ -271,6 +271,41 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
             added.append(v["name"])
         return {"ok": True, "added": added, "count": len(added)}
 
+    @r.post("/voci-backoffice/migrate-pavimentazione")
+    async def migrate_pavimentazione_categories(user=Depends(get_current_user)):
+        """Splitta le voci pavimentazione fuori da MURATURA in categorie dedicate:
+        PAVIMENTAZIONE_GRES / PAVIMENTAZIONE_PARQUET / PAVIMENTAZIONE_LAMINATO / PAVIMENTAZIONE_MARMO / RIVESTIMENTO_PIASTRELLE.
+        Aggiorna anche modificabile_dal_venditore=True (sono materiali).
+        """
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        # Mappa esplicita id → categoria (più sicura del pattern matching su nome)
+        mapping = {
+            "voce-parquet": "PAVIMENTAZIONE_PARQUET",
+            "voce-parquet-rovere-pl": "PAVIMENTAZIONE_PARQUET",
+            "voce-parquet-noce-spina": "PAVIMENTAZIONE_PARQUET",
+            "voce-laminato-ac4": "PAVIMENTAZIONE_LAMINATO",
+            "voce-pvc-effetto-legno": "PAVIMENTAZIONE_LAMINATO",
+            "voce-gres-cemento-60x60": "PAVIMENTAZIONE_GRES",
+            "voce-gres-marmo-60x120": "PAVIMENTAZIONE_GRES",
+            "voce-gres-legno-22x90": "PAVIMENTAZIONE_GRES",
+            "voce-gres-pietra-80x80": "PAVIMENTAZIONE_GRES",
+            "voce-gres-mono-30x60": "PAVIMENTAZIONE_GRES",
+            "voce-marmo-naturale-25x150": "PAVIMENTAZIONE_MARMO",
+            "voce-piast-mosaico-bagno": "RIVESTIMENTO_PIASTRELLE",
+            "voce-piast-cucina-10x10": "RIVESTIMENTO_PIASTRELLE",
+            "voce-piast-bagno-25x40": "RIVESTIMENTO_PIASTRELLE",
+        }
+        updated = []
+        for vid, cat in mapping.items():
+            res = await db.voci_backoffice.update_one(
+                {"id": vid},
+                {"$set": {"category": cat, "modificabile_dal_venditore": True}}
+            )
+            if res.modified_count > 0:
+                updated.append({"id": vid, "category": cat})
+        return {"ok": True, "updated": updated, "count": len(updated)}
+
     @r.post("/voci-backoffice/migrate-cad-categories")
     async def migrate_cad_categories(user=Depends(get_current_user)):
         """Assegna cad_category alle voci esistenti in base a category/name pattern.

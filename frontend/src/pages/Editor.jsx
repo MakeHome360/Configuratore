@@ -1195,11 +1195,17 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
           </div>
         </div>
         <Separator className="my-6" />
-        <div className="space-y-3">
-          <div className="label-kicker">Listino personalizzato</div>
+        <details className="space-y-3 group" data-testid="listino-personalizzato-details">
+          <summary className="cursor-pointer flex items-center gap-2 select-none">
+            <div className="label-kicker flex items-center gap-2">🏷️ Prezzi NEGOZIATI con il tuo fornitore <span className="text-[10px] text-zinc-400 ml-1 group-open:hidden">(clicca per aprire)</span></div>
+          </summary>
+          <div className="text-[11px] text-zinc-700 bg-amber-50 border border-amber-200 p-2 rounded leading-relaxed mt-2">
+            <b>Cosa è?</b> Qui modifichi il <b>COSTO al m²</b> dei materiali che hai negoziato col tuo fornitore (es. Gres marmo a 30€/m² invece di 38€/m²).<br/>
+            <b>Non confondere con il catalogo:</b> il catalogo a sinistra serve per <b>SCEGLIERE il TIPO</b> di materiale (Gres / Parquet / Laminato). Qui invece cambi solo il <b>PREZZO</b> delle voci modificabili.<br/>
+            <b>NB:</b> ha effetto solo sui materiali contrassegnati <code>modificabile_dal_venditore=true</code> nel backoffice.
+          </div>
           <div className="text-[10px] text-zinc-500 mono leading-relaxed">
-            Sovrascrivi il prezzo unitario delle voci modificabili.<br/>
-            {pkgRef ? <span className="text-amber-700">CON PACCHETTO ({pkgRef.name}): se il prezzo supera il <b>prezzo MAX coperto</b>, l'eccedenza × qty inclusa diventa extra.</span> : <span>SENZA PACCHETTO: il prezzo personalizzato vale per tutte le quantità (no extras).</span>}
+            {pkgRef ? <span className="text-amber-700">CON PACCHETTO ({pkgRef.name}): se il tuo prezzo supera il <b>prezzo MAX coperto dal pacchetto</b>, l'eccedenza × qty inclusa diventa extra.</span> : <span>SENZA PACCHETTO: il prezzo personalizzato vale per tutte le quantità (no extras).</span>}
           </div>
           {editable.length === 0 && <div className="text-xs text-zinc-400 mono">Nessuna voce modificabile configurata. Imposta `modificabile_dal_venditore=true` nelle voci dal Backoffice.</div>}
           <div className="space-y-2 max-h-96 overflow-y-auto">
@@ -1239,11 +1245,7 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
               );
             })}
           </div>
-        </div>
-        <Separator className="my-6" />
-        <div className="text-xs text-zinc-500 mono leading-relaxed bg-blue-50 border border-blue-200 p-2.5 rounded">
-          💡 Per <b>aggiungere voci dal catalogo</b> (piastrelle, decorazioni, servizi, infissi…) e applicarle a una parete o stanza specifica, vai al tab <b>CATALOGO</b> qui sopra.
-        </div>
+        </details>
         <Separator className="my-6" />
         <div className="text-xs text-zinc-500 mono leading-relaxed">Seleziona un elemento sulla planimetria per modificarne le proprietà.</div>
       </div>
@@ -1349,6 +1351,18 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
     );
   }
   if (kind === "walls") {
+    // Override progetto: se sto in modalità Progetto e il muro è dello stato di fatto,
+    // scrivo paintColor/decorazione in wall.progetto invece di mutare wall (stato di fatto).
+    const useOverride = isProgettoMode && isFattoElement;
+    const wallProg = obj.progetto || {};
+    const effPaintColor = useOverride ? (wallProg.paintColor ?? obj.paintColor) : obj.paintColor;
+    const effDecorVoceId = useOverride ? (wallProg.decorVoceId ?? obj.decorVoceId) : obj.decorVoceId;
+    const effDecorVoceName = useOverride ? (wallProg.decorVoceName ?? obj.decorVoceName) : obj.decorVoceName;
+    const effDecorVocePrice = useOverride ? (wallProg.decorVocePrice ?? obj.decorVocePrice) : obj.decorVocePrice;
+    const setDecor = (patch) => {
+      if (useOverride) updateObj({ progetto: { ...wallProg, ...patch } });
+      else updateObj(patch);
+    };
     return (
       <div className="space-y-4">
         <div className="label-kicker">Parete{isFattoElement ? " (Stato di Fatto)" : " (Progetto)"}</div>
@@ -1420,17 +1434,22 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
         <Separator />
         <div className="bg-purple-50 border border-purple-200 p-2 space-y-2" data-testid="wall-decoration-block">
           <Label className="text-xs uppercase tracking-widest text-purple-800">Decorazione · pittura/rivestimento parete</Label>
+          {useOverride && (
+            <div className="text-[10px] text-amber-800 bg-amber-50 border border-amber-300 p-1 rounded mono">
+              ⚙️ Modalità Progetto: il colore/decorazione viene salvato SOLO come override progetto (lo Stato di Fatto resta intatto).
+            </div>
+          )}
           <div className="flex items-center gap-2">
-            <input type="color" value={obj.paintColor || "#FFFFFF"} onChange={(e) => updateObj({ paintColor: e.target.value })} className="w-10 h-9 rounded-sm border border-zinc-300 cursor-pointer" data-testid="wall-paint-color" />
-            <Input value={obj.paintColor || ""} placeholder="#FFFFFF" onChange={(e) => updateObj({ paintColor: e.target.value })} className="rounded-sm h-9 flex-1 mono text-xs" />
-            {obj.paintColor && <button onClick={() => updateObj({ paintColor: null })} className="text-[10px] text-rose-600 hover:underline">reset</button>}
+            <input type="color" value={effPaintColor || "#FFFFFF"} onChange={(e) => setDecor({ paintColor: e.target.value })} className="w-10 h-9 rounded-sm border border-zinc-300 cursor-pointer" data-testid="wall-paint-color" />
+            <Input value={effPaintColor || ""} placeholder="#FFFFFF" onChange={(e) => setDecor({ paintColor: e.target.value })} className="rounded-sm h-9 flex-1 mono text-xs" />
+            {effPaintColor && <button onClick={() => setDecor({ paintColor: null })} className="text-[10px] text-rose-600 hover:underline">reset</button>}
           </div>
           <Label className="text-[10px] uppercase tracking-widest text-purple-800">Voce catalogo (decorazione/laminato/parquet a parete)</Label>
-          <Select value={obj.decorVoceId || "__none__"} onValueChange={(v) => {
-            if (v === "__none__") { updateObj({ decorVoceId: null, decorVoceName: null, decorVocePrice: null }); return; }
+          <Select value={effDecorVoceId || "__none__"} onValueChange={(v) => {
+            if (v === "__none__") { setDecor({ decorVoceId: null, decorVoceName: null, decorVocePrice: null }); return; }
             const voce = (voci || []).find((x) => x.id === v);
             if (!voce) return;
-            updateObj({ decorVoceId: v, decorVoceName: voce.name, decorVocePrice: voce.prezzo_rivendita || voce.unit_price || 0 });
+            setDecor({ decorVoceId: v, decorVoceName: voce.name, decorVocePrice: voce.prezzo_rivendita || voce.unit_price || 0 });
           }}>
             <SelectTrigger className="rounded-sm h-8" data-testid="wall-decor-voce-select"><SelectValue placeholder="Nessuna voce" /></SelectTrigger>
             <SelectContent>
@@ -1440,32 +1459,33 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
               ))}
             </SelectContent>
           </Select>
-          {obj.decorVoceName && (
-            <div className="text-[10px] text-emerald-700 mono">✓ {obj.decorVoceName} · {fmtEuro(obj.decorVocePrice || 0)}/{(voci || []).find((x) => x.id === obj.decorVoceId)?.unit || "m²"}</div>
+          {effDecorVoceName && (
+            <div className="text-[10px] text-emerald-700 mono">✓ {effDecorVoceName} · {fmtEuro(effDecorVocePrice || 0)}/{(voci || []).find((x) => x.id === effDecorVoceId)?.unit || "m²"}</div>
           )}
           <div className="grid grid-cols-2 gap-2 pt-1">
             <button
               type="button"
               onClick={() => {
-                if (!obj.paintColor && !obj.decorVoceId) { toast.error("Imposta prima un colore o una voce"); return; }
+                if (!effPaintColor && !effDecorVoceId) { toast.error("Imposta prima un colore o una voce"); return; }
                 setProject((p) => ({
                   ...p,
-                  walls: (p.walls || []).map((w) => w.demolito ? w : ({
-                    ...w,
-                    paintColor: obj.paintColor || w.paintColor,
-                    decorVoceId: obj.decorVoceId || w.decorVoceId,
-                    decorVoceName: obj.decorVoceName || w.decorVoceName,
-                    decorVocePrice: obj.decorVocePrice != null ? obj.decorVocePrice : w.decorVocePrice,
-                  })),
+                  walls: (p.walls || []).map((w) => {
+                    if (w.demolito) return w;
+                    // In modalità Progetto applica override su wall.progetto, altrimenti su wall direttamente
+                    if (useOverride) {
+                      return { ...w, progetto: { ...(w.progetto || {}), paintColor: effPaintColor || w.progetto?.paintColor, decorVoceId: effDecorVoceId || w.progetto?.decorVoceId, decorVoceName: effDecorVoceName || w.progetto?.decorVoceName, decorVocePrice: effDecorVocePrice != null ? effDecorVocePrice : w.progetto?.decorVocePrice } };
+                    }
+                    return { ...w, paintColor: effPaintColor || w.paintColor, decorVoceId: effDecorVoceId || w.decorVoceId, decorVoceName: effDecorVoceName || w.decorVoceName, decorVocePrice: effDecorVocePrice != null ? effDecorVocePrice : w.decorVocePrice };
+                  }),
                 }));
-                toast.success("✓ Applicato a TUTTA LA CASA (tutte le pareti)");
+                toast.success(`✓ Applicato a TUTTA LA CASA (${useOverride ? "override Progetto" : "Stato di Fatto"})`);
               }}
               className="rounded-sm h-8 bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-semibold"
               data-testid="wall-apply-house"
             >↗ Applica a tutta la casa</button>
             <button
               type="button"
-              onClick={() => updateObj({ decorVoceId: null, decorVoceName: null, decorVocePrice: null, paintColor: null })}
+              onClick={() => setDecor({ decorVoceId: null, decorVoceName: null, decorVocePrice: null, paintColor: null })}
               className="rounded-sm h-8 bg-zinc-200 hover:bg-zinc-300 text-zinc-700 text-[10px] font-medium"
               data-testid="wall-decor-clear"
             >Pulisci parete</button>

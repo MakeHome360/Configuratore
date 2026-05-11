@@ -1,5 +1,19 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 34 — Feb 2026 — AI sul 2D + Composite voci editabili)
+- ✅ **AI assistente CAD 2D** (richiesta utente: l'AI deve modificare gli spazi via comando):
+  - Endpoint backend `POST /api/ai/cad-edit` → LLM **Claude Sonnet 4.5** (tool-use via JSON strutturato) con summary del progetto.
+  - Bottone toolbar editor "AI 2D" (icona Sparkles violetta).
+  - Pannello chat fluttuante in basso-destra (`AiCadEditPanel.jsx`) con storico, esempi, input multilinea.
+  - 16 operazioni supportate: `addWall, removeWall, moveWall, markWallDemolished, addRoom, removeRoom, renameRoom, addDoor, addWindow, moveDoor, moveWindow, removeDoor, removeWindow, addElectrical, addPlumbing, addColumn, paintWall, paintAllWalls, splitRoomByLine, noop`.
+  - Coordinate in cm, rispetta `view_mode` (in Progetto applica override su Stato di Fatto).
+  - Test endpoint OK: comando italiano → JSON ops parsable → applicazione al state.
+- ✅ **Composite — voci editabili dal venditore**:
+  - 5 voci FORNITURA marcate `modificabile_dal_venditore=true` nel `COMPOSITE_SECTIONS` seed (costo fornitura piastrelle/parquet, rivestimento, sanitari, rubinetterie, corpi illuminanti).
+  - UI `PreventivoComposite.jsx`: per voci modificabili il prezzo diventa un Input editabile inline; per le lavorazioni resta locked (🔒) e mostrato come listino read-only.
+  - Badge visivi: "prezzo editabile" (emerald) vs "🔒 lavorazione" (zinc).
+  - Save salva il prezzo custom in `composite_selections[].price` + flag `modificabile_dal_venditore` per audit.
+
 ## Recent Updates (Round 33 — Feb 2026 — Piastrelle solo catalogo, Prospetti tabella quote, Tile 3D)
 - ✅ **Piastrelle SOLO dal Catalogo (sinistra)**: il pannello "Prezzi Negoziati" (destra) ora ESCLUDE le categorie `PAVIMENTAZIONE_GRES`, `PAVIMENTAZIONE_PARQUET`, `PAVIMENTAZIONE_LAMINATO`, `PAVIMENTAZIONE_MARMO`, `RIVESTIMENTO_PIASTRELLE`. Il tipo materiale pavimento si gestisce solo dal catalogo per stanza.
 - ✅ **Tile in 3D adesso visibili in QUALSIASI fase** (era visibile solo in viewMode='progetto'): se l'utente posa una tile sul pavimento di una stanza, il colore appare sia nello "Stato di Fatto" sia in "Progetto" (con priorità al progetto se entrambi presenti).

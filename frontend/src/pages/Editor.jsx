@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import Canvas2D from "../editor/Canvas2D";
 import Viewer3D from "../editor/Viewer3D";
 import AbacoInfisso from "../components/AbacoInfisso";
+import AiCadEditPanel from "../components/AiCadEditPanel";
 import { api } from "../lib/api";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
@@ -110,6 +111,7 @@ export default function Editor() {
   const [hvacKind, setHvacKind] = useState("split");
   const [stairsKind, setStairsKind] = useState("muratura");
   const [columnKind, setColumnKind] = useState("cemento");
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const [tilingParams, setTilingParams] = useState({ size: "60x60", angle: 0, color: "#D4A574" });
   const [activeGroup, setActiveGroup] = useState("base");
   const [editMode, setEditMode] = useState("fatto"); // "fatto" | "progetto"
@@ -722,6 +724,7 @@ export default function Editor() {
             <button onClick={() => setViewLayout("3d")} className={`px-2 text-[10px] uppercase tracking-widest ${viewLayout === "3d" ? "bg-zinc-900 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"}`} title="Solo vista 3D" data-testid="view-3d-only">3D</button>
           </div>
           <Button size="sm" variant="outline" className="rounded-sm h-8 px-2" onClick={() => setAiOpen(true)} title="Render AI fotorealistico" data-testid="open-ai-render"><Sparkles size={14} /></Button>
+          <Button size="sm" variant="outline" className="rounded-sm h-8 px-2 border-violet-400 text-violet-700 hover:bg-violet-50" onClick={() => setAiPanelOpen((v) => !v)} title="AI assistente: modifica spazi del 2D via comando" data-testid="open-ai-2d"><Sparkles size={14} className="mr-1" /><span className="text-xs font-bold">AI 2D</span></Button>
           <Button size="sm" variant="outline" className="rounded-sm h-8 px-2" onClick={() => setTavoleOpen(true)} title="Tavole di Progetto" data-testid="open-tavole"><FileImage size={14} /></Button>
           <Button size="sm" variant="outline" className="rounded-sm h-8 px-2" onClick={exportPDF} title="Esporta preventivo PDF" data-testid="export-pdf-button"><Download size={14} /></Button>
           <Button size="sm" className="rounded-sm h-8 px-3 bg-zinc-900 hover:bg-zinc-800 sticky right-0 shrink-0" disabled={saving} onClick={() => save(true)} data-testid="save-project-button"><Save size={14} className="mr-1.5" /> {saving ? "…" : "Salva"}</Button>
@@ -1029,6 +1032,14 @@ export default function Editor() {
 
       {aiOpen && (
         <AIRenderModal aiOpen={aiOpen} setAiOpen={setAiOpen} aiPrompt={aiPrompt} setAiPrompt={setAiPrompt} aiLoading={aiLoading} aiResult={aiResult} generateAIRender={generateAIRender} aiStyle={aiStyle} setAiStyle={setAiStyle} />
+      )}
+      {aiPanelOpen && (
+        <AiCadEditPanel
+          project={project}
+          editMode={editMode}
+          onApply={(newData) => setProjectData(() => newData)}
+          onClose={() => setAiPanelOpen(false)}
+        />
       )}
       {floorplanOpen && (
         <FloorplanImportModal open={floorplanOpen} setOpen={setFloorplanOpen} file={floorplanFile} setFile={setFloorplanFile} loading={floorplanLoading} onImport={importFloorplan} />

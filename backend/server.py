@@ -852,6 +852,135 @@ async def root():
     return {"message": "Ristruttura CAD API online", "version": "2.0"}
 
 
+# ---------------- AI CAD 2D Editor (modifica spazi/elementi via comando) ----------------
+@api.post("/ai/cad-edit")
+async def ai_cad_edit(body: dict, user: Dict[str, Any] = Depends(get_current_user)):
+    """
+    L'utente descrive in linguaggio naturale cosa vuole cambiare nel progetto CAD 2D
+    (es. "togli il muro tra cucina e soggiorno", "aggiungi un punto luce a 1m da terra al centro della parete nord",
+    "dividi il soggiorno in due stanze uguali", "metti una porta sul muro est della cucina").
+    L'AI ritorna una LISTA DI OPERAZIONI strutturate che il frontend applicherà al project.data.
+    """
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(status_code=500, detail="EMERGENT_LLM_KEY non configurata")
+    message = (body.get("message") or "").strip()
+    project_data = body.get("project_data") or {}
+    view_mode = body.get("view_mode") or "progetto"
+    history = body.get("history") or []  # [{role: 'user'|'assistant', text: '...'}, ...]
+    if not message:
+        raise HTTPException(400, "Messaggio vuoto")
+
+    # Costruisci un riassunto compatto del progetto per non saturare il context
+    def _summarize(p):
+        rooms = p.get("rooms", [])
+        walls = p.get("walls", [])
+        doors = p.get("doors", [])
+        windows = p.get("windows", [])
+        items = p.get("items", [])
+        electrical = p.get("electrical", [])
+        plumbing = p.get("plumbing", [])
+        columns = p.get("columns", [])
+        return {
+            "view_mode": view_mode,
+            "rooms": [{"id": r.get("id"), "name": r.get("name"), "phase": r.get("phase"), "points": r.get("points", [])[:8]} for r in rooms[:20]],
+            "walls": [{"id": w.get("id"), "x1": w.get("x1"), "y1": w.get("y1"), "x2": w.get("x2"), "y2": w.get("y2"), "thickness": w.get("thickness"), "phase": w.get("phase"), "demolito": w.get("demolito")} for w in walls[:60]],
+            "doors": [{"id": d.get("id"), "wallId": d.get("wallId"), "t": d.get("t"), "width": d.get("width")} for d in doors[:30]],
+            "windows": [{"id": w.get("id"), "wallId": w.get("wallId"), "t": w.get("t"), "width": w.get("width"), "height": w.get("height")} for w in windows[:30]],
+            "items_count": len(items),
+            "electrical_count": len(electrical),
+            "plumbing_count": len(plumbing),
+            "columns_count": len(columns),
+            "room_height": p.get("roomHeight", 270),
+        }
+
+    summary = _summarize(project_data)
+
+    sys_msg = (
+        "Sei un assistente CAD esperto in ristrutturazioni. Aiuti l'utente a modificare un progetto 2D "
+        "(planimetria) attraverso comandi in italiano. Rispondi SOLO con JSON valido, mai testo libero.\n\n"
+        "Formato risposta:\n"
+        "{\n"
+        '  "message": "breve spiegazione in italiano di cosa farai",\n'
+        '  "suggestion": "eventuale suggerimento aggiuntivo opzionale o stringa vuota",\n'
+        '  "ops": [ {operazioni} ]\n'
+        "}\n\n"
+        "Le coordinate (x, y) sono in CM, origine top-left, x cresce verso destra, y verso il basso.\n"
+        "Operazioni disponibili (op = nome, params = parametri):\n"
+        "- addWall: { x1, y1, x2, y2, thickness?=10, phase?=progetto }\n"
+        "- removeWall: { id }\n"
+        "- moveWall: { id, x1, y1, x2, y2 }\n"
+        "- markWallDemolished: { id }     # marca un muro come demolito (in progetto)\n"
+        "- addRoom: { name, points: [{x,y}, ...] (>=3 punti), phase?=progetto }\n"
+        "- removeRoom: { id }\n"
+        "- renameRoom: { id, name }\n"
+        "- addDoor: { wallId, t: 0..1, width?=80, height?=210 }\n"
+        "- addWindow: { wallId, t: 0..1, width?=120, height?=140, sillHeight?=90, ante?=2 }\n"
+        "- moveDoor: { id, t }\n"
+        "- moveWindow: { id, t }\n"
+        "- removeDoor: { id }\n"
+        "- removeWindow: { id }\n"
+        "- addElectrical: { kind: 'presa'|'luce'|'interruttore'|'spia', x, y, wall_side?=-1|0|1, height_cm?=110 }\n"
+        "- addPlumbing: { kind: 'acqua'|'scarico', x, y, wall_side?=-1|0|1 }\n"
+        "- addColumn: { kind: 'cemento'|'mattone'|'cartongesso', x, y, width?=30, depth?=30 }\n"
+        "- paintWall: { id, color: '#RRGGBB' }   # in modalità Progetto applica come override\n"
+        "- paintAllWalls: { color: '#RRGGBB' }\n"
+        "- splitRoomByLine: { roomId, x1, y1, x2, y2, name_a?, name_b? }   # divide la stanza con una nuova parete\n"
+        "- noop: {}   # se la richiesta non è chiara o non è eseguibile, ritorna noop + message di chiarimento\n\n"
+        "REGOLE:\n"
+        "- Privilegia operazioni atomiche piccole.\n"
+        "- Se l'utente dice 'togli il muro tra X e Y', identifica il muro condiviso dalle due stanze e usa removeWall (o markWallDemolished se viewMode=progetto).\n"
+        "- Se viewMode='progetto' e si modificano elementi dello stato di fatto, considera markWallDemolished invece di removeWall così è reversibile.\n"
+        "- Se la richiesta è ambigua, fai 'noop' e nel `message` chiedi chiarimenti.\n"
+        "- NON inventare ID che non esistono; tutti gli id devono provenire dal summary fornito."
+    )
+
+    user_payload = (
+        f"PROGETTO_SUMMARY:\n{summary}\n\n"
+        f"VIEW_MODE: {view_mode}\n\n"
+        f"STORIA_CONVERSAZIONE:\n{history}\n\n"
+        f"RICHIESTA_UTENTE: {message}\n\n"
+        "Rispondi con il JSON come da formato."
+    )
+
+    chat = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=f"cad-edit-{user.get('id', 'anon')}",
+        system_message=sys_msg,
+    ).with_model("anthropic", "claude-sonnet-4-5-20250929")
+
+    import json as _json
+    try:
+        resp = await chat.send_message(UserMessage(text=user_payload))
+    except Exception as e:
+        raise HTTPException(500, f"AI error: {e}")
+    text = (resp or "").strip()
+    if text.startswith("```"):
+        # rimuovi eventuali fence markdown
+        text = text.strip("`")
+        if text.lower().startswith("json"):
+            text = text[4:]
+        text = text.strip()
+    try:
+        parsed = _json.loads(text)
+    except Exception:
+        # fallback: cerca primo blocco json
+        import re as _re
+        m = _re.search(r"\{[\s\S]*\}", text)
+        if m:
+            try:
+                parsed = _json.loads(m.group(0))
+            except Exception:
+                parsed = {"message": text or "Risposta non parsabile", "ops": [], "suggestion": ""}
+        else:
+            parsed = {"message": text or "Risposta non parsabile", "ops": [], "suggestion": ""}
+    if not isinstance(parsed, dict):
+        parsed = {"message": "Risposta non riconosciuta", "ops": [], "suggestion": ""}
+    parsed.setdefault("message", "")
+    parsed.setdefault("ops", [])
+    parsed.setdefault("suggestion", "")
+    return parsed
+
+
 # ---------------- AI Material Generator ----------------
 @api.post("/materials/ai-generate")
 async def materials_ai_generate(body: dict, user: Dict[str, Any] = Depends(get_current_user)):

@@ -335,12 +335,14 @@ COMPOSITE_SECTIONS = [
         {"id": "cp-sovrap-pvc", "name": "Sovrapposizione PVC o Laminato come da capitolato", "price": 30.0, "unit": "m²"},
         {"id": "cp-sovrap-gres", "name": "Sovrapposizione Gres come da capitolato", "price": 149.0, "unit": "m²"},
         {"id": "cp-demol-piastrelle", "name": "Demolizione e Rifacimento Massetto + Posa Piastrella a scelta", "price": 79.0, "unit": "m²"},
-        {"id": "cp-costo-fornitura", "name": "Costo Fornitura", "price": 0.0, "unit": "forfait"},
+        # FORNITURA: prezzo modificabile dal venditore in base alla scelta del cliente
+        {"id": "cp-costo-fornitura", "name": "Costo Fornitura piastrelle/parquet (in base alla scelta cliente)", "price": 0.0, "unit": "m²", "modificabile_dal_venditore": True},
     ]},
     {"id": "sec-pareti", "name": "Pareti", "voci": [
         {"id": "cp-rasatura", "name": "Rasatura e tinteggio pareti", "price": 19.80, "unit": "m²"},
         {"id": "cp-cartongesso", "name": "Parete in cartongesso", "price": 46.80, "unit": "m²"},
         {"id": "cp-rivestimento", "name": "Rivestimento ceramico pareti", "price": 91.08, "unit": "m²"},
+        {"id": "cp-fornitura-rivestimento", "name": "Costo Fornitura rivestimento ceramico (in base a scelta)", "price": 0.0, "unit": "m²", "modificabile_dal_venditore": True},
     ]},
     {"id": "sec-soffitti", "name": "Soffitti", "voci": [
         {"id": "cp-tinteggio-sof", "name": "Tinteggio soffitto", "price": 12.00, "unit": "m²"},
@@ -354,10 +356,13 @@ COMPOSITE_SECTIONS = [
     {"id": "sec-idraulico", "name": "Impianto Idraulico", "voci": [
         {"id": "cp-idraulico-completo", "name": "Impianto idraulico completo", "price": 72.00, "unit": "m²"},
         {"id": "cp-idraulico-parziale", "name": "Impianto idraulico parziale", "price": 45.00, "unit": "m²"},
+        {"id": "cp-fornitura-sanitari", "name": "Fornitura sanitari (in base alla scelta cliente)", "price": 0.0, "unit": "forfait", "modificabile_dal_venditore": True},
+        {"id": "cp-fornitura-rubinetterie", "name": "Fornitura rubinetterie (in base alla scelta cliente)", "price": 0.0, "unit": "forfait", "modificabile_dal_venditore": True},
     ]},
     {"id": "sec-elettrico", "name": "Impianto Elettrico", "voci": [
         {"id": "cp-elettrico-completo", "name": "Impianto elettrico completo", "price": 63.00, "unit": "m²"},
         {"id": "cp-elettrico-domotica", "name": "Impianto elettrico domotica", "price": 95.00, "unit": "m²"},
+        {"id": "cp-fornitura-corpi-illuminanti", "name": "Fornitura corpi illuminanti (in base alla scelta)", "price": 0.0, "unit": "forfait", "modificabile_dal_venditore": True},
     ]},
     {"id": "sec-riscaldamento", "name": "Impianto di Riscaldamento", "voci": [
         {"id": "cp-radiatori", "name": "Radiatori + caldaia", "price": 50.00, "unit": "m²"},

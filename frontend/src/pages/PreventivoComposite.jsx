@@ -63,7 +63,11 @@ export default function PreventivoComposite() {
     sections.forEach((s) => {
       s.voci.forEach((v) => {
         const sel = selections[v.id];
-        if (sel && sel.qty > 0) total += (sel.qty || 0) * v.price;
+        if (sel && sel.qty > 0) {
+          // Se voce modificabile + il venditore ha messo un prezzo custom, usa quello; altrimenti listino
+          const effPrice = (v.modificabile_dal_venditore && typeof sel.price === "number" && sel.price >= 0) ? sel.price : v.price;
+          total += (sel.qty || 0) * effPrice;
+        }
       });
     });
     return total;
@@ -80,7 +84,10 @@ export default function PreventivoComposite() {
     const comp = [];
     sections.forEach((s) => s.voci.forEach((v) => {
       const sel = selections[v.id];
-      if (sel && sel.qty > 0) comp.push({ section_id: s.id, voce_id: v.id, name: v.name, unit: v.unit, price: v.price, qty: sel.qty });
+      if (sel && sel.qty > 0) {
+        const effPrice = (v.modificabile_dal_venditore && typeof sel.price === "number" && sel.price >= 0) ? sel.price : v.price;
+        comp.push({ section_id: s.id, voce_id: v.id, name: v.name, unit: v.unit, price: effPrice, list_price: v.price, qty: sel.qty, modificabile_dal_venditore: !!v.modificabile_dal_venditore });
+      }
     }));
     const payload = {
       tipo: "composite", cliente, mq, composite_selections: comp,
@@ -197,27 +204,47 @@ export default function PreventivoComposite() {
                 </div>
                 <table className="w-full text-sm">
                   <thead className="bg-zinc-50 text-xs uppercase text-zinc-500">
-                    <tr><th className="px-3 py-2 text-left">Descrizione</th><th className="px-3 py-2 text-right">Prezzo</th><th className="px-3 py-2 text-center">Sel.</th><th className="px-3 py-2 text-center">Qtà</th><th className="px-3 py-2 text-right">Totale</th></tr>
+                    <tr><th className="px-3 py-2 text-left">Descrizione</th><th className="px-3 py-2 text-right w-32">Prezzo €/u</th><th className="px-3 py-2 text-center w-12">Sel.</th><th className="px-3 py-2 text-center w-20">Qtà</th><th className="px-3 py-2 text-right w-28">Totale</th></tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100">
                     {sec.voci.map((v) => {
                       const sel = selections[v.id];
+                      const editable = !!v.modificabile_dal_venditore;
+                      const effPrice = (sel && editable && typeof sel.price === "number" && sel.price >= 0) ? sel.price : v.price;
                       return (
                         <tr key={v.id}>
-                          <td className="px-3 py-2">{v.name}</td>
-                          <td className="px-3 py-2 text-right font-mono">{fmtEur(v.price)} /{v.unit}</td>
+                          <td className="px-3 py-2">
+                            <span>{v.name}</span>
+                            {editable && <span className="ml-1 text-[9px] uppercase font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1 ml-2">prezzo editabile</span>}
+                            {!editable && <span className="ml-1 text-[9px] uppercase font-bold text-zinc-500 bg-zinc-100 border border-zinc-200 rounded px-1 ml-2">🔒 lavorazione</span>}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono">
+                            {editable && sel ? (
+                              <div className="flex items-center justify-end gap-1">
+                                <Input type="number" min={0} step="0.01"
+                                  className="h-8 w-24 text-right font-mono"
+                                  value={effPrice}
+                                  onChange={(e) => setSelections({ ...selections, [v.id]: { ...sel, price: Math.max(0, Number(e.target.value) || 0) } })}
+                                  data-testid={`comp-price-${v.id}`}
+                                />
+                                <span className="text-xs text-zinc-500">/{v.unit}</span>
+                              </div>
+                            ) : (
+                              <span className={editable ? "text-emerald-700" : ""}>{fmtEur(v.price)} /{v.unit}</span>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-center">
                             <input type="checkbox" checked={!!sel} onChange={(e) => {
                               const s = { ...selections };
-                              if (e.target.checked) s[v.id] = { qty: v.unit === "forfait" || v.unit === "pz" ? 1 : mq || 1 };
+                              if (e.target.checked) s[v.id] = { qty: v.unit === "forfait" || v.unit === "pz" ? 1 : mq || 1, price: v.price };
                               else delete s[v.id];
                               setSelections(s);
                             }} data-testid={`comp-check-${v.id}`} />
                           </td>
                           <td className="px-3 py-2 text-center">
-                            {sel && <Input type="number" min={0} step="0.5" className="h-8 w-20 mx-auto" value={sel.qty} onChange={(e) => setSelections({ ...selections, [v.id]: { qty: Math.max(0, Number(e.target.value) || 0) } })} />}
+                            {sel && <Input type="number" min={0} step="0.5" className="h-8 w-20 mx-auto" value={sel.qty} onChange={(e) => setSelections({ ...selections, [v.id]: { ...sel, qty: Math.max(0, Number(e.target.value) || 0) } })} />}
                           </td>
-                          <td className="px-3 py-2 text-right font-mono">{sel ? fmtEur((sel.qty || 0) * v.price) : "-"}</td>
+                          <td className="px-3 py-2 text-right font-mono">{sel ? fmtEur((sel.qty || 0) * effPrice) : "-"}</td>
                         </tr>
                       );
                     })}

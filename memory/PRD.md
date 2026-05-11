@@ -1,5 +1,22 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 35 — Feb 2026 — Wall Prospetto Editor + MEP in 3D)
+- ✅ **WallProspettoEditor** (richiesta utente più volte: "il muro devo poterlo ruotare di 180 gradi… così posso aggiungere ciò che voglio"):
+  - Modal a schermo intero che apre il prospetto di UN SINGOLO muro selezionato.
+  - Toolbar: ⚡ Elettrico (con kind: presa/luce/interruttore/spia) · 💧 Idraulico (acqua/scarico) · ❄ HVAC (split).
+  - Click sul prospetto → piazza il punto a posizione X (cm da sx) e altezza Y (cm da pavimento) con toast conferma.
+  - Bottone "🔄 Ruota 180° (mostra l'altro lato)" cambia Lato A↔B; i punti su ciascun lato sono memorizzati con `wall_side` (-1/+1).
+  - Liste separate Lato A (fronte) e Lato B (dietro) con bottone elimina per ogni punto.
+  - Se entrambi i lati hanno impianti → banner verde "genera 2 prospetti separati nelle Tavole".
+  - **FIX critico**: `setWallProspettoId is not defined` in PropertiesPanel (era dichiarato in scope Editor) → ora passato come prop `openWallProspetto`.
+- ✅ **Viewer3D — render impianti MEP** (era completamente assente: il 3D mostrava solo muri/stanze/porte/finestre/items/colonne):
+  - `renderMep()` aggiunto in `buildScene` per `electrical`, `plumbing`, `hvac`, `gas`.
+  - Posizionamento Y intelligente: `floor=true` → Y=2cm (a pavimento, marker ring arancione); altrimenti `height_cm` o STD_H standard (presa=30, luce=110, split=230, scarico=30, ecc.).
+  - Side offset rispetto al muro più vicino (~15cm) basato su `wall_side`.
+  - Geometrie distintive: split (cuboide 80×25×18cm bianco), caldaia (45×70×35), VMC (60×25×25), quadro (35×50×12), luce (sfera + PointLight), plumbing (cilindro), default outlet (cubo 10×10×4cm).
+  - Colori per kind: luce=ambra, deviatore=violet, presa-tv=ciano, presa-cucina=arancio, scarico=nero, calda=rosso.
+- ✅ **`A pavimento` Switch**: testid stabile `mep-floor-toggle` (era dinamico `${kind}-floor-toggle`). Per cucina ad isola, prese centro stanza.
+
 ## Recent Updates (Round 34 — Feb 2026 — AI sul 2D + Composite voci editabili)
 - ✅ **AI assistente CAD 2D** (richiesta utente: l'AI deve modificare gli spazi via comando):
   - Endpoint backend `POST /api/ai/cad-edit` → LLM **Claude Sonnet 4.5** (tool-use via JSON strutturato) con summary del progetto.

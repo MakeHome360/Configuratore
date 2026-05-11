@@ -1723,7 +1723,7 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
         <div className="bg-amber-50 border-2 border-amber-400 p-3 rounded">
           <div className="flex items-center justify-between">
             <Label className="text-sm font-bold text-amber-900">📍 A pavimento (centro stanza)</Label>
-            <Switch checked={!!obj.floor} onCheckedChange={(v) => updateObj({ floor: v })} data-testid={`${kind}-floor-toggle`} />
+            <Switch checked={!!obj.floor} onCheckedChange={(v) => updateObj({ floor: v })} data-testid="mep-floor-toggle" />
           </div>
           <div className="text-[11px] text-amber-800 mt-1.5 leading-tight">
             {obj.floor

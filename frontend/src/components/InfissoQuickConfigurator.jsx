@@ -6,83 +6,21 @@ import { Label } from "@/components/ui/label";
 import { X } from "lucide-react";
 import { toast } from "sonner";
 import { fmtEur2 } from "@/components/ui-kit";
+import AbacoInfisso from "@/components/AbacoInfisso";
 
-const COLOR_MAP = {
-  bianco: "#FAFAFA", antracite: "#3F3F46", grigio: "#A1A1AA",
-  marrone: "#78350F", noce: "#92400E", rovere: "#B45309",
-};
-
-/**
- * AbacoInfissoMini: schema compatto dell'infisso usato nel mini-configuratore.
- * Mostra dimensioni in riquadri ad alto contrasto, ante (1..4), tapparella, zanzariera.
- */
-function AbacoInfissoMini({ tipologia, colore, larghezza, altezza, ante, tapparella, tapparella_colore, zanzariera }) {
-  const W = 320, H = 220, pad = 36;
-  const aw = Math.max(40, Math.min(larghezza || 100, 600));
-  const ah = Math.max(40, Math.min(altezza || 140, 400));
-  const maxW = W - pad * 2 - 50, maxH = H - pad * 2 - 30;
-  const scale = Math.min(maxW / aw, maxH / ah);
-  const ww = aw * scale, hh = ah * scale;
-  const cx = pad + maxW / 2, cy = pad + maxH / 2;
-  const x = cx - ww / 2, y = cy - hh / 2;
-  const frameColor = COLOR_MAP[colore] || "#FAFAFA";
-  const stroke = colore === "bianco" ? "#3F3F46" : "#0A0A0A";
-  const tipoName = (tipologia?.name || "").toLowerCase();
-  const isScorrevole = tipoName.includes("scorrevole");
-  const antaCount = Math.max(1, Math.min(4, Number(ante) || 1));
-  const frameW = 6;
-  const tappColor = COLOR_MAP[tapparella_colore] || "#3F3F46";
-  return (
-    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ maxWidth: "100%" }}>
-      {tapparella && (
-        <g>
-          <rect x={x - 4} y={y - 22} width={ww + 8} height={20} fill={tappColor} stroke={stroke} strokeWidth="1.2" rx="2" />
-          <text x={cx} y={y - 7} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="9" fontWeight="700" fill={tapparella_colore === "bianco" ? "#3F3F46" : "#FFF"}>TAPPARELLA</text>
-        </g>
-      )}
-      <line x1={x} y1={y - (tapparella ? 38 : 22)} x2={x + ww} y2={y - (tapparella ? 38 : 22)} stroke="#16A34A" strokeWidth="1.5" />
-      <rect x={cx - 38} y={y - (tapparella ? 50 : 34)} width={76} height={18} fill="#FFF" stroke="#16A34A" strokeWidth="1.4" rx="2" />
-      <text x={cx} y={y - (tapparella ? 38 : 22)} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="14" fontWeight="800" fill="#0A0A0A">{larghezza} cm</text>
-      <line x1={x + ww + 22} y1={y} x2={x + ww + 22} y2={y + hh} stroke="#16A34A" strokeWidth="1.5" />
-      <rect x={x + ww + 30} y={cy - 9} width={70} height={18} fill="#FFF" stroke="#16A34A" strokeWidth="1.4" rx="2" />
-      <text x={x + ww + 65} y={cy + 4} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="14" fontWeight="800" fill="#0A0A0A">{altezza} cm</text>
-      <rect x={x} y={y} width={ww} height={hh} fill={frameColor} stroke={stroke} strokeWidth="2" />
-      <rect x={x + frameW} y={y + frameW} width={ww - 2 * frameW} height={hh - 2 * frameW} fill="#DBEAFE" fillOpacity="0.45" stroke={stroke} strokeWidth="1" />
-      {!isScorrevole && antaCount > 1 && Array.from({ length: antaCount - 1 }).map((_, k) => {
-        const dx = x + (ww / antaCount) * (k + 1);
-        return (
-          <g key={k}>
-            <rect x={dx - 3} y={y + frameW} width={6} height={hh - 2 * frameW} fill={frameColor} stroke={stroke} strokeWidth="1.2" />
-            <line x1={dx} y1={y + frameW + 2} x2={dx} y2={y + hh - frameW - 2} stroke={stroke} strokeWidth="0.5" />
-          </g>
-        );
-      })}
-      {!isScorrevole && antaCount > 1 && Array.from({ length: antaCount }).map((_, k) => {
-        const ax = x + (ww / antaCount) * (k + 0.5);
-        return (
-          <g key={`n-${k}`} pointerEvents="none">
-            <circle cx={ax} cy={y + hh - 12} r={8} fill="white" stroke={stroke} strokeWidth="1" opacity="0.92" />
-            <text x={ax} y={y + hh - 8} textAnchor="middle" fontSize="11" fontWeight="900" fontFamily="JetBrains Mono" fill={stroke}>{k + 1}</text>
-          </g>
-        );
-      })}
-      {zanzariera && (
-        <rect x={x + frameW + 1} y={y + frameW + 1} width={(ww - 2 * frameW - 2) / 2} height={hh - 2 * frameW - 2} fill="url(#mesh-z)" opacity="0.7" />
-      )}
-      <defs>
-        <pattern id="mesh-z" width="4" height="4" patternUnits="userSpaceOnUse">
-          <line x1="0" y1="0" x2="4" y2="4" stroke="#71717A" strokeWidth="0.4" />
-          <line x1="4" y1="0" x2="0" y2="4" stroke="#71717A" strokeWidth="0.4" />
-        </pattern>
-      </defs>
-    </svg>
-  );
+function resolveTipologiaId(categoria, apertura, tipologie) {
+  if (apertura === "scorrevole") {
+    const sc = tipologie.find((t) => (t.category || "").toLowerCase().includes("scorrevole"));
+    if (sc) return sc.id;
+  }
+  const wantsCat = categoria === "portafinestra" ? "portafinestra" : "finestra";
+  // preferenza: prima la 1-anta, poi 2-ante; il pricing scala con anteFactor (1 + 0.05*(ante-1))
+  return tipologie.find((t) => t.id === `inf-${wantsCat}-1anta`)?.id
+    || tipologie.find((t) => t.id === `inf-${wantsCat}-2ante`)?.id
+    || tipologie.find((t) => (t.category || "").toLowerCase() === wantsCat)?.id
+    || tipologie[0]?.id;
 }
 
-/**
- * Dialog mini-configuratore infissi: si apre quando il venditore clicca "Aggiungi infissi" come extra.
- * onConfirm({ items: [...] }) restituisce gli infissi configurati con prezzo unitario e totale calcolato.
- */
 export function InfissoQuickConfigurator({ open, onClose, onConfirm }) {
   const [conf, setConf] = useState({ tipologie: [], materiali: [], vetri: [] });
   const [items, setItems] = useState([]);
@@ -91,11 +29,11 @@ export function InfissoQuickConfigurator({ open, onClose, onConfirm }) {
     if (!open) return;
     api.get("/infissi-config").then((r) => {
       setConf(r.data);
-      // Pre-popola con un infisso di esempio
       setItems([{
-        tipologia_id: r.data.tipologie[0]?.id, materiale_id: r.data.materiali[0]?.id, vetro_id: r.data.vetri[0]?.id,
+        categoria: "finestra", apertura: "battente", ante: 2, hingeSide: "sx",
+        materiale_id: r.data.materiali[0]?.id, vetro_id: r.data.vetri[0]?.id,
         larghezza: 120, altezza: 140, qty: 1, colore: "bianco",
-        ante: 2, tapparella: false, tapparella_colore: "antracite", tapparella_motorizzata: false,
+        tapparella: false, tapparella_colore: "antracite", tapparella_motorizzata: false,
         zanzariera: false,
       }]);
     });
@@ -111,7 +49,8 @@ export function InfissoQuickConfigurator({ open, onClose, onConfirm }) {
     const zanz = it.zanzariera ? area * 80 : 0;
     const ante = Math.max(1, Number(it.ante) || 1);
     const anteFactor = 1 + (ante - 1) * 0.05;
-    return Math.round((base * anteFactor + tapp + zanz) * (it.qty || 1));
+    const scorrFactor = it.apertura === "scorrevole" ? 1.20 : 1.0;
+    return Math.round((base * anteFactor * scorrFactor + tapp + zanz) * (it.qty || 1));
   };
 
   const upd = (i, k, v) => setItems((arr) => arr.map((it, j) => j === i ? { ...it, [k]: v } : it));
@@ -119,9 +58,10 @@ export function InfissoQuickConfigurator({ open, onClose, onConfirm }) {
   const add = () => {
     if (!conf.tipologie?.length) { toast.error("Configurazione in caricamento, riprova"); return; }
     setItems([...items, {
-      tipologia_id: conf.tipologie[0].id, materiale_id: conf.materiali[0]?.id, vetro_id: conf.vetri[0]?.id,
+      categoria: "finestra", apertura: "battente", ante: 2, hingeSide: "sx",
+      materiale_id: conf.materiali[0]?.id, vetro_id: conf.vetri[0]?.id,
       larghezza: 120, altezza: 140, qty: 1, colore: "bianco",
-      ante: 2, tapparella: false, tapparella_colore: "antracite", tapparella_motorizzata: false,
+      tapparella: false, tapparella_colore: "antracite", tapparella_motorizzata: false,
       zanzariera: false,
     }]);
   };
@@ -130,11 +70,12 @@ export function InfissoQuickConfigurator({ open, onClose, onConfirm }) {
 
   const confirm = () => {
     const enriched = items.map((it) => {
-      const tip = conf.tipologie.find((x) => x.id === it.tipologia_id);
+      const tipologia_id = resolveTipologiaId(it.categoria, it.apertura, conf.tipologie);
+      const tip = conf.tipologie.find((x) => x.id === tipologia_id);
       const mat = conf.materiali.find((x) => x.id === it.materiale_id);
       const vet = conf.vetri.find((x) => x.id === it.vetro_id);
       return {
-        ...it,
+        ...it, tipologia_id,
         tipologia_name: tip?.name, materiale_name: mat?.name, vetro_name: vet?.name,
         price: calcPrice(it),
       };
@@ -156,70 +97,95 @@ export function InfissoQuickConfigurator({ open, onClose, onConfirm }) {
             Configura uno o più infissi esterni. Tapparelle e zanzariere sono opzionali per ogni infisso. Il totale verrà aggiunto come <strong>extra</strong> al preventivo.
           </div>
           {items.map((it, i) => {
-            const tip = conf.tipologie.find((x) => x.id === it.tipologia_id);
             const mat = conf.materiali.find((x) => x.id === it.materiale_id);
             const vet = conf.vetri.find((x) => x.id === it.vetro_id);
             const price = calcPrice(it);
+            const ante = Number(it.ante) || 1;
             return (
-              <div key={i} className="border border-zinc-200 rounded p-3 grid grid-cols-12 gap-3 items-end" data-testid={`iqc-row-${i}`}>
-                <div className="col-span-12 mb-2">
-                  <AbacoInfissoMini tipologia={tip} colore={it.colore} larghezza={it.larghezza} altezza={it.altezza}
-                    ante={it.ante} tapparella={it.tapparella} tapparella_colore={it.tapparella_colore} zanzariera={it.zanzariera} />
+              <div key={i} className="border-2 border-zinc-200 rounded p-3 space-y-3" data-testid={`iqc-row-${i}`}>
+                <AbacoInfisso
+                  categoria={it.categoria || "finestra"}
+                  apertura={it.apertura || "battente"}
+                  hingeSide={it.hingeSide || "sx"}
+                  colore={it.colore}
+                  larghezza={it.larghezza}
+                  altezza={it.altezza}
+                  materiale={mat?.name}
+                  vetro={vet?.name}
+                  ante={ante}
+                  tapparella={it.tapparella}
+                  tapparella_colore={it.tapparella_colore}
+                  zanzariera={it.zanzariera}
+                  size="mini"
+                />
+                {/* Tipologia + Apertura + Ante */}
+                <div className="grid grid-cols-12 gap-2 items-end">
+                  <div className="col-span-12 md:col-span-4"><Label className="text-xs uppercase font-bold">📐 Tipologia</Label>
+                    <select className="w-full border-2 border-zinc-300 rounded h-10 px-2 text-sm font-bold font-mono mt-1" value={it.categoria || "finestra"} onChange={(e) => upd(i, "categoria", e.target.value)} data-testid={`iqc-cat-${i}`}>
+                      <option value="finestra">Finestra</option>
+                      <option value="portafinestra">Porta-finestra</option>
+                    </select>
+                  </div>
+                  <div className="col-span-6 md:col-span-4"><Label className="text-xs uppercase font-bold">🔁 Apertura</Label>
+                    <select className="w-full border-2 border-zinc-300 rounded h-10 px-2 text-sm font-bold font-mono mt-1" value={it.apertura || "battente"} onChange={(e) => upd(i, "apertura", e.target.value)} data-testid={`iqc-ap-${i}`}>
+                      <option value="battente">Battente</option>
+                      <option value="scorrevole">Scorrevole (+20%)</option>
+                    </select>
+                  </div>
+                  <div className="col-span-6 md:col-span-4"><Label className="text-xs uppercase font-bold">▦ N° Ante</Label>
+                    <select className="w-full border-2 border-zinc-300 rounded h-10 px-2 text-sm font-bold font-mono mt-1" value={it.ante} onChange={(e) => upd(i, "ante", Number(e.target.value))} data-testid={`iqc-ante-${i}`}>
+                      <option value={1}>1 anta</option><option value={2}>2 ante</option><option value={3}>3 ante</option><option value={4}>4 ante</option>
+                    </select>
+                  </div>
                 </div>
-                <div className="col-span-6 sm:col-span-4 lg:col-span-3"><Label className="text-xs">Tipologia</Label>
-                  <select className="w-full border border-zinc-300 rounded h-10 px-2 text-sm" value={it.tipologia_id} onChange={(e) => upd(i, "tipologia_id", e.target.value)}>
-                    {conf.tipologie.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
+                {/* Lato cerniera (solo 1 anta battente) */}
+                {ante === 1 && it.apertura !== "scorrevole" && (
+                  <div>
+                    <Label className="text-xs uppercase font-bold">🔄 Lato cerniera</Label>
+                    <div className="grid grid-cols-2 gap-2 mt-1">
+                      <button onClick={() => upd(i, "hingeSide", "sx")} className={`h-10 border-2 font-semibold text-xs ${(it.hingeSide || "sx") === "sx" ? "bg-zinc-900 text-white border-zinc-900" : "bg-white border-zinc-300"}`} data-testid={`iqc-hinge-sx-${i}`}>◀ SX (maniglia dx)</button>
+                      <button onClick={() => upd(i, "hingeSide", "dx")} className={`h-10 border-2 font-semibold text-xs ${it.hingeSide === "dx" ? "bg-zinc-900 text-white border-zinc-900" : "bg-white border-zinc-300"}`} data-testid={`iqc-hinge-dx-${i}`}>DX (maniglia sx) ▶</button>
+                    </div>
+                  </div>
+                )}
+                {/* Materiale + Vetro + Colore */}
+                <div className="grid grid-cols-12 gap-2 items-end">
+                  <div className="col-span-12 md:col-span-4"><Label className="text-xs">Materiale</Label>
+                    <select className="w-full border border-zinc-300 rounded h-9 px-2 text-sm" value={it.materiale_id} onChange={(e) => upd(i, "materiale_id", e.target.value)}>
+                      {conf.materiali.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-6 md:col-span-4"><Label className="text-xs">Vetro</Label>
+                    <select className="w-full border border-zinc-300 rounded h-9 px-2 text-sm" value={it.vetro_id} onChange={(e) => upd(i, "vetro_id", e.target.value)}>
+                      {conf.vetri.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-6 md:col-span-4"><Label className="text-xs">Colore</Label>
+                    <select className="w-full border border-zinc-300 rounded h-9 px-2 text-sm" value={it.colore} onChange={(e) => upd(i, "colore", e.target.value)}>
+                      <option value="bianco">Bianco</option><option value="antracite">Antracite</option><option value="grigio">Grigio</option><option value="marrone">Marrone</option><option value="noce">Noce</option><option value="rovere">Rovere</option>
+                    </select>
+                  </div>
                 </div>
-                <div className="col-span-6 sm:col-span-4 lg:col-span-2"><Label className="text-xs">Materiale</Label>
-                  <select className="w-full border border-zinc-300 rounded h-10 px-2 text-sm" value={it.materiale_id} onChange={(e) => upd(i, "materiale_id", e.target.value)}>
-                    {conf.materiali.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
+                {/* Misure GROSSE */}
+                <div className="grid grid-cols-12 gap-2 items-end bg-amber-50 border border-amber-200 p-3 rounded">
+                  <div className="col-span-4"><Label className="text-sm uppercase font-bold">📏 Larghezza (cm)</Label><Input type="number" min={20} step="1" className="h-11 text-xl font-mono font-extrabold text-center" value={it.larghezza} onChange={(e) => upd(i, "larghezza", Math.max(20, Number(e.target.value) || 20))} /></div>
+                  <div className="col-span-4"><Label className="text-sm uppercase font-bold">📐 Altezza (cm)</Label><Input type="number" min={20} step="1" className="h-11 text-xl font-mono font-extrabold text-center" value={it.altezza} onChange={(e) => upd(i, "altezza", Math.max(20, Number(e.target.value) || 20))} /></div>
+                  <div className="col-span-2"><Label className="text-sm uppercase font-bold">× Qty</Label><Input type="number" min={1} step="1" className="h-11 text-xl font-mono font-extrabold text-center" value={it.qty} onChange={(e) => upd(i, "qty", Math.max(1, Number(e.target.value) || 1))} /></div>
+                  <div className="col-span-2 text-right"><div className="text-[10px] uppercase">Prezzo</div><div className="text-lg font-bold font-mono">{fmtEur2(price)}</div></div>
                 </div>
-                <div className="col-span-6 sm:col-span-4 lg:col-span-2"><Label className="text-xs">Vetro</Label>
-                  <select className="w-full border border-zinc-300 rounded h-10 px-2 text-sm" value={it.vetro_id} onChange={(e) => upd(i, "vetro_id", e.target.value)}>
-                    {conf.vetri.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
-                </div>
-                <div className="col-span-6 sm:col-span-3 lg:col-span-2"><Label className="text-xs">Colore</Label>
-                  <select className="w-full border border-zinc-300 rounded h-10 px-2 text-sm" value={it.colore} onChange={(e) => upd(i, "colore", e.target.value)}>
-                    <option value="bianco">Bianco</option>
-                    <option value="antracite">Antracite</option>
-                    <option value="grigio">Grigio</option>
-                    <option value="marrone">Marrone</option>
-                    <option value="noce">Noce</option>
-                    <option value="rovere">Rovere</option>
-                  </select>
-                </div>
-                <div className="col-span-6 sm:col-span-2 lg:col-span-1"><Label className="text-xs">Ante</Label>
-                  <select className="w-full border border-zinc-300 rounded h-10 px-2 text-sm font-mono font-bold" value={it.ante} onChange={(e) => upd(i, "ante", Number(e.target.value))} data-testid={`iqc-ante-${i}`}>
-                    <option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={4}>4</option>
-                  </select>
-                </div>
-                <div className="col-span-4 sm:col-span-3 lg:col-span-1"><Label className="text-xs">L (cm)</Label><Input type="number" min={20} step="1" className="h-10 text-base font-mono font-bold text-center" value={it.larghezza} onChange={(e) => upd(i, "larghezza", Math.max(20, Number(e.target.value) || 20))} /></div>
-                <div className="col-span-4 sm:col-span-3 lg:col-span-1"><Label className="text-xs">H (cm)</Label><Input type="number" min={20} step="1" className="h-10 text-base font-mono font-bold text-center" value={it.altezza} onChange={(e) => upd(i, "altezza", Math.max(20, Number(e.target.value) || 20))} /></div>
-                <div className="col-span-4 sm:col-span-2 lg:col-span-1"><Label className="text-xs">Qty</Label><Input type="number" min={1} step="1" className="h-10 text-base font-mono font-bold text-center" value={it.qty} onChange={(e) => upd(i, "qty", Math.max(1, Number(e.target.value) || 1))} /></div>
-                <div className="col-span-12 mt-1 flex flex-wrap items-center gap-3 bg-zinc-50 border border-dashed border-zinc-300 rounded p-2 text-xs">
+                {/* Accessori */}
+                <div className="flex flex-wrap items-center gap-3 bg-zinc-50 border border-dashed border-zinc-300 rounded p-2 text-xs">
                   <span className="font-semibold text-zinc-700">Accessori:</span>
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input type="checkbox" checked={!!it.tapparella} onChange={(e) => upd(i, "tapparella", e.target.checked)} data-testid={`iqc-tapparella-${i}`} /> Tapparella
-                  </label>
-                  {it.tapparella && (
-                    <>
-                      <select className="border border-zinc-300 rounded h-7 px-1.5 text-xs" value={it.tapparella_colore} onChange={(e) => upd(i, "tapparella_colore", e.target.value)}>
-                        <option value="bianco">Bianca</option><option value="antracite">Antracite</option><option value="marrone">Marrone</option>
-                      </select>
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input type="checkbox" checked={!!it.tapparella_motorizzata} onChange={(e) => upd(i, "tapparella_motorizzata", e.target.checked)} /> Motorizzata
-                      </label>
-                    </>
-                  )}
+                  <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={!!it.tapparella} onChange={(e) => upd(i, "tapparella", e.target.checked)} data-testid={`iqc-tapparella-${i}`} /> Tapparella</label>
+                  {it.tapparella && (<>
+                    <select className="border border-zinc-300 rounded h-7 px-1.5 text-xs" value={it.tapparella_colore} onChange={(e) => upd(i, "tapparella_colore", e.target.value)}>
+                      <option value="bianco">Bianca</option><option value="antracite">Antracite</option><option value="marrone">Marrone</option>
+                    </select>
+                    <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={!!it.tapparella_motorizzata} onChange={(e) => upd(i, "tapparella_motorizzata", e.target.checked)} /> Motorizzata</label>
+                  </>)}
                   <span className="text-zinc-300">|</span>
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input type="checkbox" checked={!!it.zanzariera} onChange={(e) => upd(i, "zanzariera", e.target.checked)} data-testid={`iqc-zanzariera-${i}`} /> Zanzariera
-                  </label>
-                  <div className="ml-auto font-mono font-bold text-zinc-900">{fmtEur2(price)}</div>
-                  <button onClick={() => del(i)} className="p-1 hover:bg-rose-50 rounded text-rose-600 text-xs">Rimuovi</button>
+                  <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={!!it.zanzariera} onChange={(e) => upd(i, "zanzariera", e.target.checked)} data-testid={`iqc-zanzariera-${i}`} /> Zanzariera</label>
+                  <button onClick={() => del(i)} className="ml-auto p-1 hover:bg-rose-50 rounded text-rose-600 text-xs">Rimuovi</button>
                 </div>
               </div>
             );

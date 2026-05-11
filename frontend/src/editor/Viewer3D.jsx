@@ -241,40 +241,94 @@ function buildScene(project, catalog) {
         const cxLocal = (wn.t - 0.5) * length;
         const sill = (wn.sillHeight || 90) * CM;
         const winH = (wn.height || 140) * CM;
+        const winW = wn.width * CM;
         const sin = Math.sin(angle), cos = Math.cos(angle);
         const wx = mx + cxLocal * cos;
         const wz = mz + cxLocal * sin;
-        const frameGeom = new THREE.BoxGeometry(wn.width * CM, winH, th * 1.05);
-        const frameMat = new THREE.MeshStandardMaterial({ color: wn.color ? new THREE.Color(wn.color) : 0xffffff, roughness: 0.5 });
-        const frame = new THREE.Mesh(frameGeom, frameMat);
-        frame.position.set(wx, sill + winH / 2, wz);
-        frame.rotation.y = -angle;
-        frame.userData = { kind: "windows", id: wn.id };
-        root.add(frame);
-        const glassGeom = new THREE.BoxGeometry((wn.width - 8) * CM, winH - 8 * CM, 1 * CM);
-        const glassMat = new THREE.MeshStandardMaterial({ color: 0xa5d8e6, roughness: 0.05, metalness: 0.4, transparent: true, opacity: 0.55 });
-        const glass = new THREE.Mesh(glassGeom, glassMat);
-        glass.position.copy(frame.position);
-        glass.rotation.y = -angle;
-        glass.userData = { kind: "windows", id: wn.id };
-        root.add(glass);
-        // Divider verticale interno per ante>1
+        const fW = 6 * CM; // larghezza telaio
+        const frameColMap = { bianco: 0xFAFAFA, antracite: 0x3F3F46, grigio: 0xA1A1AA, marrone: 0x78350F, noce: 0x5B3A1A, rovere: 0xA87C4F };
+        const frameHex = frameColMap[wn.frameColor || wn.color] != null ? frameColMap[wn.frameColor || wn.color] : 0xFAFAFA;
+        const frameMat = new THREE.MeshStandardMaterial({ color: frameHex, roughness: 0.5 });
+
+        // Telaio CAVO: 4 box (top/bottom/left/right) anziché 1 box pieno (così il vetro è visibile)
+        const frameGroup = new THREE.Group();
+        frameGroup.position.set(wx, sill + winH / 2, wz);
+        frameGroup.rotation.y = -angle;
+        frameGroup.userData = { kind: "windows", id: wn.id };
+
+        // Top
+        const top = new THREE.Mesh(new THREE.BoxGeometry(winW, fW, th * 1.05), frameMat);
+        top.position.set(0, winH / 2 - fW / 2, 0);
+        frameGroup.add(top);
+        // Bottom
+        const bot = new THREE.Mesh(new THREE.BoxGeometry(winW, fW, th * 1.05), frameMat);
+        bot.position.set(0, -winH / 2 + fW / 2, 0);
+        frameGroup.add(bot);
+        // Left
+        const left = new THREE.Mesh(new THREE.BoxGeometry(fW, winH - 2 * fW, th * 1.05), frameMat);
+        left.position.set(-winW / 2 + fW / 2, 0, 0);
+        frameGroup.add(left);
+        // Right
+        const right = new THREE.Mesh(new THREE.BoxGeometry(fW, winH - 2 * fW, th * 1.05), frameMat);
+        right.position.set(winW / 2 - fW / 2, 0, 0);
+        frameGroup.add(right);
+
+        // Vetro TRASPARENTE al centro (separato per ogni anta, con divider tra)
         const ante = Math.max(1, Math.min(4, Number(wn.ante) || 1));
-        if (ante > 1) {
-          for (let k = 1; k < ante; k++) {
-            const dvGeom = new THREE.BoxGeometry(4 * CM, winH - 8 * CM, th * 1.1);
-            const dvMat = new THREE.MeshStandardMaterial({ color: wn.color ? new THREE.Color(wn.color) : 0xffffff, roughness: 0.5 });
-            const dv = new THREE.Mesh(dvGeom, dvMat);
-            // posizione lungo larghezza locale dell'infisso
-            const offsetLocal = (-wn.width / 2 + (wn.width / ante) * k) * CM;
-            const dx2 = offsetLocal * cos;
-            const dz2 = offsetLocal * sin;
-            dv.position.set(wx + dx2, sill + winH / 2, wz + dz2);
-            dv.rotation.y = -angle;
-            dv.userData = { kind: "windows", id: wn.id };
-            root.add(dv);
+        const innerW = winW - 2 * fW;
+        const innerH = winH - 2 * fW;
+        const dividerW = 5 * CM;
+        const totalDividers = ante - 1;
+        const glassW = (innerW - totalDividers * dividerW) / ante;
+        const glassMat = new THREE.MeshPhysicalMaterial({
+          color: 0xE0F2FE,
+          roughness: 0.05,
+          metalness: 0.0,
+          transmission: 0.85, // trasparenza fisica
+          transparent: true,
+          opacity: 0.5,
+          ior: 1.4,
+        });
+        for (let k = 0; k < ante; k++) {
+          const glass = new THREE.Mesh(
+            new THREE.BoxGeometry(glassW, innerH, 1 * CM),
+            glassMat
+          );
+          const offsetX = -innerW / 2 + glassW / 2 + k * (glassW + dividerW);
+          glass.position.set(offsetX, 0, 0);
+          glass.userData = { kind: "windows", id: wn.id };
+          frameGroup.add(glass);
+          // Divider verticale (tranne dopo l'ultima anta)
+          if (k < ante - 1) {
+            const dv = new THREE.Mesh(
+              new THREE.BoxGeometry(dividerW, innerH, th * 1.05),
+              frameMat
+            );
+            dv.position.set(offsetX + glassW / 2 + dividerW / 2, 0, 0);
+            frameGroup.add(dv);
           }
         }
+
+        // Davanzale (solo finestra, non porta-finestra)
+        if (sill > 0) {
+          const sillMat = new THREE.MeshStandardMaterial({ color: 0x9CA3AF, roughness: 0.7 });
+          const sillMesh = new THREE.Mesh(new THREE.BoxGeometry(winW + 6 * CM, 3 * CM, th * 1.3), sillMat);
+          sillMesh.position.set(wx, sill - 1.5 * CM, wz);
+          sillMesh.rotation.y = -angle;
+          root.add(sillMesh);
+        }
+
+        // Cassonetto tapparella sopra
+        if (wn.tapparella) {
+          const tCol = { bianco: 0xFAFAFA, antracite: 0x3F3F46, marrone: 0x78350F }[wn.tapparella_colore] || 0x3F3F46;
+          const cMat = new THREE.MeshStandardMaterial({ color: tCol, roughness: 0.6 });
+          const cass = new THREE.Mesh(new THREE.BoxGeometry(winW + 8 * CM, 20 * CM, th * 1.05), cMat);
+          cass.position.set(wx, sill + winH + 10 * CM, wz);
+          cass.rotation.y = -angle;
+          root.add(cass);
+        }
+
+        root.add(frameGroup);
       });
   });
 

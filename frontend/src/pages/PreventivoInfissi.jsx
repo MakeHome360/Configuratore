@@ -1,13 +1,14 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "@/lib/api";
-import { Page, PageHeader, fmtEur, fmtEur2 } from "@/components/ui-kit";
+import { Page, PageHeader, fmtEur2 } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Trash2, Save } from "lucide-react";
 import { toast } from "sonner";
+import AbacoInfisso from "@/components/AbacoInfisso";
 
 // Mappa categoria + apertura + ante → tipologia_id del backend (per il pricing)
 function resolveTipologiaId(categoria, apertura, ante, tipologie) {
@@ -87,6 +88,7 @@ export default function PreventivoInfissi() {
       categoria: "finestra",
       apertura: "battente",
       ante: 1,
+      hingeSide: "sx",
       materiale_id: conf.materiali[0].id,
       vetro_id: conf.vetri[0].id,
       larghezza: 120, altezza: 140, qty: 1, note: "", colore: "bianco",
@@ -137,6 +139,7 @@ export default function PreventivoInfissi() {
                     <AbacoInfisso
                       categoria={it.categoria}
                       apertura={it.apertura}
+                      hingeSide={it.hingeSide || "sx"}
                       colore={it.colore || "bianco"}
                       larghezza={it.larghezza}
                       altezza={it.altezza}
@@ -146,6 +149,7 @@ export default function PreventivoInfissi() {
                       tapparella={!!it.tapparella}
                       tapparella_colore={it.tapparella_colore}
                       zanzariera={!!it.zanzariera}
+                      size="big"
                     />
 
                     {/* Riga 1 — A SINISTRA: Tipologia (solo finestra/portafinestra). A DESTRA: Apertura + Ante. */}
@@ -174,6 +178,27 @@ export default function PreventivoInfissi() {
                         </select>
                       </div>
                     </div>
+
+                    {/* Riga 1.5 — Lato apertura SOLO se anta singola e battente */}
+                    {(Number(it.ante) || 1) === 1 && it.apertura !== "scorrevole" && (
+                      <div className="mt-3 grid grid-cols-12 gap-3 items-end">
+                        <div className="col-span-12 md:col-span-6">
+                          <Label className="text-xs uppercase tracking-wider text-zinc-700 font-bold">🔄 Lato cerniera (anta singola)</Label>
+                          <div className="grid grid-cols-2 gap-2 mt-1">
+                            <button
+                              onClick={() => upd(i, "hingeSide", "sx")}
+                              className={`h-11 border-2 font-bold text-sm ${(it.hingeSide || "sx") === "sx" ? "bg-zinc-900 text-white border-zinc-900" : "bg-white border-zinc-300 hover:bg-zinc-50"}`}
+                              data-testid={`inf-hinge-sx-${i}`}
+                            >◀ Sinistra (cerniera sx · maniglia dx)</button>
+                            <button
+                              onClick={() => upd(i, "hingeSide", "dx")}
+                              className={`h-11 border-2 font-bold text-sm ${it.hingeSide === "dx" ? "bg-zinc-900 text-white border-zinc-900" : "bg-white border-zinc-300 hover:bg-zinc-50"}`}
+                              data-testid={`inf-hinge-dx-${i}`}
+                            >(cerniera dx · maniglia sx) Destra ▶</button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Riga 2 — Materiale / Vetro / Colore */}
                     <div className="mt-3 grid grid-cols-12 gap-3 items-end">
@@ -292,158 +317,3 @@ const Row = ({ label, value, bold, big }) => (
   <div className={`flex items-center justify-between ${bold ? "font-bold" : ""} ${big ? "text-lg pt-2 border-t border-zinc-200" : "text-sm"}`}><span>{label}</span><span>{value}</span></div>
 );
 
-const COLOR_MAP = {
-  bianco: "#FAFAFA", antracite: "#3F3F46", grigio: "#A1A1AA",
-  marrone: "#78350F", noce: "#5B3A1A", rovere: "#A87C4F",
-};
-
-function AbacoInfisso({ categoria, apertura, colore, larghezza, altezza, materiale, vetro, ante = 1, tapparella, tapparella_colore, zanzariera }) {
-  // SVG schematic preview MOLTO PIÙ GRANDE per leggibilità delle quote.
-  const W = 560, H = 360, pad = 60;
-  const aw = Math.max(40, Math.min(larghezza || 100, 600));
-  const ah = Math.max(40, Math.min(altezza || 140, 400));
-  const maxW = W - pad * 2 - 70, maxH = H - pad * 2 - 50;
-  const scale = Math.min(maxW / aw, maxH / ah);
-  const ww = aw * scale, hh = ah * scale;
-  const cx = pad + maxW / 2, cy = pad + maxH / 2;
-  const x = cx - ww / 2, y = cy - hh / 2;
-  const frameColor = COLOR_MAP[colore] || "#FAFAFA";
-  const stroke = colore === "bianco" ? "#3F3F46" : "#0A0A0A";
-  const isPF = categoria === "portafinestra";
-  const isScorrevole = apertura === "scorrevole";
-  const antaCount = Math.max(1, Math.min(4, Number(ante) || 1));
-  const frameW = 8;
-  const tappColor = COLOR_MAP[tapparella_colore] || "#3F3F46";
-  return (
-    <div className="bg-white border-2 border-zinc-300 rounded p-2">
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`} data-testid="abaco-svg" style={{ maxWidth: "100%", height: "auto" }}>
-        <defs>
-          <filter id="frame-shadow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="2" stdDeviation="2" floodOpacity="0.18" />
-          </filter>
-          <pattern id="mesh-zanz" width="4" height="4" patternUnits="userSpaceOnUse">
-            <line x1="0" y1="0" x2="4" y2="4" stroke="#71717A" strokeWidth="0.4" />
-            <line x1="4" y1="0" x2="0" y2="4" stroke="#71717A" strokeWidth="0.4" />
-          </pattern>
-        </defs>
-        {/* Cassonetto tapparella */}
-        {tapparella && (
-          <g>
-            <rect x={x - 6} y={y - 30} width={ww + 12} height={26} fill={tappColor} stroke={stroke} strokeWidth="1.4" rx="3" />
-            <text x={cx} y={y - 12} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="12" fontWeight="700" fill={tapparella_colore === "bianco" ? "#3F3F46" : "#FFF"}>TAPPARELLA</text>
-          </g>
-        )}
-        {/* Quota LARGHEZZA in BIG (sopra) */}
-        {(() => {
-          const yQ = y - (tapparella ? 50 : 30);
-          return (
-            <g>
-              <line x1={x} y1={yQ} x2={x + ww} y2={yQ} stroke="#16A34A" strokeWidth="2.5" />
-              <line x1={x} y1={yQ - 6} x2={x} y2={yQ + 6} stroke="#16A34A" strokeWidth="2.5" />
-              <line x1={x + ww} y1={yQ - 6} x2={x + ww} y2={yQ + 6} stroke="#16A34A" strokeWidth="2.5" />
-              <rect x={cx - 56} y={yQ - 16} width={112} height={26} fill="#FFF" stroke="#16A34A" strokeWidth="2" rx="3" />
-              <text x={cx} y={yQ + 3} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="20" fontWeight="900" fill="#0A0A0A">{`${larghezza} cm`}</text>
-            </g>
-          );
-        })()}
-        {/* Quota ALTEZZA in BIG (destra) */}
-        {(() => {
-          const xQ = x + ww + 30;
-          return (
-            <g>
-              <line x1={xQ} y1={y} x2={xQ} y2={y + hh} stroke="#16A34A" strokeWidth="2.5" />
-              <line x1={xQ - 6} y1={y} x2={xQ + 6} y2={y} stroke="#16A34A" strokeWidth="2.5" />
-              <line x1={xQ - 6} y1={y + hh} x2={xQ + 6} y2={y + hh} stroke="#16A34A" strokeWidth="2.5" />
-              <rect x={xQ + 8} y={cy - 13} width={90} height={26} fill="#FFF" stroke="#16A34A" strokeWidth="2" rx="3" />
-              <text x={xQ + 53} y={cy + 5} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="20" fontWeight="900" fill="#0A0A0A">{`${altezza} cm`}</text>
-            </g>
-          );
-        })()}
-        {/* Davanzale */}
-        {!isPF && (
-          <g>
-            <rect x={x - 8} y={y + hh + 3} width={ww + 16} height={8} fill="#A1A1AA" stroke="#52525B" strokeWidth="1" />
-            <text x={cx} y={y + hh + 22} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="11" fontWeight="700" fill="#525252">DAVANZALE</text>
-          </g>
-        )}
-        {/* Frame esterno */}
-        <rect x={x} y={y} width={ww} height={hh} fill={frameColor} stroke={stroke} strokeWidth="3" filter="url(#frame-shadow)" />
-        <rect x={x + frameW} y={y + frameW} width={ww - 2 * frameW} height={hh - 2 * frameW} fill="#DBEAFE" fillOpacity="0.6" stroke={stroke} strokeWidth="1.5" />
-        <line x1={x + frameW + 8} y1={y + frameW + 6} x2={x + ww - frameW - 8} y2={y + hh - frameW - 6} stroke="#FFFFFF" strokeOpacity="0.55" strokeWidth="4" />
-        {/* Anta dividers + numeri (chiari) */}
-        {!isScorrevole && antaCount > 1 && Array.from({ length: antaCount - 1 }).map((_, k) => {
-          const dx = x + (ww / antaCount) * (k + 1);
-          return (
-            <g key={k}>
-              <rect x={dx - 4} y={y + frameW} width={8} height={hh - 2 * frameW} fill={frameColor} stroke={stroke} strokeWidth="1.5" />
-              <line x1={dx} y1={y + frameW + 2} x2={dx} y2={y + hh - frameW - 2} stroke={stroke} strokeWidth="0.6" />
-            </g>
-          );
-        })}
-        {/* Apertura tipo: triangoli o frecce */}
-        {!isScorrevole && Array.from({ length: antaCount }).map((_, k) => {
-          const ax = x + (ww / antaCount) * k;
-          const aw_ = ww / antaCount;
-          const goesRight = k % 2 === 0;
-          const startX = goesRight ? ax + frameW : ax + aw_ - frameW;
-          const endX = goesRight ? ax + aw_ - frameW : ax + frameW;
-          return (
-            <path key={k} d={`M ${startX} ${y + hh - frameW} L ${endX} ${y + frameW} L ${endX} ${y + hh - frameW} Z`} fill="none" stroke={stroke} strokeWidth="0.8" strokeDasharray="3,3" opacity="0.55" />
-          );
-        })}
-        {isScorrevole && (
-          <>
-            <line x1={cx} y1={y + frameW} x2={cx} y2={y + hh - frameW} stroke={stroke} strokeWidth="1.5" strokeDasharray="4,4" />
-            <text x={cx - ww / 4} y={cy + 6} textAnchor="middle" fontSize="22" fontWeight="800" fill={stroke}>→</text>
-            <text x={cx + ww / 4} y={cy + 6} textAnchor="middle" fontSize="22" fontWeight="800" fill={stroke}>←</text>
-          </>
-        )}
-        {/* Numero anta (bolla bianca + numero) */}
-        {antaCount > 1 && !isScorrevole && Array.from({ length: antaCount }).map((_, k) => {
-          const ax = x + (ww / antaCount) * (k + 0.5);
-          return (
-            <g key={`n-${k}`}>
-              <circle cx={ax} cy={y + hh - 18} r={12} fill="white" stroke={stroke} strokeWidth="1.5" />
-              <text x={ax} y={y + hh - 13} textAnchor="middle" fontSize="14" fontWeight="900" fontFamily="JetBrains Mono" fill={stroke}>{k + 1}</text>
-            </g>
-          );
-        })}
-        {/* Maniglia cremonese */}
-        {!isScorrevole && (() => {
-          const handleX = x + ww - frameW - 14;
-          const handleY = cy;
-          const isLightFrame = colore === "bianco" || colore === "grigio";
-          const handleColor = isLightFrame ? "#3F3F46" : "#E5E7EB";
-          return (
-            <g pointerEvents="none">
-              <rect x={handleX - 3} y={handleY - 18} width={6} height={36} rx={3} fill={handleColor} stroke="#0A0A0A" strokeWidth="0.6" />
-              <circle cx={handleX} cy={handleY} r={5} fill={handleColor} stroke="#0A0A0A" strokeWidth="0.8" />
-            </g>
-          );
-        })()}
-        {/* Cerniere lato sinistro */}
-        {!isScorrevole && (
-          <g pointerEvents="none">
-            {[0.18, 0.5, 0.82].map((p, k) => (
-              <rect key={k} x={x + frameW + 1} y={y + hh * p - 6} width={4} height={12} fill="#9CA3AF" stroke="#0A0A0A" strokeWidth="0.5" />
-            ))}
-          </g>
-        )}
-        {/* Zanzariera */}
-        {zanzariera && (
-          <g pointerEvents="none">
-            <rect x={x + frameW + 2} y={y + frameW + 2} width={(ww - 2 * frameW - 4) / 2} height={hh - 2 * frameW - 4} fill="url(#mesh-zanz)" opacity="0.7" />
-            <text x={x + ww / 4} y={y + hh - 26} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="11" fontWeight="700" fill="#525252">ZANZARIERA</text>
-          </g>
-        )}
-        {/* Etichette: categoria + apertura + ante (info riepilogativo in basso a sinistra) */}
-        <g>
-          <rect x={20} y={H - 36} width={W - 40} height={24} fill="#FAFAFA" stroke="#D4D4D8" strokeWidth="1" rx="3" />
-          <text x={28} y={H - 18} fontFamily="JetBrains Mono" fontSize="12" fontWeight="700" fill="#3F3F46">
-            {`${isPF ? "PORTA-FINESTRA" : "FINESTRA"} · ${isScorrevole ? "SCORREVOLE" : "BATTENTE"} · ${antaCount} ANTA${antaCount > 1 ? "E" : ""} · ${materiale || "—"} · ${vetro || "—"}`}
-          </text>
-        </g>
-      </svg>
-    </div>
-  );
-}

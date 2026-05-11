@@ -1,5 +1,26 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 31 — Feb 2026 — Configuratore Infissi unificato)
+- ✅ **Componente condiviso `AbacoInfisso`** in `/app/frontend/src/components/AbacoInfisso.jsx`: stessa anteprima usata in 3 punti (PreventivoInfissi, InfissoQuickConfigurator, CAD finestre).
+  - Supporta size `big` (560×360 per pagina dedicata) e `mini` (360×220 per dialog/pannelli)
+  - Render condiviso → modifiche grafiche da farsi in un solo punto
+- ✅ **Anta singola: lato cerniera + maniglia visibili**:
+  - Nuovo campo `hingeSide: 'sx' | 'dx'` per anta singola battente
+  - Rendering: 3 cerniere sul lato scelto + cremonese (barra + pomello + maniglietta orizz.) sul lato opposto
+  - UI bottoni espliciti: "◀ Sinistra (cerniera sx · maniglia dx)" / "(cerniera dx · maniglia sx) Destra ▶"
+  - Etichetta riepilogativa nel SVG: `... · 1 ANTA · cardine SX · ...`
+  - Per ante > 1: cerniere ed maniglie distribuite auto come industria reale (esterne incernierate ai bordi, interne verso il bordo più vicino)
+- ✅ **CAD finestre — pannello proprietà arricchito**:
+  - Anteprima AbacoInfisso in cima al pannello (mini)
+  - Nuovi campi: ante (1-4), colore telaio (bianco/antracite/grigio/marrone/noce/rovere), tipo vetro, switch tapparella, switch zanzariera
+  - Il cardine già esisteva (hinge left/right) ora mappato a hingeSide del configuratore
+- ✅ **3D Finestre — vetro TRASPARENTE** (era tinta unita):
+  - Telaio CAVO (4 box: top/bottom/left/right) invece di 1 box pieno → il vetro è visibile
+  - Vetro `THREE.MeshPhysicalMaterial` con `transmission: 0.85`, `transparent: true`, `opacity: 0.5`, `ior: 1.4` → trasparenza fisica
+  - Vetro suddiviso per ante (con divider verticale tra anta e anta)
+  - Davanzale 3D separato (3cm spessore)
+  - Cassonetto tapparella 3D sopra la finestra quando `tapparella = true`
+
 ## Recent Updates (Round 30 — Feb 2026 — Nuovo tool Pilastro/Colonna)
 - ✅ **Tool CAD "Pilastro"** (richiesta utente: prima li disegnava con muri mattone → diventavano "stanze strane"):
   - **3 tipi**: Cemento armato (180€/pz), Muratura mattone (95€/pz), Cartongesso rivestimento (65€/pz)

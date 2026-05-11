@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Canvas2D from "../editor/Canvas2D";
 import Viewer3D from "../editor/Viewer3D";
+import AbacoInfisso from "../components/AbacoInfisso";
 import { api } from "../lib/api";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
@@ -1506,9 +1507,31 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
   }
   if (kind === "doors" || kind === "windows") {
     const isDoor = kind === "doors";
+    // Anteprima AbacoInfisso (solo finestre): mostra la finestra come nei configuratori infissi.
+    const winCategoria = obj.type === "porta-finestra" ? "portafinestra" : "finestra";
+    const winApertura = obj.type === "scorrevole" ? "scorrevole" : "battente";
+    const winHingeSide = obj.hinge === "right" ? "dx" : "sx";
+    const winColore = obj.frameColor || "bianco";
     return (
       <div className="space-y-4">
         <div className="label-kicker">{isDoor ? "Porta" : "Finestra"}</div>
+        {!isDoor && (
+          <AbacoInfisso
+            categoria={winCategoria}
+            apertura={winApertura}
+            hingeSide={winHingeSide}
+            colore={winColore}
+            larghezza={obj.width || 120}
+            altezza={obj.height || 140}
+            materiale={obj.material || "pvc"}
+            vetro={obj.glass || "doppio"}
+            ante={Number(obj.ante) || 1}
+            tapparella={!!obj.tapparella}
+            tapparella_colore={obj.tapparella_colore}
+            zanzariera={!!obj.zanzariera}
+            size="mini"
+          />
+        )}
         <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Tipo</Label>
           <Select value={obj.type || (isDoor ? "interna" : "finestra")} onValueChange={(v) => updateObj({ type: v })}>
             <SelectTrigger className="rounded-sm h-9 mt-1.5"><SelectValue /></SelectTrigger>
@@ -1550,6 +1573,46 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
         <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Larghezza (cm)</Label><Input type="number" value={obj.width} onChange={(e) => updateObj({ width: parseInt(e.target.value) || 80 })} className="rounded-sm h-9 mt-1.5 mono" /></div>
         <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Altezza (cm)</Label><Input type="number" value={obj.height} onChange={(e) => updateObj({ height: parseInt(e.target.value) || 210 })} className="rounded-sm h-9 mt-1.5 mono" /></div>
         {!isDoor && (<div><Label className="text-xs uppercase tracking-widest text-zinc-500">Parapetto (cm)</Label><Input type="number" value={obj.sillHeight || 90} onChange={(e) => updateObj({ sillHeight: parseInt(e.target.value) || 90 })} className="rounded-sm h-9 mt-1.5 mono" /></div>)}
+        {/* Numero ante + colore telaio + accessori per finestre */}
+        {!isDoor && (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Ante</Label>
+                <Select value={String(obj.ante || 1)} onValueChange={(v) => updateObj({ ante: Number(v) })}>
+                  <SelectTrigger className="rounded-sm h-9 mt-1.5" data-testid="win-ante-select"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 anta</SelectItem><SelectItem value="2">2 ante</SelectItem><SelectItem value="3">3 ante</SelectItem><SelectItem value="4">4 ante</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Colore telaio</Label>
+                <Select value={obj.frameColor || "bianco"} onValueChange={(v) => updateObj({ frameColor: v })}>
+                  <SelectTrigger className="rounded-sm h-9 mt-1.5" data-testid="win-color-select"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="bianco">Bianco</SelectItem><SelectItem value="antracite">Antracite</SelectItem><SelectItem value="grigio">Grigio</SelectItem><SelectItem value="marrone">Marrone</SelectItem><SelectItem value="noce">Noce</SelectItem><SelectItem value="rovere">Rovere</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Vetro</Label>
+                <Select value={obj.glass || "doppio"} onValueChange={(v) => updateObj({ glass: v })}>
+                  <SelectTrigger className="rounded-sm h-9 mt-1.5"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="singolo">Singolo</SelectItem>
+                    <SelectItem value="doppio">Doppio (4-16-4)</SelectItem>
+                    <SelectItem value="triplo">Triplo</SelectItem>
+                    <SelectItem value="basso-emissivo">Basso emissivo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between"><Label className="text-xs">Tapparella</Label><Switch checked={!!obj.tapparella} onCheckedChange={(v) => updateObj({ tapparella: v })} data-testid="win-tapparella" /></div>
+                <div className="flex items-center justify-between"><Label className="text-xs">Zanzariera</Label><Switch checked={!!obj.zanzariera} onCheckedChange={(v) => updateObj({ zanzariera: v })} data-testid="win-zanzariera" /></div>
+              </div>
+            </div>
+          </>
+        )}
         {/* PVC pellicolato: maggiorazione % per finestra */}
         {!isDoor && (obj.material || "pvc") === "pvc" && (
           <div className="bg-amber-50 border border-amber-300 p-2 space-y-1.5" data-testid="win-pellicolatura">

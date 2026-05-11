@@ -215,6 +215,57 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
       })}
 
       {/* MEP points */}
+      {/* TABELLA QUOTE ordinata sotto il prospetto: una riga per punto, niente sovrapposizioni */}
+      {(() => {
+        const sorted = points.slice().sort((a, b) => (a.t - b.t));
+        const ROW_H = 24;
+        const TABLE_TOP = H + 70;
+        return (
+          <g pointerEvents="none">
+            {/* Header tabella */}
+            <rect x={0} y={TABLE_TOP - 18} width={W} height={20} fill="#FAFAFA" stroke="#D4D4D8" strokeWidth="1" />
+            <text x={6} y={TABLE_TOP - 4} fontFamily="JetBrains Mono" fontSize="10" fontWeight="900" fill="#3F3F46">N°</text>
+            <text x={40} y={TABLE_TOP - 4} fontFamily="JetBrains Mono" fontSize="10" fontWeight="900" fill="#3F3F46">SIGLA</text>
+            <text x={120} y={TABLE_TOP - 4} fontFamily="JetBrains Mono" fontSize="10" fontWeight="900" fill="#3F3F46">SX (cm)</text>
+            <text x={230} y={TABLE_TOP - 4} fontFamily="JetBrains Mono" fontSize="10" fontWeight="900" fill="#3F3F46">DX (cm)</text>
+            <text x={340} y={TABLE_TOP - 4} fontFamily="JetBrains Mono" fontSize="10" fontWeight="900" fill="#3F3F46">H (cm)</text>
+            {sorted.map((p, n) => {
+              const x = p.t * W;
+              const stdKey = p.type || p.kind;
+              const stdH = STD_HEIGHTS[stdKey] ?? 110;
+              const ovr = heightOverrides?.[p.id];
+              const h = (typeof ovr === "number" && !isNaN(ovr)) ? ovr : stdH;
+              const sx = Math.round(p.t * W);
+              const dx = Math.round((1 - p.t) * W);
+              const yRow = TABLE_TOP + n * ROW_H;
+              const color = colorFor(p);
+              const sym = symbolFor(p);
+              return (
+                <g key={`row-${p.id}`}>
+                  {/* zebra background */}
+                  <rect x={0} y={yRow} width={W} height={ROW_H} fill={n % 2 === 0 ? "#FFFFFF" : "#FAFAFA"} stroke="#E4E4E7" strokeWidth="0.5" />
+                  {/* leader line: dal punto sulla parete fino alla riga */}
+                  <line x1={x} y1={H + 2} x2={x} y2={yRow + ROW_H / 2} stroke={color} strokeWidth="0.6" strokeDasharray="2,3" opacity="0.45" />
+                  {/* Numero progressivo */}
+                  <text x={6} y={yRow + 16} fontFamily="JetBrains Mono" fontSize="12" fontWeight="700" fill="#0A0A0A">{`${n + 1}.`}</text>
+                  {/* Sigla con cerchietto colorato */}
+                  <circle cx={50} cy={yRow + 12} r={9} fill="white" stroke={color} strokeWidth="2" />
+                  <text x={50} y={yRow + 16} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="11" fontWeight="900" fill={color}>{sym}</text>
+                  {/* Label tipo (es. presa, faretto, …) */}
+                  <text x={66} y={yRow + 16} fontFamily="JetBrains Mono" fontSize="11" fontWeight="600" fill="#3F3F46">{(stdKey || "").slice(0, 8)}</text>
+                  {/* SX */}
+                  <text x={120} y={yRow + 16} fontFamily="JetBrains Mono" fontSize="13" fontWeight="800" fill="#0A0A0A">{sx}</text>
+                  {/* DX */}
+                  <text x={230} y={yRow + 16} fontFamily="JetBrains Mono" fontSize="13" fontWeight="800" fill="#0A0A0A">{dx}</text>
+                  {/* H */}
+                  <text x={340} y={yRow + 16} fontFamily="JetBrains Mono" fontSize="13" fontWeight="800" fill="#0A0A0A">{h}</text>
+                </g>
+              );
+            })}
+          </g>
+        );
+      })()}
+
       {points.map((p, idx) => {
         const x = p.t * W;
         const stdKey = p.type || p.kind;
@@ -223,19 +274,6 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
         const h = (typeof ovr === "number" && !isNaN(ovr)) ? ovr : stdH;
         const y = H - h;
         const color = colorFor(p);
-        const dxFromLeft = Math.round(p.t * W);
-        const dxFromRight = Math.round((1 - p.t) * W);
-        // Cerca il punto precedente con distanza orizzontale ravvicinata: se entro 60cm e simile altezza, sposta il badge h sopra invece che a destra.
-        const prevSorted = points.slice().sort((a, b) => (a.t - b.t));
-        const idxSort = prevSorted.findIndex((q) => q.id === p.id);
-        const prev = idxSort > 0 ? prevSorted[idxSort - 1] : null;
-        const tooClose = prev && Math.abs((prev.t - p.t) * W) < 60 && Math.abs((heightOverrides?.[prev.id] ?? STD_HEIGHTS[prev.type || prev.kind] ?? 110) - h) < 50;
-        const badgeH_x = tooClose ? x - 32 : x + 14;
-        const badgeH_y = tooClose ? y - 30 : y - 11;
-        // OFFSET VERTICALE: MEP quotes partono DOPO le quote door/window (sotto H+80) per evitare sovrapposizioni
-        const BASE = H + 90;
-        const ySxRow = BASE + idx * 28;
-        const yDxRow = BASE + idx * 28 + 14;
         // Cerchio leggermente più grande quando la sigla è più di 1 carattere
         const sym = symbolFor(p);
         const r = sym.length >= 2 ? 16 : 14;
@@ -247,27 +285,6 @@ export function ProspettoWall({ entry, roomHeight, editable, heightOverrides, on
             <line x1={x} y1={H} x2={x} y2={y} stroke={color} strokeWidth="1.2" strokeDasharray="3,3" opacity="0.6" />
             <circle cx={x} cy={y} r={r} fill="white" stroke={color} strokeWidth="2.5" />
             <text x={x} y={y + 4} textAnchor="middle" fontSize={sym.length >= 3 ? "10" : "12"} fontWeight="900" fontFamily="JetBrains Mono" fill={color} pointerEvents="none">{sym}</text>
-            {/* QUOTA H altezza dal pavimento — badge bianco con anti-overlap */}
-            <g pointerEvents="none">
-              <rect x={badgeH_x} y={badgeH_y} width={64} height={22} rx={2} fill="white" stroke="#0A0A0A" strokeWidth="1" />
-              <text x={badgeH_x + 32} y={badgeH_y + 16} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="13" fontWeight="700" fill="#0A0A0A">{`h=${h}`}</text>
-            </g>
-            {/* QUOTA SX: distanza dal bordo sinistro — riga unica per punto, su livelli scalati */}
-            <g pointerEvents="none">
-              <line x1={0} y1={ySxRow + 11} x2={x} y2={ySxRow + 11} stroke="#525252" strokeWidth="0.8" />
-              <line x1={0} y1={ySxRow + 5} x2={0} y2={ySxRow + 17} stroke="#525252" strokeWidth="1" />
-              <line x1={x} y1={ySxRow + 5} x2={x} y2={ySxRow + 17} stroke="#525252" strokeWidth="1" />
-              <rect x={Math.max(2, x / 2 - 38)} y={ySxRow} width={76} height={22} rx={2} fill="white" stroke="#0A0A0A" strokeWidth="1" />
-              <text x={Math.max(40, x / 2)} y={ySxRow + 16} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="13" fontWeight="700" fill="#0A0A0A">{`sx ${dxFromLeft}`}</text>
-            </g>
-            {/* QUOTA DX: distanza dal bordo destro — accanto al sx, su livelli scalati */}
-            <g pointerEvents="none">
-              <line x1={x} y1={yDxRow + 11} x2={W} y2={yDxRow + 11} stroke="#525252" strokeWidth="0.8" />
-              <line x1={x} y1={yDxRow + 5} x2={x} y2={yDxRow + 17} stroke="#525252" strokeWidth="1" />
-              <line x1={W} y1={yDxRow + 5} x2={W} y2={yDxRow + 17} stroke="#525252" strokeWidth="1" />
-              <rect x={Math.min(W - 78, (x + W) / 2 - 38)} y={yDxRow} width={76} height={22} rx={2} fill="white" stroke="#0A0A0A" strokeWidth="1" />
-              <text x={Math.min(W - 40, (x + W) / 2)} y={yDxRow + 16} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="13" fontWeight="700" fill="#0A0A0A">{`dx ${dxFromRight}`}</text>
-            </g>
           </g>
         );
       })}

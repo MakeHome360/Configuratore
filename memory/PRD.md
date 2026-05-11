@@ -1,5 +1,18 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 33 — Feb 2026 — Piastrelle solo catalogo, Prospetti tabella quote, Tile 3D)
+- ✅ **Piastrelle SOLO dal Catalogo (sinistra)**: il pannello "Prezzi Negoziati" (destra) ora ESCLUDE le categorie `PAVIMENTAZIONE_GRES`, `PAVIMENTAZIONE_PARQUET`, `PAVIMENTAZIONE_LAMINATO`, `PAVIMENTAZIONE_MARMO`, `RIVESTIMENTO_PIASTRELLE`. Il tipo materiale pavimento si gestisce solo dal catalogo per stanza.
+- ✅ **Tile in 3D adesso visibili in QUALSIASI fase** (era visibile solo in viewMode='progetto'): se l'utente posa una tile sul pavimento di una stanza, il colore appare sia nello "Stato di Fatto" sia in "Progetto" (con priorità al progetto se entrambi presenti).
+- ✅ **Tile salva la `phase` corrente**: posando una tile in fase Progetto, non sovrascrive quella dello Stato di Fatto. Filtraggio Viewer3D per phase coerente al viewMode attivo.
+- ✅ **Prospetti — quote NON più sovrapposte**: rimosse le quote sx/dx/h disegnate "sotto la parete" che si sovrapponevano quando i punti erano vicini. Sostituite con una **TABELLA ordinata** sotto il prospetto con header `N° | SIGLA | SX (cm) | DX (cm) | H (cm)` + leader line tratteggiata che collega il punto sulla parete alla sua riga in tabella. Riga unica per punto, zebra striping, nessuna sovrapposizione possibile.
+- ✅ **Pilastro in toolbar Base** (conferma posizione: tra "Scala" e "Arredo", icona Square) — già aggiunto in Round 30.
+
+## Pending — confermati per il prossimo round
+- 🟡 **AI sul 2D — modificare spazi via comando** (feature grande, 1 round dedicato): richiede LLM con tool-use (`addWall / removeWall / mergeRoom / splitRoom / moveWindow / moveDoor / addElectricalPoint / ...`).
+- 🟡 **Composite — voci editabili dal venditore**: il flag `modificabile_dal_venditore` esiste già nel DB per ogni voce. Serve UI nell'Admin Voci Backoffice per togglare on/off + far apparire la differenza nel composite editor (input prezzo abilitato vs locked).
+- 🟡 Auto-snap impianti su muro
+- 🟡 Email reale (SendGrid/Resend) per OTP
+
 ## Recent Updates (Round 32 — Feb 2026 — Wall color override, Voci Pavimentazione split, JWT 8h)
 - ✅ **Wall color NON sbava più sullo "Stato di Fatto"**: in modalità "Progetto" tutte le modifiche (paintColor / decorVoceId / decorVoceName / decorVocePrice) vengono salvate come **override in `wall.progetto.*`** invece di mutare l'oggetto base. Lo Stato di Fatto resta intatto. Banner amber sul pannello in modalità Progetto:  "⚙️ Modalità Progetto: il colore/decorazione viene salvato SOLO come override progetto (lo Stato di Fatto resta intatto)". Anche il bottone "Applica a tutta la casa" rispetta il viewMode.
 - ✅ **Rendering 2D + 3D** legge `wall.progetto.paintColor` quando viewMode='progetto' (con fallback a `wall.paintColor`).

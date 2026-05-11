@@ -1176,7 +1176,10 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
       delete next[voce_id];
       return { ...p, priceOverrides: next };
     });
-    const editable = (voci || []).filter((v) => v.modificabile_dal_venditore);
+    // Filtro fuori voci pavimentazione/piastrelle/parquet — vanno gestite SOLO dal tab CATALOGO (sinistra) per stanza
+    // L'utente vuole che la scelta materiale pavimento sia confinata al catalogo, non duplicata qui.
+    const FLOORING_CATS = new Set(["PAVIMENTAZIONE_GRES", "PAVIMENTAZIONE_PARQUET", "PAVIMENTAZIONE_LAMINATO", "PAVIMENTAZIONE_MARMO", "RIVESTIMENTO_PIASTRELLE"]);
+    const editable = (voci || []).filter((v) => v.modificabile_dal_venditore && !FLOORING_CATS.has(v.category || ""));
     const pkgRef = project.packageRef;
     // Mappa voce_id → prezzo MAX coperto dal pacchetto (se voce è in pacchetto)
     const pkgPriceMap = {};

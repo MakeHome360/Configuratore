@@ -16,10 +16,19 @@ function buildScene(project, catalog) {
   const tilingByRoom = {};
   (project.tiling || []).forEach((t) => {
     if (!t.roomId) return;
+    const tPhase = t.phase || "fatto";
+    // In viewMode 'fatto' mostra SOLO tile dello stato di fatto. In 'progetto' mostra tile progetto (con priorità) altrimenti fatto.
+    if (viewMode === "fatto") {
+      if (tPhase !== "fatto") return;
+    }
+    const existing = tilingByRoom[t.roomId];
+    // priorità: in progetto mode, tile 'progetto' vince su 'fatto'
+    if (existing && viewMode === "progetto" && existing.phase === "progetto" && tPhase === "fatto") return;
     tilingByRoom[t.roomId] = {
       color: t.color || t.tileColor || null,
       voceName: t.voceName || null,
       voceId: t.voceId || null,
+      phase: tPhase,
     };
   });
 
@@ -62,8 +71,9 @@ function buildScene(project, catalog) {
     if (!r.points || r.points.length < 3) return;
     const tilingHere = tilingByRoom[r.id];
     let baseFloorColor;
-    if (viewMode === "progetto" && tilingHere) {
-      baseFloorColor = tilingHere.color || "#D4A574";
+    if (tilingHere && tilingHere.color) {
+      // Una tile è stata posata: usa il SUO colore in qualsiasi viewMode (fatto o progetto)
+      baseFloorColor = tilingHere.color;
     } else if (viewMode === "progetto" && r.progetto?.floorMaterial) {
       const pmat = byId[r.progetto.floorMaterial];
       baseFloorColor = r.progetto.floorTileColor || pmat?.color || "#E4E4E7";

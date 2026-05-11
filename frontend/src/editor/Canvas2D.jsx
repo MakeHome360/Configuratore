@@ -860,7 +860,7 @@ export default function Canvas2D({
         const tp = tilingParams || { size: "60x60", angle: 0 };
         setProject((prj) => ({
           ...prj,
-          tiling: [...(prj.tiling || []).filter((x) => x.roomId !== r.id), { id: uid(), roomId: r.id, size: tp.size, angle: tp.angle, startPoint: p, voceId: tp.voceId || null, vocePrice: tp.vocePrice || 0, voceName: tp.voceName || "", color: tp.color || "#D4A574" }],
+          tiling: [...(prj.tiling || []).filter((x) => x.roomId !== r.id || (x.phase || "fatto") !== VM), { id: uid(), roomId: r.id, size: tp.size, angle: tp.angle, startPoint: p, voceId: tp.voceId || null, vocePrice: tp.vocePrice || 0, voceName: tp.voceName || "", color: tp.color || "#D4A574", phase: VM }],
         }));
       }
       return;

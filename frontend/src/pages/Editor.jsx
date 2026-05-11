@@ -4,6 +4,7 @@ import Canvas2D from "../editor/Canvas2D";
 import Viewer3D from "../editor/Viewer3D";
 import AbacoInfisso from "../components/AbacoInfisso";
 import AiCadEditPanel from "../components/AiCadEditPanel";
+import WallProspettoEditor from "../components/WallProspettoEditor";
 import { api } from "../lib/api";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
@@ -112,6 +113,7 @@ export default function Editor() {
   const [stairsKind, setStairsKind] = useState("muratura");
   const [columnKind, setColumnKind] = useState("cemento");
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const [wallProspettoId, setWallProspettoId] = useState(null);
   const [tilingParams, setTilingParams] = useState({ size: "60x60", angle: 0, color: "#D4A574" });
   const [activeGroup, setActiveGroup] = useState("base");
   const [editMode, setEditMode] = useState("fatto"); // "fatto" | "progetto"
@@ -1041,6 +1043,15 @@ export default function Editor() {
           onClose={() => setAiPanelOpen(false)}
         />
       )}
+      {wallProspettoId && (
+        <WallProspettoEditor
+          project={project}
+          wallId={wallProspettoId}
+          editMode={editMode}
+          onClose={() => setWallProspettoId(null)}
+          onChange={(newData) => setProjectData(() => newData)}
+        />
+      )}
       {floorplanOpen && (
         <FloorplanImportModal open={floorplanOpen} setOpen={setFloorplanOpen} file={floorplanFile} setFile={setFloorplanFile} loading={floorplanLoading} onImport={importFloorplan} />
       )}
@@ -1380,6 +1391,16 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
     return (
       <div className="space-y-4">
         <div className="label-kicker">Parete{isFattoElement ? " (Stato di Fatto)" : " (Progetto)"}</div>
+        {/* BOTTONE PRINCIPALE: apri prospetto editabile di questo muro */}
+        <button
+          type="button"
+          onClick={() => setWallProspettoId(obj.id)}
+          className="w-full rounded-sm py-3 px-3 bg-violet-600 hover:bg-violet-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow"
+          data-testid="open-wall-prospetto"
+        >📐 Apri PROSPETTO di questo muro <span className="text-[10px] font-normal opacity-90">(aggiungi prese, luci, acqua…)</span></button>
+        <div className="text-[10px] text-zinc-500 mono leading-tight bg-zinc-50 border border-zinc-200 p-1.5 rounded">
+          Sul prospetto puoi: aggiungere punti elettrici/idraulici/HVAC cliccando dove vuoi sul muro, ruotare 180° per lavorare sull'altro lato, eliminare punti. Se ci sono impianti su entrambi i lati genererà 2 prospetti separati nelle Tavole.
+        </div>
         {lockedFatto && (
           <div className="bg-amber-50 border border-amber-300 p-2 text-xs text-amber-900">
             🔒 Muro dello Stato di Fatto. In modalità Progetto puoi solo demolirlo (totale o parziale) ma non modificarne le proprietà fisiche.
@@ -1698,6 +1719,19 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
             </div>
           </div>
         )}
+        {/* Toggle "A pavimento" — utile per cucina ad isola, prese per terra in mezzo stanza */}
+        <div className="bg-amber-50 border-2 border-amber-400 p-3 rounded">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-bold text-amber-900">📍 A pavimento (centro stanza)</Label>
+            <Switch checked={!!obj.floor} onCheckedChange={(v) => updateObj({ floor: v })} data-testid={`${kind}-floor-toggle`} />
+          </div>
+          <div className="text-[11px] text-amber-800 mt-1.5 leading-tight">
+            {obj.floor
+              ? "✓ Punto a TERRA: non legato a un muro (es. cucina ad isola, presa centrale)"
+              : "Disattivato: il punto è sulla parete. Attiva per posizionarlo in mezzo alla stanza."
+            }
+          </div>
+        </div>
         {/* Lato muro: indica da quale lato del muro è installato l'elemento (visto da sopra) */}
         <div className="bg-violet-50 border-2 border-violet-400 p-3 space-y-2">
           <Label className="text-xs uppercase tracking-widest text-violet-900 font-bold">📍 Su quale lato del muro?</Label>

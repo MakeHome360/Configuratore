@@ -1561,6 +1561,12 @@ export default function Canvas2D({
               data-testid={`elec-${e.id}`}
             >
               <WallSideIndicator walls={walls} x={e.x} y={e.y} side={e.wall_side || 0} color={isSel ? "#2563EB" : "#7C3AED"} rotation={e.rotation || 0} />
+              {e.floor && (
+                <g pointerEvents="none">
+                  <circle cx={0} cy={0} r={18} fill="none" stroke="#D97706" strokeWidth="1.5" strokeDasharray="3,2" />
+                  <text x={14} y={-12} fontSize="9" fontWeight="900" fontFamily="JetBrains Mono" fill="#92400E">A TERRA</text>
+                </g>
+              )}
               <ElectricalSymbol e={e} isSel={isSel} />
             </g>
           );
@@ -1584,6 +1590,12 @@ export default function Canvas2D({
               data-testid={`plumb-${p.id}`}
             >
               <WallSideIndicator walls={walls} x={p.x} y={p.y} side={p.wall_side || 0} color={isSel ? "#2563EB" : "#0EA5E9"} />
+              {p.floor && (
+                <g pointerEvents="none">
+                  <circle cx={0} cy={0} r={18} fill="none" stroke="#D97706" strokeWidth="1.5" strokeDasharray="3,2" />
+                  <text x={14} y={-12} fontSize="9" fontWeight="900" fontFamily="JetBrains Mono" fill="#92400E">A TERRA</text>
+                </g>
+              )}
               <PlumbingSymbol p={p} isSel={isSel} />
             </g>
           );

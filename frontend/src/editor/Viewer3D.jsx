@@ -314,6 +314,25 @@ function buildScene(project, catalog) {
     root.add(group);
   });
 
+  // Pilastri / colonne: BoxGeometry verticale a tutta altezza con colore/texture per kind
+  (project.columns || []).filter(phaseOK).forEach((c) => {
+    const w = (c.width || 30) * CM;
+    const d = (c.depth || 30) * CM;
+    const h = (c.height || (project.roomHeight || 270)) * CM;
+    const kind = c.kind || "cemento";
+    const color = kind === "cemento" ? "#A8A29E" : kind === "mattone" ? "#B45309" : "#F4E4C1";
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(w, h, d),
+      new THREE.MeshStandardMaterial({ color: new THREE.Color(color), roughness: 0.85 })
+    );
+    mesh.position.set(c.x * CM, h / 2, c.y * CM);
+    mesh.rotation.y = -(c.rotation || 0) * Math.PI / 180;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.userData = { kind: "columns", id: c.id };
+    root.add(mesh);
+  });
+
   return root;
 }
 
@@ -382,7 +401,7 @@ function Picker3D({ onSelect, onDrag, projectRef, dragActiveRef }) {
         const id = o.userData.id;
         if (!onDrag) break;
         // Aggancia il drag per tutti i kind supportati
-        if (["items", "rooms", "walls", "doors", "windows"].includes(kind)) {
+        if (["items", "rooms", "walls", "doors", "windows", "columns"].includes(kind)) {
           dragTarget = o;
           dragKind = kind;
           dragStart.copy(intersectGround());
@@ -390,6 +409,9 @@ function Picker3D({ onSelect, onDrag, projectRef, dragActiveRef }) {
           if (kind === "items") {
             const item = (proj.items || []).find((x) => x.id === id);
             if (item) originalData = { x: item.x, y: item.y };
+          } else if (kind === "columns") {
+            const col = (proj.columns || []).find((x) => x.id === id);
+            if (col) originalData = { x: col.x, y: col.y };
           } else if (kind === "rooms") {
             const room = (proj.rooms || []).find((x) => x.id === id);
             if (room) originalData = { points: room.points.map((p) => ({ x: p.x, y: p.y })) };
@@ -423,6 +445,9 @@ function Picker3D({ onSelect, onDrag, projectRef, dragActiveRef }) {
       const deltaZ = (cur.z - dragStart.z) * 100;
 
       if (dragKind === "items") {
+        dragTarget.position.x = (originalData.x + deltaX) * CM;
+        dragTarget.position.z = (originalData.y + deltaZ) * CM;
+      } else if (dragKind === "columns") {
         dragTarget.position.x = (originalData.x + deltaX) * CM;
         dragTarget.position.z = (originalData.y + deltaZ) * CM;
       } else if (dragKind === "rooms") {
@@ -460,6 +485,9 @@ function Picker3D({ onSelect, onDrag, projectRef, dragActiveRef }) {
         const deltaZ = (cur.z - dragStart.z) * 100;
         const payload = { kind: dragKind, id: dragTarget.userData.id };
         if (dragKind === "items") {
+          payload.x = Math.round(originalData.x + deltaX);
+          payload.y = Math.round(originalData.y + deltaZ);
+        } else if (dragKind === "columns") {
           payload.x = Math.round(originalData.x + deltaX);
           payload.y = Math.round(originalData.y + deltaZ);
         } else if (dragKind === "rooms") {

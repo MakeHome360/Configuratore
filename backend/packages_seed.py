@@ -16,6 +16,10 @@ DEFAULT_VOCI_BACKOFFICE = [
     {"id": "voce-massetto-alleggerito", "category": "MURATURA", "name": "Massetto per alleggerito", "prezzo_acquisto": 22.5, "ricarico": 1.8, "unit": "m²"},
     {"id": "voce-muro-mattone", "category": "MURATURA", "name": "Muro mattone", "prezzo_acquisto": 45.0, "ricarico": 1.8, "unit": "m²"},
     {"id": "voce-muro-cartongesso", "category": "MURATURA", "name": "Muro cartongesso", "prezzo_acquisto": 26.0, "ricarico": 1.8, "unit": "m²"},
+    # PILASTRI / COLONNE (elementi puntuali — costo a pezzo)
+    {"id": "voce-pilastro-cemento", "category": "MURATURA", "name": "Pilastro in cemento armato", "prezzo_acquisto": 180.0, "ricarico": 1.8, "unit": "pz", "modificabile_dal_venditore": False, "cad_category": "MURATURA", "cad_kind": "pilastro.cemento"},
+    {"id": "voce-pilastro-mattone", "category": "MURATURA", "name": "Pilastro in muratura mattone", "prezzo_acquisto": 95.0, "ricarico": 1.8, "unit": "pz", "modificabile_dal_venditore": False, "cad_category": "MURATURA", "cad_kind": "pilastro.mattone"},
+    {"id": "voce-pilastro-cartongesso", "category": "MURATURA", "name": "Pilastro/colonna in cartongesso (rivestimento)", "prezzo_acquisto": 65.0, "ricarico": 1.8, "unit": "pz", "modificabile_dal_venditore": False, "cad_category": "MURATURA", "cad_kind": "pilastro.cartongesso"},
     {"id": "voce-controsoffitto", "category": "MURATURA", "name": "Controparete / controsoffitto", "prezzo_acquisto": 30.23, "ricarico": 1.8, "unit": "m²"},
     {"id": "voce-battiscopa", "category": "MURATURA", "name": "Battiscopa", "prezzo_acquisto": 8.0, "ricarico": 1.8, "unit": "ml"},
     {"id": "voce-decorazione", "category": "MURATURA", "name": "Decorazione", "prezzo_acquisto": 7.2, "ricarico": 1.8, "unit": "m²"},

@@ -369,7 +369,7 @@ function TilingPattern({ t, room }) {
 export default function Canvas2D({
   project, setProject, tool, setTool, selected, setSelected,
   selectedMaterial, catalog,
-  doorParams, windowParams, electricalKind, plumbingKind, gasKind, hvacKind, tilingParams, stairsKind,
+  doorParams, windowParams, electricalKind, plumbingKind, gasKind, hvacKind, tilingParams, stairsKind, columnKind,
   layers, viewMode, autoFit,
 }) {
   const svgRef = useRef(null);
@@ -510,8 +510,8 @@ export default function Canvas2D({
           const tNew = Math.max(0.05, Math.min(0.95, proj));
           return { ...prj, [arrKey]: arr.map((x) => x.id === drag.id ? { ...x, t: tNew } : x) };
         });
-      } else if (drag.kind === "item-pos" || drag.kind === "elec-pos" || drag.kind === "plumb-pos" || drag.kind === "gas-pos" || drag.kind === "hvac-pos" || drag.kind === "text-pos" || drag.kind === "stairs-pos") {
-        const arrKey = drag.kind === "item-pos" ? "items" : drag.kind === "elec-pos" ? "electrical" : drag.kind === "plumb-pos" ? "plumbing" : drag.kind === "gas-pos" ? "gas" : drag.kind === "hvac-pos" ? "hvac" : drag.kind === "stairs-pos" ? "stairs" : "texts";
+      } else if (drag.kind === "item-pos" || drag.kind === "elec-pos" || drag.kind === "plumb-pos" || drag.kind === "gas-pos" || drag.kind === "hvac-pos" || drag.kind === "text-pos" || drag.kind === "stairs-pos" || drag.kind === "columns-pos") {
+        const arrKey = drag.kind === "item-pos" ? "items" : drag.kind === "elec-pos" ? "electrical" : drag.kind === "plumb-pos" ? "plumbing" : drag.kind === "gas-pos" ? "gas" : drag.kind === "hvac-pos" ? "hvac" : drag.kind === "stairs-pos" ? "stairs" : drag.kind === "columns-pos" ? "columns" : "texts";
         setProject((prj) => ({
           ...prj,
           [arrKey]: (prj[arrKey] || []).map((x) => x.id === drag.id ? { ...x, x: drag.orig.x + dx, y: drag.orig.y + dy } : x),
@@ -843,6 +843,17 @@ export default function Canvas2D({
       setProject((prj) => ({ ...prj, stairs: [...(prj.stairs || []), { id: uid(), type: kind, x: p.x, y: p.y, rotation: 0, width: sz.width, depth: sz.depth, phase: VM }] }));
       return;
     }
+    if (tool === "column") {
+      // Pilastri/colonne — kind dal toolbar (cemento/mattone/cartongesso), dimensioni default 30x30
+      const kind = columnKind || "cemento";
+      const def = { cemento: { w: 30, d: 30 }, mattone: { w: 30, d: 30 }, cartongesso: { w: 25, d: 25 } };
+      const sz = def[kind] || def.cemento;
+      setProject((prj) => ({
+        ...prj,
+        columns: [...(prj.columns || []), { id: uid(), kind, x: p.x, y: p.y, rotation: 0, width: sz.w, depth: sz.d, height: prj.roomHeight || 270, phase: VM }],
+      }));
+      return;
+    }
     if (tool === "tiling") {
       const r = findRoomAt(p);
       if (r) {
@@ -961,7 +972,7 @@ export default function Canvas2D({
     setSelected({ kind, id });
   };
 
-  const isPlacementTool = ["door", "window", "wall", "wall-cartongesso", "room", "item", "text", "stairs",
+  const isPlacementTool = ["door", "window", "wall", "wall-cartongesso", "room", "item", "text", "stairs", "column",
     "demolish-wall", "demolish-wall-partial", "demolish-floor", "demolish-floor-partial", "demolish-rivestimento", "controsoffitto", "controsoffitto-area",
     "electrical", "plumbing", "gas", "hvac", "tiling", "package-area"].includes(tool);
 
@@ -1006,6 +1017,7 @@ export default function Canvas2D({
   const gas = (project.gas || []).filter(phaseOK);
   const hvac = (project.hvac || []).filter(phaseOK);
   const stairs = (project.stairs || []).filter(phaseOK);
+  const columns = (project.columns || []).filter(phaseOK);
   const tiling = project.tiling || [];
   const demolitions = project.demolitions || [];
 
@@ -1639,6 +1651,36 @@ export default function Canvas2D({
           );
         })}
 
+        {/* columns (pilastri): rect orientabile con pattern. Si distinguono per `kind` (cemento|mattone|cartongesso). */}
+        {columns.map((c) => {
+          const isSel = selected?.kind === "columns" && selected.id === c.id;
+          const w = c.width || 30, d = c.depth || 30;
+          const k = c.kind || "cemento";
+          const fill = k === "cemento" ? "#A8A29E" : k === "mattone" ? "#B45309" : "#F4E4C1";
+          const stroke = k === "cemento" ? "#44403C" : k === "mattone" ? "#7C2D12" : "#92400E";
+          return (
+            <g key={c.id} transform={`translate(${c.x},${c.y}) rotate(${c.rotation || 0})`}
+              onMouseDown={(ev) => {
+                if (isPlacementTool) return;
+                ev.stopPropagation();
+                handleElementClick("columns", c.id);
+                if (selected?.kind === "columns" && selected.id === c.id) {
+                  setDrag({ kind: "columns-pos", id: c.id, start: snapPt(toWorld(ev)), orig: { x: c.x, y: c.y } });
+                }
+              }}
+              style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
+              data-testid={`column-${c.id}`}
+            >
+              <rect x={-w / 2} y={-d / 2} width={w} height={d} fill={fill} stroke={isSel ? "#2563EB" : stroke} strokeWidth={isSel ? "3" : "1.6"} />
+              {/* Diagonali per indicare il pilastro (simbolo CAD classico) */}
+              <line x1={-w / 2} y1={-d / 2} x2={w / 2} y2={d / 2} stroke={stroke} strokeWidth="1" opacity="0.7" />
+              <line x1={w / 2} y1={-d / 2} x2={-w / 2} y2={d / 2} stroke={stroke} strokeWidth="1" opacity="0.7" />
+              {/* Label "P" o "C" centrale */}
+              <text x={0} y={4} textAnchor="middle" fontSize={Math.min(w, d) * 0.45} fontWeight="900" fontFamily="JetBrains Mono" fill={k === "cartongesso" ? "#92400E" : "white"} pointerEvents="none">P</text>
+            </g>
+          );
+        })}
+
         {/* demolizione rivestimento per parete singola: rettangolo arancione tratteggiato (zona precisa) */}
         {(project.demolitions || []).filter((d) => d.kind === "rivestimento" && d.wallId).map((d) => {
           const w = (project.walls || []).find((wx) => wx.id === d.wallId);
@@ -1807,6 +1849,7 @@ export default function Canvas2D({
       {tool === "demolish-rivestimento" && <div className="absolute top-3 left-3 bg-orange-500 text-white px-3 py-1.5 text-xs mono">demoliz. rivestimento · click sul muro · poi regola sx/dx/h-da-terra/altezza nel pannello</div>}
       {tool === "package-area" && <div className="absolute top-3 left-3 bg-emerald-700 text-white px-3 py-1.5 text-xs mono">area pacchetto · click vertici, doppio click chiude · ricalcola mq automatico</div>}
       {tool === "stairs" && <div className="absolute top-3 left-3 bg-amber-700 text-white px-3 py-1.5 text-xs mono">scala · {stairsKind || "muratura"} · click per posizionare</div>}
+      {tool === "column" && <div className="absolute top-3 left-3 bg-stone-700 text-white px-3 py-1.5 text-xs mono">pilastro · {columnKind || "cemento"} · click per posizionare</div>}
       {tool === "controsoffitto" && <div className="absolute top-3 left-3 bg-teal-700 text-white px-3 py-1.5 text-xs mono">controsoffitto · click su stanza per attivare/disattivare</div>}
       {tool === "controsoffitto-area" && <div className="absolute top-3 left-3 bg-sky-700 text-white px-3 py-1.5 text-xs mono">controsoffitto area · click vertici, doppio click chiude</div>}
       {tool === "electrical" && <div className="absolute top-3 left-3 bg-purple-700 text-white px-3 py-1.5 text-xs mono">elettrico · {electricalKind || "presa"}</div>}

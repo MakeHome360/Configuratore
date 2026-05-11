@@ -1,5 +1,16 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 30 — Feb 2026 — Nuovo tool Pilastro/Colonna)
+- ✅ **Tool CAD "Pilastro"** (richiesta utente: prima li disegnava con muri mattone → diventavano "stanze strane"):
+  - **3 tipi**: Cemento armato (180€/pz), Muratura mattone (95€/pz), Cartongesso rivestimento (65€/pz)
+  - 3 nuove voci backoffice aggiunte via `seed-missing` (`voce-pilastro-cemento`, `voce-pilastro-mattone`, `voce-pilastro-cartongesso`) — categoria MURATURA, unit=`pz`, NON modificabile dal venditore
+  - Render **2D** in `Canvas2D.jsx`: rect orientabile con colore differenziato per kind, diagonali del simbolo CAD, label "P" centrale
+  - Render **3D** in `Viewer3D.jsx`: BoxGeometry verticale a tutta altezza (default 270cm) — colore beton/mattone/cartongesso
+  - **Drag&drop** funzionante sia in 2D sia in 3D (estesi `Picker3D` + `Canvas2D` drag handlers)
+  - Pannello **proprietà** con select tipo + larghezza/profondità/altezza/rotazione + bottone elimina
+  - **Estimation**: i pilastri vengono conteggiati a PEZZO (NON come muri → niente più stanze strane). Mappato via `VOCE_MAP` `pilastro_cemento` / `pilastro_mattone` / `pilastro_cartongesso` → voce backoffice corrispondente
+  - Banner placement: "pilastro · cemento · click per posizionare"
+
 ## Recent Updates (Round 29 — Feb 2026 — Fix dolorosi Round 28 utente)
 - ✅ **3D Orbit non più ruba il drag**: shared `dragActiveRef` tra `Picker3D` e `OrbitLite`. Quando l'utente afferra un muro/stanza/oggetto la camera NON orbita più. Era la causa di "muovo un muro e gira tutta la stanza".
 - ✅ **WallSideIndicator funziona davvero**: aggiunto **offset visivo fisico** dell'elemento di 18cm in direzione del lato del muro selezionato (lato A / Centro / lato B). Prima la freccia si vedeva ma l'elemento restava sul muro — ora si sposta visibilmente nel lato della stanza scelto. Helper `sidePosition(walls, x, y, side)` applicato a electrical/plumbing/gas/hvac. Pannello proprietà riscritto con bordo violetto spesso, descrizione chiara "Su quale lato del muro?" e bottoni più grandi.

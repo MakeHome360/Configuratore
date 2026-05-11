@@ -152,6 +152,9 @@ export const VOCE_MAP = {
   scala_chiocciola: "Scala a chiocciola",
   scala_muratura: "Scala in muratura",
   scala_legno: "Scala in legno",
+  pilastro_cemento: "Pilastro in cemento armato",
+  pilastro_mattone: "Pilastro in muratura mattone",
+  pilastro_cartongesso: "Pilastro/colonna in cartongesso (rivestimento)",
 };
 
 // Inverse map: nome voce backoffice (lowercase) → CAD key
@@ -542,6 +545,14 @@ export function estimateProjectV2(project, voci, packageRef) {
     if (s.type === "chiocciola") add("scala_chiocciola", 1);
     else if (s.type === "muratura") add("scala_muratura", 1);
     else if (s.type === "legno") add("scala_legno", 1);
+  });
+
+  // Pilastri / colonne: conteggio a PEZZO per kind (cemento/mattone/cartongesso)
+  (data.columns || []).filter(isProgetto).forEach((c) => {
+    const k = c.kind || "cemento";
+    if (k === "cemento") add("pilastro_cemento", 1);
+    else if (k === "mattone") add("pilastro_mattone", 1);
+    else add("pilastro_cartongesso", 1);
   });
 
   // Sanitari: count fixture items

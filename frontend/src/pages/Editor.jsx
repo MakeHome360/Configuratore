@@ -31,6 +31,7 @@ const TOOL_GROUPS = [
     { id: "door", icon: DoorClosed, label: "Porta" },
     { id: "window", icon: RectangleHorizontal, label: "Finestra" },
     { id: "stairs", icon: Layers, label: "Scala" },
+    { id: "column", icon: Square, label: "Pilastro" },
     { id: "item", icon: Sofa, label: "Arredo" },
     { id: "text", icon: Type, label: "Testo" },
     { id: "delete", icon: Trash2, label: "Elimina" },
@@ -107,6 +108,7 @@ export default function Editor() {
   const [plumbingKind, setPlumbingKind] = useState("acqua-fredda");
   const [hvacKind, setHvacKind] = useState("split");
   const [stairsKind, setStairsKind] = useState("muratura");
+  const [columnKind, setColumnKind] = useState("cemento");
   const [tilingParams, setTilingParams] = useState({ size: "60x60", angle: 0, color: "#D4A574" });
   const [activeGroup, setActiveGroup] = useState("base");
   const [editMode, setEditMode] = useState("fatto"); // "fatto" | "progetto"
@@ -800,6 +802,13 @@ export default function Editor() {
               { v: "legno", l: "In legno (rampa)" },
             ]} testid="stairs-kind" />
           )}
+          {tool === "column" && (
+            <SubKindPicker label="Tipo pilastro" value={columnKind} onChange={setColumnKind} options={[
+              { v: "cemento", l: "Cemento armato" },
+              { v: "mattone", l: "Muratura mattone" },
+              { v: "cartongesso", l: "Cartongesso (rivest.)" },
+            ]} testid="column-kind" />
+          )}
           {tool === "tiling" && (
             <div className="mx-2 mt-2 space-y-2 px-2">
               <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Tipo piastrella (catalogo)</Label>
@@ -926,7 +935,7 @@ export default function Editor() {
                 selected={selected} setSelected={setSelected}
                 selectedMaterial={selectedMaterial} catalog={catalog}
                 doorParams={doorParams} windowParams={windowParams}
-                electricalKind={electricalKind} plumbingKind={plumbingKind} hvacKind={hvacKind} tilingParams={tilingParams} stairsKind={stairsKind}
+                electricalKind={electricalKind} plumbingKind={plumbingKind} hvacKind={hvacKind} tilingParams={tilingParams} stairsKind={stairsKind} columnKind={columnKind}
                 viewMode={editMode}
               />
               </div>
@@ -944,6 +953,8 @@ export default function Editor() {
                   const { kind, id } = payload;
                   if (kind === "items") {
                     setProjectData(d => ({ ...d, items: (d.items || []).map(it => it.id === id ? { ...it, x: payload.x, y: payload.y } : it) }));
+                  } else if (kind === "columns") {
+                    setProjectData(d => ({ ...d, columns: (d.columns || []).map(c => c.id === id ? { ...c, x: payload.x, y: payload.y } : c) }));
                   } else if (kind === "rooms") {
                     setProjectData(d => ({ ...d, rooms: (d.rooms || []).map(r => r.id === id ? { ...r, points: payload.points } : r) }));
                   } else if (kind === "walls") {
@@ -1671,6 +1682,39 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
           <Input type="number" step="0.01" min="0" value={obj.priceLump || ""} onChange={(e) => { const n = parseFloat(e.target.value); updateObj({ priceLump: isNaN(n) || n <= 0 ? null : n }); }} placeholder="lascia vuoto per usare voce backoffice" className="rounded-sm h-9 mt-1 mono" data-testid="stairs-price-lump" />
           <div className="text-[10px] text-zinc-500 mono leading-relaxed">Quando impostato, sostituisce il prezzo standard ed è SEMPRE conteggiato come voce extra (anche senza pacchetto).</div>
         </div>
+      </div>
+    );
+  }
+  if (kind === "columns") {
+    return (
+      <div className="space-y-3">
+        <div className="label-kicker">Pilastro / Colonna</div>
+        <div>
+          <Label className="text-xs uppercase tracking-widest text-zinc-500">Materiale</Label>
+          <Select value={obj.kind || "cemento"} onValueChange={(v) => updateObj({ kind: v })}>
+            <SelectTrigger className="rounded-sm h-9 mt-1.5" data-testid="column-kind-select"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="cemento">Cemento armato</SelectItem>
+              <SelectItem value="mattone">Muratura mattone</SelectItem>
+              <SelectItem value="cartongesso">Cartongesso (rivestimento)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div><Label className="text-[10px] uppercase tracking-widest text-zinc-500">L (cm)</Label><Input type="number" min={10} value={obj.width || 30} onChange={(e) => updateObj({ width: Math.max(10, parseInt(e.target.value) || 30) })} className="rounded-sm h-9 mt-1 mono" data-testid="column-width" /></div>
+          <div><Label className="text-[10px] uppercase tracking-widest text-zinc-500">P (cm)</Label><Input type="number" min={10} value={obj.depth || 30} onChange={(e) => updateObj({ depth: Math.max(10, parseInt(e.target.value) || 30) })} className="rounded-sm h-9 mt-1 mono" data-testid="column-depth" /></div>
+          <div><Label className="text-[10px] uppercase tracking-widest text-zinc-500">H (cm)</Label><Input type="number" min={50} value={obj.height || 270} onChange={(e) => updateObj({ height: Math.max(50, parseInt(e.target.value) || 270) })} className="rounded-sm h-9 mt-1 mono" data-testid="column-height" /></div>
+        </div>
+        <div>
+          <Label className="text-xs uppercase tracking-widest text-zinc-500">Rotazione (°)</Label>
+          <div className="flex gap-1 mt-1.5">
+            {[0, 45, 90, 135].map((a) => <button key={a} onClick={() => updateObj({ rotation: a })} className={`flex-1 text-[10px] mono py-1 border ${(obj.rotation || 0) === a ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-300 hover:bg-zinc-50"}`}>{a}°</button>)}
+          </div>
+        </div>
+        <div className="bg-stone-50 border border-stone-300 p-2 text-[11px] text-stone-700 leading-relaxed">
+          📐 Il pilastro viene conteggiato come <strong>1 pz</strong> di "Pilastro {obj.kind || "cemento"}" nella voce backoffice (NON come muro).
+        </div>
+        <button onClick={() => setProject((p) => ({ ...p, columns: (p.columns || []).filter((x) => x.id !== selected.id) }))} className="text-xs text-rose-600 underline" data-testid="column-delete">Rimuovi pilastro</button>
       </div>
     );
   }

@@ -24,9 +24,16 @@ export default function WallProspettoEditor({ project, wallId, editMode, onClose
   const [plumbKind, setPlumbKind] = useState("acqua");
 
   const wallsAll = data.walls || [];
+  // Costruiamo SEMPRE un entry per il muro selezionato (anche se vuoto), così
+  // l'utente può iniziare ad aggiungere punti su un muro pulito.
   const entries = useMemo(() => {
     if (!wall) return [];
-    return computeInterestingWalls({ ...data, walls: [wall] });
+    const computed = computeInterestingWalls({ ...data, walls: [wall] });
+    if (computed.length > 0) return computed;
+    const len = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    const doorsOnWall = (data.doors || []).filter((d) => d.wallId === wall.id);
+    const windowsOnWall = (data.windows || []).filter((d) => d.wallId === wall.id);
+    return [{ wall, length: len, points: [], doors: doorsOnWall, windows: windowsOnWall, demolitions: [], partial: null }];
   }, [data, wall]);
 
   // Trova punti elettrici/idraulici/hvac di QUESTO muro

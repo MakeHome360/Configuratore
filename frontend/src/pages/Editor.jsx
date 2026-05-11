@@ -987,7 +987,7 @@ export default function Editor() {
                 <TabsTrigger value="cost" className="rounded-none text-xs uppercase tracking-widest" data-testid="tab-cost">Preventivo Live</TabsTrigger>
               </TabsList>
               <TabsContent value="properties" className="p-4 overflow-y-auto flex-1 mt-0 min-h-0">
-                <PropertiesPanel project={project.data} setProject={setProjectData} selected={selected} catalog={catalog} editMode={editMode} voci={voci} />
+                <PropertiesPanel project={project.data} setProject={setProjectData} selected={selected} catalog={catalog} editMode={editMode} voci={voci} openWallProspetto={(id) => setWallProspettoId(id)} />
               </TabsContent>
               <TabsContent value="catalog" className="p-0 overflow-y-auto flex-1 mt-0 min-h-0">
                 <CatalogPanel catalog={catalog} selectedMaterial={selectedMaterial} setSelectedMaterial={(id) => { setSelectedMaterial(id); setTool("item"); }} project={project.data} setProject={setProjectData} voci={voci} selected={selected} />
@@ -1186,7 +1186,7 @@ function ToolParamsPanel({ tool, doorParams, setDoorParams, windowParams, setWin
   );
 }
 
-function PropertiesPanel({ project, setProject, selected, catalog, editMode, voci }) {
+function PropertiesPanel({ project, setProject, selected, catalog, editMode, voci, openWallProspetto }) {
   if (!selected) {
     const overrides = project.priceOverrides || {};
     const setOverride = (voce_id, price) => setProject((p) => ({
@@ -1394,7 +1394,7 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
         {/* BOTTONE PRINCIPALE: apri prospetto editabile di questo muro */}
         <button
           type="button"
-          onClick={() => setWallProspettoId(obj.id)}
+          onClick={() => openWallProspetto && openWallProspetto(obj.id)}
           className="w-full rounded-sm py-3 px-3 bg-violet-600 hover:bg-violet-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow"
           data-testid="open-wall-prospetto"
         >📐 Apri PROSPETTO di questo muro <span className="text-[10px] font-normal opacity-90">(aggiungi prese, luci, acqua…)</span></button>

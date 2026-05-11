@@ -398,6 +398,119 @@ function buildScene(project, catalog) {
     root.add(mesh);
   });
 
+  // ---------- MEP: electrical / plumbing / hvac ----------
+  // Standard heights (cm) per kind
+  const STD_H = {
+    presa: 30, "presa-cucina": 110, "presa-tv": 30, "presa-rj45": 30,
+    luce: 110, interruttore: 110, deviatore: 110, spia: 110,
+    "punto-luce-led": 240, quadro: 160,
+    acqua: 50, scarico: 30, fredda: 50, calda: 50, "punto-completo": 50,
+    gas: 40, split: 230, "trial-split": 230, "quadri-split": 230,
+    vmc: 200, caldaia: 150, fotovoltaico: 270,
+  };
+  const colorFor = (arr, kind) => {
+    if (arr === "electrical") {
+      if (kind === "luce" || kind === "punto-luce-led") return "#F59E0B";
+      if (kind === "interruttore" || kind === "deviatore") return "#7C3AED";
+      if (kind === "presa-tv") return "#06B6D4";
+      if (kind === "presa-rj45") return "#0D9488";
+      if (kind === "presa-cucina") return "#EA580C";
+      if (kind === "quadro") return "#DC2626";
+      return "#7C3AED";
+    }
+    if (arr === "plumbing") {
+      if (kind === "scarico") return "#1F2937";
+      if (kind === "calda") return "#DC2626";
+      return "#0EA5E9";
+    }
+    if (arr === "hvac") return "#14B8A6";
+    return "#71717A";
+  };
+  // helper: side offset (lato A=-1, B=+1) — sposta il punto 15cm verso il lato muro più vicino
+  const sideOffset = (x, y, side) => {
+    if (!side) return { x, y };
+    const walls = project.walls || [];
+    let best = null; let bestD = Infinity;
+    for (const w of walls) {
+      const dx = w.x2 - w.x1, dy = w.y2 - w.y1;
+      const len2 = dx * dx + dy * dy || 1;
+      const t = Math.max(0, Math.min(1, ((x - w.x1) * dx + (y - w.y1) * dy) / len2));
+      const px = w.x1 + t * dx, py = w.y1 + t * dy;
+      const d = Math.hypot(x - px, y - py);
+      if (d < bestD) { bestD = d; best = { dx, dy, len: Math.sqrt(len2) }; }
+    }
+    if (!best || best.len === 0) return { x, y };
+    // normale (perpendicolare) al muro
+    const nx = -best.dy / best.len, ny = best.dx / best.len;
+    const k = 15 * side;
+    return { x: x + nx * k, y: y + ny * k };
+  };
+
+  const renderMep = (arr, items) => {
+    (items || []).filter(phaseOK).forEach((e) => {
+      const isFloor = !!e.floor;
+      const baseH = e.height_cm != null ? e.height_cm : (STD_H[e.kind] ?? 110);
+      const yPos = isFloor ? 2 * CM : baseH * CM; // se a pavimento → quasi a terra
+      const pos = isFloor ? { x: e.x, y: e.y } : sideOffset(e.x, e.y, e.wall_side || 0);
+      const color = new THREE.Color(colorFor(arr, e.kind));
+      const group = new THREE.Group();
+      group.position.set(pos.x * CM, yPos, pos.y * CM);
+      group.rotation.y = -(e.rotation || 0) * Math.PI / 180;
+
+      let geom;
+      if (arr === "hvac" && (e.kind === "split" || e.kind === "trial-split" || e.kind === "quadri-split")) {
+        // split a/c indoor unit: cuboide bianco lungo
+        geom = new THREE.BoxGeometry(80 * CM, 25 * CM, 18 * CM);
+      } else if (arr === "hvac" && e.kind === "caldaia") {
+        geom = new THREE.BoxGeometry(45 * CM, 70 * CM, 35 * CM);
+      } else if (arr === "hvac" && e.kind === "vmc") {
+        geom = new THREE.BoxGeometry(60 * CM, 25 * CM, 25 * CM);
+      } else if (arr === "electrical" && e.kind === "quadro") {
+        geom = new THREE.BoxGeometry(35 * CM, 50 * CM, 12 * CM);
+      } else if (arr === "electrical" && (e.kind === "luce" || e.kind === "punto-luce-led")) {
+        geom = new THREE.SphereGeometry(8 * CM, 16, 12);
+      } else if (arr === "plumbing") {
+        // pipe stub
+        geom = new THREE.CylinderGeometry(4 * CM, 4 * CM, 16 * CM, 16);
+      } else {
+        // standard outlet/switch
+        geom = new THREE.BoxGeometry(10 * CM, 10 * CM, 4 * CM);
+      }
+      const isLight = arr === "electrical" && (e.kind === "luce" || e.kind === "punto-luce-led");
+      const mat = new THREE.MeshStandardMaterial({
+        color,
+        emissive: isLight ? color : 0x000000,
+        emissiveIntensity: isLight ? 0.6 : 0,
+        roughness: 0.5,
+        metalness: arr === "plumbing" ? 0.7 : 0.1,
+      });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.castShadow = true;
+      mesh.userData = { kind: arr, id: e.id };
+      group.add(mesh);
+      group.userData = { kind: arr, id: e.id };
+      // Floor marker (ring at base)
+      if (isFloor) {
+        const ringGeom = new THREE.RingGeometry(12 * CM, 18 * CM, 24);
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0xD97706, side: THREE.DoubleSide, transparent: true, opacity: 0.7 });
+        const ring = new THREE.Mesh(ringGeom, ringMat);
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.y = -yPos + 0.5 * CM;
+        group.add(ring);
+      }
+      if (isLight) {
+        const pl = new THREE.PointLight(0xfef3c7, 0.6, 5);
+        pl.position.y = -0.1;
+        group.add(pl);
+      }
+      root.add(group);
+    });
+  };
+  renderMep("electrical", project.electrical);
+  renderMep("plumbing", project.plumbing);
+  renderMep("hvac", project.hvac);
+  renderMep("gas", project.gas);
+
   return root;
 }
 

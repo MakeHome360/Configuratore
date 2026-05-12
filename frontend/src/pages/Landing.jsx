@@ -198,7 +198,7 @@ export default function Landing() {
       <div className="bg-[#1FAE52] text-white py-2.5 px-4 text-center text-[12px] sm:text-[13px] font-bold tracking-wide" data-testid="prossime-aperture-banner">
         <span className="inline-flex items-center gap-2">
           <Sparkles size={14} className="animate-pulse" />
-          <span>PROSSIME APERTURE: <span className="underline underline-offset-2">BRA'</span> E <span className="underline underline-offset-2">SETTIMO TORINESE</span></span>
+          <span>2 NUOVI SHOWROOM IN ARRIVO: <span className="underline underline-offset-2">BRA' (CN)</span> · <span className="underline underline-offset-2">SETTIMO TORINESE (TO)</span></span>
           <Sparkles size={14} className="animate-pulse" />
         </span>
       </div>
@@ -676,16 +676,30 @@ export default function Landing() {
                 </div>
               </div>
 
-              {/* PROSSIME APERTURE */}
-              <div className="bg-[#0A0A0A] text-white p-5" data-testid="prossime-aperture-card">
+              {/* PROSSIMA APERTURA — BRÀ */}
+              <div className="bg-[#0A0A0A] text-white p-5" data-testid="prossima-apertura-bra">
                 <div className="flex items-start gap-4">
                   <div className="w-11 h-11 bg-[#1FAE52] flex items-center justify-center rounded-full flex-shrink-0">
                     <Sparkles size={18} className="text-white" />
                   </div>
                   <div className="flex-1">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#1FAE52] font-bold mb-1">Prossime aperture</div>
-                    <div className="text-[16px] font-bold leading-tight">Brà <span className="text-zinc-400 font-light mx-1">·</span> Settimo Torinese</div>
-                    <div className="text-[13px] text-zinc-400 mt-1">Resta aggiornato: <a href="mailto:info@sadicasa.it" className="underline hover:text-[#1FAE52]">info@sadicasa.it</a></div>
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#1FAE52] font-bold mb-1">Prossima apertura · Brà (CN)</div>
+                    <div className="text-[16px] font-bold leading-tight">Showroom Brà</div>
+                    <div className="text-[13px] text-zinc-400 mt-1">Resta aggiornato sull'inaugurazione: <a href="mailto:info@sadicasa.it?subject=Apertura%20Br%C3%A0" className="underline hover:text-[#1FAE52]">info@sadicasa.it</a></div>
+                  </div>
+                </div>
+              </div>
+
+              {/* PROSSIMA APERTURA — SETTIMO TORINESE */}
+              <div className="bg-[#0A0A0A] text-white p-5" data-testid="prossima-apertura-settimo">
+                <div className="flex items-start gap-4">
+                  <div className="w-11 h-11 bg-[#1FAE52] flex items-center justify-center rounded-full flex-shrink-0">
+                    <Sparkles size={18} className="text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#1FAE52] font-bold mb-1">Prossima apertura · Settimo Torinese (TO)</div>
+                    <div className="text-[16px] font-bold leading-tight">Showroom Settimo Torinese</div>
+                    <div className="text-[13px] text-zinc-400 mt-1">Resta aggiornato sull'inaugurazione: <a href="mailto:info@sadicasa.it?subject=Apertura%20Settimo%20Torinese" className="underline hover:text-[#1FAE52]">info@sadicasa.it</a></div>
                   </div>
                 </div>
               </div>
@@ -808,8 +822,17 @@ export default function Landing() {
                 <div className="flex items-start gap-3">
                   <Sparkles size={14} className="mt-1 text-[#1FAE52] flex-shrink-0" />
                   <div>
-                    <div className="font-bold text-[#1FAE52]">Prossime aperture</div>
-                    <div className="text-zinc-400">Brà · Settimo Torinese</div>
+                    <div className="font-bold text-[#1FAE52]">Prossima apertura · Brà (CN)</div>
+                    <div className="text-zinc-400">Showroom Brà — in arrivo</div>
+                  </div>
+                </div>
+              </li>
+              <li className="text-zinc-300">
+                <div className="flex items-start gap-3">
+                  <Sparkles size={14} className="mt-1 text-[#1FAE52] flex-shrink-0" />
+                  <div>
+                    <div className="font-bold text-[#1FAE52]">Prossima apertura · Settimo Torinese (TO)</div>
+                    <div className="text-zinc-400">Showroom Settimo T.se — in arrivo</div>
                   </div>
                 </div>
               </li>

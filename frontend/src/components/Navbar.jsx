@@ -8,6 +8,7 @@ const NAV = [
   { name: 'Pacchetti', href: '#pacchetti' },
   { name: 'Progetti', href: '#progetti' },
   { name: 'Come funziona', href: '#processo' },
+  { name: 'Blog', to: '/blog' },
   { name: 'Contatti', href: '#contatti' },
 ];
 
@@ -58,14 +59,25 @@ export default function Navbar() {
             {/* Desktop nav */}
             <nav className="hidden lg:flex items-center gap-7">
               {NAV.map((item) => (
-                <a
-                  key={item.name}
-                  href={item.href}
-                  className="text-[14px] font-medium text-zinc-700 hover:text-[#1FAE52] transition-colors"
-                  data-testid={`nav-link-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
-                >
-                  {item.name}
-                </a>
+                item.to ? (
+                  <Link
+                    key={item.name}
+                    to={item.to}
+                    className="text-[14px] font-medium text-zinc-700 hover:text-[#1FAE52] transition-colors"
+                    data-testid={`nav-link-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
+                  >
+                    {item.name}
+                  </Link>
+                ) : (
+                  <a
+                    key={item.name}
+                    href={item.href}
+                    className="text-[14px] font-medium text-zinc-700 hover:text-[#1FAE52] transition-colors"
+                    data-testid={`nav-link-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
+                  >
+                    {item.name}
+                  </a>
+                )
               ))}
             </nav>
 
@@ -105,14 +117,26 @@ export default function Navbar() {
           <div className="lg:hidden absolute top-full left-0 w-full bg-white border-b border-zinc-200 shadow-lg">
             <div className="flex flex-col p-4 space-y-1">
               {NAV.map((item) => (
-                <a
-                  key={item.name}
-                  href={item.href}
-                  className="text-[15px] font-medium text-zinc-800 py-3 border-b border-zinc-100"
-                  onClick={() => setOpen(false)}
-                >
-                  {item.name}
-                </a>
+                item.to ? (
+                  <Link
+                    key={item.name}
+                    to={item.to}
+                    className="text-[15px] font-medium text-zinc-800 py-3 border-b border-zinc-100"
+                    onClick={() => setOpen(false)}
+                    data-testid={`mobile-nav-${item.name.toLowerCase()}`}
+                  >
+                    {item.name}
+                  </Link>
+                ) : (
+                  <a
+                    key={item.name}
+                    href={item.href}
+                    className="text-[15px] font-medium text-zinc-800 py-3 border-b border-zinc-100"
+                    onClick={() => setOpen(false)}
+                  >
+                    {item.name}
+                  </a>
+                )
               ))}
               <div className="flex flex-col gap-3 pt-4">
                 <Link

@@ -768,7 +768,7 @@ async def ai_floorplan_import(body: dict, user: Dict[str, Any] = Depends(get_cur
     if not img_b64:
         raise HTTPException(400, "File mancante")
 
-    # Se il file è un PDF, converti la PRIMA pagina in PNG (alta risoluzione) via pypdfium2
+    # Se il file è un PDF, converti la PRIMA pagina in JPEG (più compatto di PNG) via pypdfium2
     is_pdf = ("pdf" in body_mime) or img_b64.startswith("JVBERi0")  # %PDF- in base64
     if is_pdf:
         try:
@@ -780,23 +780,46 @@ async def ai_floorplan_import(body: dict, user: Dict[str, Any] = Depends(get_cur
             if len(pdf) == 0:
                 raise HTTPException(400, "PDF senza pagine")
             page = pdf[0]
-            # Scale: ~150 DPI per leggibilità AI senza pesare troppo
-            pil_image = page.render(scale=2.0).to_pil()
-            # Limita a max 1600px lato lungo
-            max_side = 1600
+            # Scale: ridotto a 1.5 (~110 DPI) + max 1200px lato lungo + JPEG q=85 → payload molto più leggero,
+            # tempo Gemini -50%, evita 504 gateway timeout.
+            pil_image = page.render(scale=1.5).to_pil()
+            max_side = 1200
             w, h = pil_image.size
             if max(w, h) > max_side:
                 ratio = max_side / max(w, h)
                 pil_image = pil_image.resize((int(w * ratio), int(h * ratio)))
+            if pil_image.mode != "RGB":
+                pil_image = pil_image.convert("RGB")
             buf = _io.BytesIO()
-            pil_image.save(buf, format="PNG", optimize=True)
+            pil_image.save(buf, format="JPEG", quality=85, optimize=True)
             img_b64 = _b64.b64encode(buf.getvalue()).decode("ascii")
-            logger.info(f"[floorplan] PDF convertito in PNG {pil_image.size} ({len(img_b64)} bytes b64)")
+            logger.info(f"[floorplan] PDF→JPEG {pil_image.size} ({len(img_b64)} bytes b64)")
         except HTTPException:
             raise
         except Exception as e:
             logger.exception("PDF conversion failed")
             raise HTTPException(status_code=400, detail=f"Errore conversione PDF: {str(e)[:200]}. Salva la planimetria come JPG/PNG e riprova.")
+    else:
+        # Immagine non-PDF (PNG/JPG): downscale aggressivo per evitare 504 gateway timeout
+        try:
+            import base64 as _b64
+            from PIL import Image as _PILImage
+            import io as _io
+            raw = _b64.b64decode(img_b64)
+            pil_image = _PILImage.open(_io.BytesIO(raw))
+            w, h = pil_image.size
+            max_side = 1200
+            if max(w, h) > max_side:
+                ratio = max_side / max(w, h)
+                pil_image = pil_image.resize((int(w * ratio), int(h * ratio)))
+            if pil_image.mode not in ("RGB", "L"):
+                pil_image = pil_image.convert("RGB")
+            buf = _io.BytesIO()
+            pil_image.save(buf, format="JPEG", quality=85, optimize=True)
+            img_b64 = _b64.b64encode(buf.getvalue()).decode("ascii")
+            logger.info(f"[floorplan] image→JPEG {pil_image.size} ({len(img_b64)} bytes b64)")
+        except Exception as e:
+            logger.warning(f"[floorplan] downscale fallback skipped: {e}")
 
     session_id = f"floorplan-{user['id']}-{uuid.uuid4().hex[:8]}"
 
@@ -821,6 +844,24 @@ async def ai_floorplan_import(body: dict, user: Dict[str, Any] = Depends(get_cur
         if "," in ex:
             ex = ex.split(",", 1)[1]
         if len(ex) > 50:
+            # Downscale aggressivo foto extra a 1024px JPEG q=80 per non saturare il payload Gemini
+            try:
+                import base64 as _b64x
+                from PIL import Image as _PILImageX
+                import io as _ioX
+                raw = _b64x.b64decode(ex)
+                pil = _PILImageX.open(_ioX.BytesIO(raw))
+                w, h = pil.size
+                if max(w, h) > 1024:
+                    ratio = 1024 / max(w, h)
+                    pil = pil.resize((int(w * ratio), int(h * ratio)))
+                if pil.mode not in ("RGB", "L"):
+                    pil = pil.convert("RGB")
+                bufx = _ioX.BytesIO()
+                pil.save(bufx, format="JPEG", quality=80, optimize=True)
+                ex = _b64x.b64encode(bufx.getvalue()).decode("ascii")
+            except Exception as _err:
+                logger.warning(f"[floorplan] extra-photo downscale skipped: {_err}")
             cleaned_extras.append(ex)
 
     # Prompt sistema — include SOLO anchor VISIVI dalle foto (non le dimensioni dichiarate)
@@ -850,7 +891,7 @@ async def ai_floorplan_import(body: dict, user: Dict[str, Any] = Depends(get_cur
         api_key=EMERGENT_LLM_KEY,
         session_id=session_id,
         system_message=system_msg,
-    ).with_model("gemini", "gemini-2.5-pro")
+    ).with_model("gemini", "gemini-2.5-flash")
     try:
         # Costruisci il prompt utente. Se ci sono foto extra, le includiamo nel multimodal payload.
         user_text = (

@@ -1,5 +1,19 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 46 — Mag 2026 — Import planimetria: fix 504 timeout)
+### 🚀 Performance fix Gateway Timeout 504
+**Causa**: l'ingress Kubernetes su sadicasa.it ha un timeout ~60s. `gemini-2.5-pro` su PDF/PNG di 1MB+ impiegava 35-40s + latenza upload → superava il limite e dava `Request failed with status code 504`.
+
+**3 ottimizzazioni** in `/api/ai/floorplan-import`:
+1. **Modello → `gemini-2.5-flash`** (era `gemini-2.5-pro`): 3-5× più veloce per task vision, qualità sufficiente per estrazione planimetrie.
+2. **Output PDF → JPEG q=85 a 1200px lato lungo** (era PNG 1600px): payload -70%.
+3. **Downscale anche immagini non-PDF**: PNG/JPG dell'utente vengono ridotti a 1200px JPEG q=85 prima di inviarle a Gemini. Anche le foto extra (max 5) ridotte a 1024px q=80.
+
+**Benchmark**:
+- Prima: ~35-40s (PDF 30KB + Gemini Pro)
+- Dopo: **~8s totali end-to-end** (PDF→JPEG + Gemini Flash + post-processing)
+- Margine di sicurezza vs limite 60s: 7×
+
 ## Recent Updates (Round 45 — Mag 2026 — Import planimetria: AI indipendente + piastrelle W×L)
 ### 🎯 Fix UX import planimetria (feedback utente)
 **1. AI non condizionata dalle dimensioni utente**

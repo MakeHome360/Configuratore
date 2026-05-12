@@ -1114,9 +1114,34 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
         }
         await db.commesse.insert_one(doc)
         await db.preventivi.update_one({"id": prev["id"]}, {"$set": {"commessa_id": doc["id"]}})
-        # Auto-genera computo metrico dalle voci preventivo (così non serve fare clic manuale)
+        # Auto-genera computo metrico
         try:
             voci_prev = prev.get("items") or prev.get("voci_dettaglio") or prev.get("computo") or []
+            # Se preventivo PACCHETTO senza items[] esplicite → deriva dal package
+            if not voci_prev and prev.get("package_id"):
+                pkg = await db.packages.find_one({"id": prev["package_id"]}, {"_id": 0})
+                if pkg and pkg.get("items"):
+                    mq = float(prev.get("mq") or pkg.get("mq_base") or 80)
+                    derived = []
+                    for it in pkg["items"]:
+                        qm = it.get("qty_mode", "fixed")
+                        if qm == "per_mq":
+                            qty = mq * float(it.get("qty_ratio") or 1)
+                        else:
+                            qty = float(it.get("qty_value") or it.get("qty") or 1)
+                        pu = float(it.get("unit_price_pkg") or it.get("prezzo_rivendita") or 0)
+                        derived.append({
+                            "voce_id": it.get("id"),
+                            "name": it.get("name") or "—",
+                            "qty": qty,
+                            "unit": it.get("unit") or "pz",
+                            "unit_price": pu,
+                            "total": round(qty * pu, 2),
+                            "category": it.get("category") or "",
+                        })
+                    voci_prev = derived
+                    # Persisti questi items nel preventivo per future regen e per riepilogo coerente
+                    await db.preventivi.update_one({"id": prev["id"]}, {"$set": {"items": derived}})
             cm_items = []
             for v in voci_prev:
                 qty = float(v.get("qty") or v.get("quantita") or v.get("qty_richiesta") or 0)

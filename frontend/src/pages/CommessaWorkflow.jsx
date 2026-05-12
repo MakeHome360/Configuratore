@@ -61,11 +61,10 @@ export default function CommessaWorkflow() {
             <TabsTrigger value="materiali" data-testid="tab-materiali"><ListChecks className="h-4 w-4 mr-1.5" /> 4. Materiali</TabsTrigger>
             <TabsTrigger value="computo" data-testid="tab-computo"><Calculator className="h-4 w-4 mr-1.5" /> 5. Computo</TabsTrigger>
             <TabsTrigger value="artigiani" data-testid="tab-artigiani"><Hammer className="h-4 w-4 mr-1.5" /> 6. Artigiani / Sub</TabsTrigger>
-            <TabsTrigger value="lavorazioni" data-testid="tab-lavorazioni"><CalendarRange className="h-4 w-4 mr-1.5" /> 7. Lavorazioni / Calendario</TabsTrigger>
-            <TabsTrigger value="fasi" data-testid="tab-fasi"><CalendarRange className="h-4 w-4 mr-1.5" /> 8. Fasi cantiere (Gantt)</TabsTrigger>
-            <TabsTrigger value="voci-acquisti" data-testid="tab-voci-acquisti"><Wallet className="h-4 w-4 mr-1.5" /> 9. Voci e Acquisti</TabsTrigger>
-            <TabsTrigger value="cassa" data-testid="tab-cassa"><Wallet className="h-4 w-4 mr-1.5" /> 10. Cassa & Pagamenti</TabsTrigger>
-            <TabsTrigger value="resoconto" data-testid="tab-resoconto"><FileBarChart2 className="h-4 w-4 mr-1.5" /> 11. Resoconto</TabsTrigger>
+            <TabsTrigger value="fasi" data-testid="tab-fasi"><CalendarRange className="h-4 w-4 mr-1.5" /> 7. Fasi cantiere (calendario)</TabsTrigger>
+            <TabsTrigger value="voci-acquisti" data-testid="tab-voci-acquisti"><Wallet className="h-4 w-4 mr-1.5" /> 8. Voci e Acquisti</TabsTrigger>
+            <TabsTrigger value="cassa" data-testid="tab-cassa"><Wallet className="h-4 w-4 mr-1.5" /> 9. Cassa & Pagamenti</TabsTrigger>
+            <TabsTrigger value="resoconto" data-testid="tab-resoconto"><FileBarChart2 className="h-4 w-4 mr-1.5" /> 10. Resoconto</TabsTrigger>
           </TabsList>
 
           {/* 1. CONTRATTO */}
@@ -80,15 +79,13 @@ export default function CommessaWorkflow() {
           <TabsContent value="computo" className="mt-4"><ComputoTab wf={wf} cid={cid} reload={reload} /></TabsContent>
           {/* 6. ARTIGIANI */}
           <TabsContent value="artigiani" className="mt-4"><Artigiani wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 7. LAVORAZIONI / CALENDARIO TASK */}
-          <TabsContent value="lavorazioni" className="mt-4"><LavorazioniTab wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 8. FASI Gantt */}
+          {/* 7. FASI Cantiere (con calendario + template + assegnatari) */}
           <TabsContent value="fasi" className="mt-4"><Fasi wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 9. VOCI E ACQUISTI */}
+          {/* 8. VOCI E ACQUISTI */}
           <TabsContent value="voci-acquisti" className="mt-4"><VociAcquistiTab wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 10. CASSA */}
+          {/* 9. CASSA */}
           <TabsContent value="cassa" className="mt-4"><Cassa wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 11. RESOCONTO */}
+          {/* 10. RESOCONTO */}
           <TabsContent value="resoconto" className="mt-4"><Resoconto cid={cid} marg={marg} wf={wf} /></TabsContent>
         </Tabs>
       </Page>
@@ -325,10 +322,32 @@ function Materiali({ wf, cid, reload, voci }) {
         </tbody>
         {items.length > 0 && <tfoot><tr className="bg-zinc-50"><td colSpan={5} className="px-2 py-2 text-right font-bold uppercase text-xs">Totale materiali</td><td className="px-2 py-2 text-right font-bold mono">{fmtEur(totale)}</td><td></td></tr></tfoot>}
       </table>
-      <div className="flex items-center gap-3 pt-2 border-t border-zinc-200">
+      <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-zinc-200">
         <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={firmato} onChange={e => setFirmato(e.target.checked)} data-testid="mat-firmato" /> <span className="text-sm">Confermato/firmato dal cliente (blocca cambi senza extra)</span></label>
-        <div className="ml-auto"><Button onClick={async () => { await api.post(`/commesse/${cid}/workflow/materiali`, { items, firmato_cliente: firmato, firma_data: firmato ? new Date().toISOString() : null }); toast.success("Materiali salvati"); reload(); }} style={{ background: "var(--brand)", color: "white" }} data-testid="mat-save">Salva scelta materiali</Button></div>
+        <div className="ml-auto flex gap-2">
+          <Button variant="outline" onClick={() => window.print()} disabled={!items.length} data-testid="mat-print">🖨️ Stampa tabella materiali</Button>
+          <Button variant="outline" onClick={() => document.getElementById("mat-firma-upload")?.click()} disabled={!items.length} data-testid="mat-upload-firma">📎 Carica scansione firmata</Button>
+          <input id="mat-firma-upload" type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={async (e) => {
+            const f = e.target.files?.[0]; if (!f) return;
+            const fd = new FormData(); fd.append("file", f);
+            try {
+              const r = await api.post("/uploads", fd, { headers: { "Content-Type": "multipart/form-data" } });
+              const url = (window.location.origin + (r.data.url || ""));
+              // Save as documento del commessa + flag firmato
+              await api.post(`/commesse/${cid}/workflow/documenti`, { nome: `Materiali firmati cliente · ${new Date().toLocaleDateString("it-IT")}`, tipo: "materiali_firmati", file_url: url });
+              await api.post(`/commesse/${cid}/workflow/materiali`, { items, firmato_cliente: true, firma_data: new Date().toISOString() });
+              toast.success("Scansione firmata caricata e materiali confermati");
+              setFirmato(true); reload();
+            } catch (err) { toast.error("Errore upload: " + (err?.response?.data?.detail || err.message)); }
+          }} />
+          <Button onClick={async () => { await api.post(`/commesse/${cid}/workflow/materiali`, { items, firmato_cliente: firmato, firma_data: firmato ? new Date().toISOString() : null }); toast.success("Materiali salvati"); reload(); }} style={{ background: "var(--brand)", color: "white" }} data-testid="mat-save">Salva scelta materiali</Button>
+        </div>
       </div>
+      {m.firmato_cliente && m.firma_data && (
+        <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded p-2.5 flex items-center gap-2" data-testid="mat-firma-stato">
+          <CheckCircle2 className="h-4 w-4" /> Tabella materiali firmata dal cliente in data {new Date(m.firma_data).toLocaleString("it-IT")}. Eventuali modifiche generano extra in preventivo.
+        </div>
+      )}
     </div>
   );
 }
@@ -630,139 +649,271 @@ function Artigiani({ wf, cid, reload }) {
   );
 }
 
-// ---- 6. FASI CANTIERE (con Gantt visivo) ----
+// ---- 6. FASI CANTIERE — template + calendario mensile + assegnatari ----
+const ESECUTORE_TIPI = {
+  interno: { label: "🏠 Operai interni", color: "#10B981" },
+  artigiano: { label: "🔨 Artigiano / sub-appaltatore", color: "#3B82F6" },
+  fornitore: { label: "📦 Fornitore (es. cucinieri)", color: "#9333EA" },
+  cliente: { label: "👤 Cliente (lavori in economia)", color: "#F59E0B" },
+};
+const STATO_FASE = { da_iniziare: "#A1A1AA", in_corso: "#3B82F6", completata: "#10B981", sospesa: "#F59E0B" };
+const STATO_LABEL = { da_iniziare: "Da iniziare", in_corso: "In corso", completata: "Completata", sospesa: "Sospesa" };
+
 function Fasi({ wf, cid, reload }) {
   const fasi = wf.fasi || [];
+  const subs = wf.artigiani_preventivi || [];
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ titolo: "", eseguito_da: "interno", artigiano_nome: "", data_inizio: "", data_fine: "", stato: "da_iniziare", note: "" });
+  const [editFase, setEditFase] = useState(null);
+  const [templates, setTemplates] = useState([]);
+  const [view, setView] = useState("calendar"); // calendar | list
+  const empty = { titolo: "", template_key: "", color: "#71717A", eseguito_da_tipo: "artigiano", artigiano_id: "", artigiano_nome: "", fornitore_nome: "", data_inizio: "", data_fine: "", stato: "da_iniziare", note: "", categoria: "" };
+  const [form, setForm] = useState(empty);
 
-  // Gantt computation
-  const gantt = useMemo(() => {
-    const fasiDate = fasi.filter(f => f.data_inizio && f.data_fine).map(f => ({ ...f, _start: new Date(f.data_inizio), _end: new Date(f.data_fine) }));
-    if (!fasiDate.length) return null;
-    const minD = new Date(Math.min(...fasiDate.map(f => f._start.getTime())));
-    const maxD = new Date(Math.max(...fasiDate.map(f => f._end.getTime())));
-    const totDays = Math.max(1, Math.round((maxD - minD) / 86400000) + 1);
-    // Larghezza colonna giorno aumentata (più leggibile). Min 28 / Max 60 px.
-    const COL_W = Math.max(28, Math.min(60, 1600 / totDays));
-    return { fasiDate, minD, maxD, totDays, COL_W, width: COL_W * totDays };
-  }, [fasi]);
+  useEffect(() => { api.get("/fasi-templates").then(r => setTemplates(r.data || [])); }, []);
 
-  const STATO_COL = { da_iniziare: "#A1A1AA", in_corso: "#3B82F6", completata: "#10B981", sospesa: "#F59E0B" };
-  const LABEL_W = 240; // colonna sx larga per nomi fase
-  const ROW_H = 44;   // riga alta per leggibilità
+  const openNew = () => { setForm(empty); setEditFase(null); setOpen(true); };
+  const openEdit = (f) => { setForm({ ...empty, ...f }); setEditFase(f); setOpen(true); };
+  const pickTemplate = (key) => {
+    const t = templates.find(x => x.key === key);
+    if (!t) return;
+    const today = new Date();
+    const fine = new Date(today); fine.setDate(fine.getDate() + (t.durata_gg || 1) - 1);
+    setForm({ ...form, template_key: key, titolo: t.titolo, color: t.color, categoria: t.categoria, data_inizio: form.data_inizio || today.toISOString().slice(0, 10), data_fine: form.data_fine || fine.toISOString().slice(0, 10) });
+  };
+
+  const save = async () => {
+    if (!form.titolo) { toast.error("Inserisci un titolo o scegli un template"); return; }
+    try {
+      if (editFase) {
+        await api.put(`/commesse/${cid}/workflow/fasi/${editFase.id}`, form);
+        toast.success("Fase aggiornata");
+      } else {
+        await api.post(`/commesse/${cid}/workflow/fasi`, form);
+        toast.success("Fase aggiunta");
+      }
+      setOpen(false); setForm(empty); setEditFase(null);
+      reload();
+    } catch (e) { toast.error("Errore: " + (e?.response?.data?.detail || e.message)); }
+  };
+  const del = async (id) => { if (!window.confirm("Eliminare questa fase?")) return; await api.delete(`/commesse/${cid}/workflow/fasi/${id}`); reload(); };
+
+  // Aggregate templates by categoria for the picker
+  const tplByCat = useMemo(() => {
+    const m = {};
+    templates.forEach(t => { (m[t.categoria || "altro"] = m[t.categoria || "altro"] || []).push(t); });
+    return m;
+  }, [templates]);
+
+  // Calendario: vista mese-su-mese con righe = settimane
+  const fasiDated = fasi.filter(f => f.data_inizio && f.data_fine);
+  const today = new Date();
+  const monthsCalendar = useMemo(() => {
+    if (!fasiDated.length) {
+      // mostra mese corrente + 2 successivi
+      return [0, 1, 2].map(off => { const d = new Date(today.getFullYear(), today.getMonth() + off, 1); return d; });
+    }
+    const min = new Date(Math.min(...fasiDated.map(f => new Date(f.data_inizio).getTime())));
+    const max = new Date(Math.max(...fasiDated.map(f => new Date(f.data_fine).getTime())));
+    const arr = []; const cur = new Date(min.getFullYear(), min.getMonth(), 1);
+    while (cur <= max) { arr.push(new Date(cur)); cur.setMonth(cur.getMonth() + 1); }
+    return arr;
+  }, [fasiDated]);
+
+  const fasiByDay = useMemo(() => {
+    const map = {};
+    fasiDated.forEach(f => {
+      const start = new Date(f.data_inizio); const end = new Date(f.data_fine);
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const k = d.toISOString().slice(0, 10);
+        (map[k] = map[k] || []).push(f);
+      }
+    });
+    return map;
+  }, [fasiDated]);
 
   return (
     <div className="space-y-3">
       <div className="bg-white border border-zinc-200 rounded">
-        <div className="flex items-center justify-between p-4 border-b border-zinc-200">
-          <h3 className="font-semibold">Fasi cantiere <span className="ml-2 text-xs text-zinc-500">Pianifica chi fa cosa e quando · Gantt visivo grande</span></h3>
-          <Button size="sm" onClick={() => setOpen(true)} data-testid="fase-add"><Plus className="h-4 w-4 mr-1" /> Nuova fase</Button>
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-zinc-200">
+          <div>
+            <h3 className="font-semibold">Fasi cantiere</h3>
+            <p className="text-xs text-zinc-500 mt-0.5">Pianifica chi fa cosa e quando. Scegli da template predefiniti e assegna a interni/artigiani/fornitori/cliente.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex bg-zinc-100 rounded p-0.5">
+              <button onClick={() => setView("calendar")} className={`px-3 py-1.5 text-xs rounded ${view === "calendar" ? "bg-white shadow-sm font-semibold" : "text-zinc-600"}`} data-testid="fasi-view-cal">📅 Calendario</button>
+              <button onClick={() => setView("list")} className={`px-3 py-1.5 text-xs rounded ${view === "list" ? "bg-white shadow-sm font-semibold" : "text-zinc-600"}`} data-testid="fasi-view-list">📋 Lista</button>
+            </div>
+            <Button size="sm" onClick={openNew} data-testid="fase-add" style={{ background: "var(--brand)", color: "white" }}><Plus className="h-4 w-4 mr-1" /> Nuova fase</Button>
+          </div>
         </div>
-        {/* GANTT */}
-        {gantt && (
-          <div className="p-4 border-b border-zinc-200 overflow-x-auto bg-zinc-50/40" data-testid="gantt-svg-wrap">
-            <div className="text-xs text-zinc-600 mb-3 mono flex items-center gap-3">
-              <span>📅 <b>Calendario Gantt</b> — dal {gantt.minD.toLocaleDateString("it-IT")} al {gantt.maxD.toLocaleDateString("it-IT")} ({gantt.totDays} giorni · {fasi.length} fasi)</span>
-            </div>
-            <svg width={gantt.width + LABEL_W} height={fasi.length * ROW_H + 50} style={{ minWidth: gantt.width + LABEL_W, background: "white", borderRadius: 4 }}>
-              {/* Header date */}
-              {Array.from({ length: gantt.totDays }).map((_, i) => {
-                const d = new Date(gantt.minD); d.setDate(d.getDate() + i);
-                const x = LABEL_W + i * gantt.COL_W;
-                const isMonday = d.getDay() === 1;
-                const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-                return <g key={i}>
-                  {isWeekend && <rect x={x} y={30} width={gantt.COL_W} height={fasi.length * ROW_H} fill="#FEF3C7" fillOpacity="0.3" />}
-                  <line x1={x} y1={30} x2={x} y2={fasi.length * ROW_H + 40} stroke={isMonday ? "#71717A" : "#E4E4E7"} strokeWidth={isMonday ? 1.5 : 0.5} />
-                  {(isMonday || gantt.COL_W >= 35) && <text x={x + 3} y={18} fontSize="12" fontFamily="JetBrains Mono" fill="#27272A" fontWeight={isMonday ? "700" : "400"}>{d.getDate()}/{d.getMonth() + 1}</text>}
-                </g>;
-              })}
-              {/* Fasi rows */}
-              {fasi.map((f, i) => {
-                const y = 36 + i * ROW_H;
-                const rowBg = i % 2 === 0 ? "#FAFAFA" : "#FFFFFF";
-                const txtRow = <text x={8} y={y + 22} fontSize="13" fill="#0A0A0A" fontWeight="600" style={{ pointerEvents: "none" }}>{(f.titolo || "").slice(0, 32)}</text>;
-                const subTxt = <text x={8} y={y + 36} fontSize="10" fill="#71717A" style={{ pointerEvents: "none" }}>{f.eseguito_da === "interno" ? "🏠 Operai interni" : `🔨 ${f.artigiano_nome || "Artigiano"}`}</text>;
-                if (!f.data_inizio || !f.data_fine) {
-                  return <g key={f.id}>
-                    <rect x={0} y={y} width={gantt.width + LABEL_W} height={ROW_H - 4} fill={rowBg} />
-                    {txtRow}
-                    {subTxt}
-                    <text x={LABEL_W + 10} y={y + 28} fontSize="11" fill="#A1A1AA" fontStyle="italic">— assegna date (inizio/fine) per vederla nel calendario —</text>
-                  </g>;
-                }
-                const startDays = Math.round((new Date(f.data_inizio) - gantt.minD) / 86400000);
-                const lenDays = Math.max(1, Math.round((new Date(f.data_fine) - new Date(f.data_inizio)) / 86400000) + 1);
-                const x = LABEL_W + startDays * gantt.COL_W;
-                const w = lenDays * gantt.COL_W - 4;
-                return <g key={f.id} data-testid={`gantt-bar-${f.id}`}>
-                  <rect x={0} y={y} width={gantt.width + LABEL_W} height={ROW_H - 4} fill={rowBg} />
-                  {txtRow}
-                  {subTxt}
-                  <rect x={x} y={y + 6} width={w} height={30} rx={4} fill={STATO_COL[f.stato] || "#A1A1AA"} fillOpacity="0.9" stroke={STATO_COL[f.stato] || "#A1A1AA"} strokeWidth={1.5} />
-                  <text x={x + 10} y={y + 26} fontSize="12" fill="white" fontWeight="600" style={{ pointerEvents: "none" }}>{lenDays}gg</text>
-                </g>;
-              })}
-            </svg>
-            <div className="flex items-center gap-4 mt-3 text-[11px] uppercase tracking-widest text-zinc-600">
-              {Object.entries(STATO_COL).map(([k, c]) => <span key={k} className="flex items-center gap-1.5"><span className="w-3 h-3 inline-block rounded-sm" style={{ background: c }} /> {k.replace("_", " ")}</span>)}
-              <span className="ml-4 flex items-center gap-1.5"><span className="w-3 h-3 inline-block bg-amber-100" /> weekend</span>
-            </div>
+
+        {/* CALENDARIO MENSILE — non schiacciato */}
+        {view === "calendar" && (
+          <div className="p-4 space-y-6 bg-zinc-50/30" data-testid="calendar-monthly">
+            {monthsCalendar.map((mDate, mi) => {
+              const year = mDate.getFullYear(); const month = mDate.getMonth();
+              const first = new Date(year, month, 1); const last = new Date(year, month + 1, 0);
+              const offset = (first.getDay() + 6) % 7; // Mon-first
+              const cells = []; for (let i = 0; i < offset; i++) cells.push(null);
+              for (let d = 1; d <= last.getDate(); d++) cells.push(new Date(year, month, d));
+              while (cells.length % 7) cells.push(null);
+              return (
+                <div key={mi} className="bg-white border border-zinc-200 rounded shadow-sm">
+                  <div className="px-4 py-2.5 bg-zinc-100 border-b border-zinc-200 font-bold uppercase tracking-wide text-sm">{mDate.toLocaleDateString("it-IT", { month: "long", year: "numeric" })}</div>
+                  <div className="grid grid-cols-7 text-[10px] uppercase tracking-widest text-zinc-500 border-b">
+                    {["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map(d => <div key={d} className="px-2 py-1.5 text-center font-bold">{d}</div>)}
+                  </div>
+                  <div className="grid grid-cols-7">
+                    {cells.map((cell, i) => {
+                      if (!cell) return <div key={i} className="min-h-[110px] border-r border-b border-zinc-100 bg-zinc-50/50" />;
+                      const iso = cell.toISOString().slice(0, 10);
+                      const dayFasi = fasiByDay[iso] || [];
+                      const isWeekend = cell.getDay() === 0 || cell.getDay() === 6;
+                      const isToday = cell.toDateString() === today.toDateString();
+                      return (
+                        <div key={i} className={`min-h-[110px] border-r border-b border-zinc-100 p-1.5 ${isWeekend ? "bg-amber-50/40" : ""} ${isToday ? "bg-blue-100/40 ring-2 ring-blue-400" : ""}`}>
+                          <div className="text-[11px] mono font-bold text-zinc-600 mb-1">{cell.getDate()}</div>
+                          <div className="space-y-1">
+                            {dayFasi.slice(0, 3).map(f => (
+                              <button key={f.id} onClick={() => openEdit(f)} className="block w-full text-left text-[10px] leading-tight px-1.5 py-1 rounded text-white font-medium truncate hover:opacity-90 cursor-pointer" style={{ background: f.color || STATO_FASE[f.stato] || "#71717A" }} title={`${f.titolo} · ${f.artigiano_nome || f.fornitore_nome || (f.eseguito_da_tipo || "")}`} data-testid={`cal-fase-${f.id}`}>
+                                {f.titolo}
+                              </button>
+                            ))}
+                            {dayFasi.length > 3 && <div className="text-[9px] text-zinc-500 italic">+{dayFasi.length - 3} altre</div>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
-            <th className="px-3 py-2 text-left">Titolo</th><th className="px-3 py-2 text-left">Esecutore</th><th className="px-3 py-2 text-left">Inizio</th><th className="px-3 py-2 text-left">Fine</th><th className="px-3 py-2 text-center">Stato</th><th></th>
-          </tr></thead>
-          <tbody className="divide-y divide-zinc-100">
-            {fasi.map(f => (
-              <tr key={f.id}>
-                <td className="px-3 py-2 font-medium">{f.titolo}</td>
-                <td className="px-3 py-2 text-xs">{f.eseguito_da === "interno" ? "🏠 Interni" : `🔨 ${f.artigiano_nome || "Artigiano"}`}</td>
-                <td className="px-3 py-2 mono text-xs">{f.data_inizio || "-"}</td>
-                <td className="px-3 py-2 mono text-xs">{f.data_fine || "-"}</td>
-                <td className="px-3 py-2 text-center">
-                  <Select value={f.stato} onValueChange={async v => { await api.put(`/commesse/${cid}/workflow/fasi/${f.id}`, { ...f, stato: v }); reload(); }}>
-                    <SelectTrigger className="h-7 text-xs w-32 mx-auto"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="da_iniziare">Da iniziare</SelectItem>
-                      <SelectItem value="in_corso">In corso</SelectItem>
-                      <SelectItem value="completata">Completata</SelectItem>
-                      <SelectItem value="sospesa">Sospesa</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </td>
-                <td className="px-3 py-2 text-right"><button className="text-rose-600 p-1" onClick={async () => { await api.delete(`/commesse/${cid}/workflow/fasi/${f.id}`); reload(); }}><Trash2 className="h-4 w-4" /></button></td>
-              </tr>
-            ))}
-            {!fasi.length && <tr><td colSpan={6} className="px-3 py-12 text-center text-zinc-500">Nessuna fase. Pianifica il cantiere.</td></tr>}
-          </tbody>
-        </table>
+
+        {/* LISTA */}
+        {view === "list" && (
+          <table className="w-full text-sm">
+            <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
+              <th className="px-3 py-2 text-left">Fase</th>
+              <th className="px-3 py-2 text-left">Esecutore</th>
+              <th className="px-3 py-2 text-left">Periodo</th>
+              <th className="px-3 py-2 text-center">Stato</th>
+              <th></th>
+            </tr></thead>
+            <tbody className="divide-y divide-zinc-100">
+              {fasi.map(f => {
+                const tip = ESECUTORE_TIPI[f.eseguito_da_tipo || f.eseguito_da || "artigiano"] || ESECUTORE_TIPI.artigiano;
+                const nome = f.artigiano_nome || f.fornitore_nome || (f.eseguito_da_tipo === "cliente" ? "Cliente" : f.eseguito_da_tipo === "interno" ? "Operai interni" : "—");
+                return (
+                  <tr key={f.id} className="hover:bg-zinc-50" data-testid={`fase-row-${f.id}`}>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-sm" style={{ background: f.color || "#71717A" }} />
+                        <span className="font-medium">{f.titolo}</span>
+                        {f.categoria && <span className="text-[10px] uppercase text-zinc-500 bg-zinc-100 px-1.5 rounded">{f.categoria}</span>}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      <div>{tip.label.split(" ")[0]} <b>{nome}</b></div>
+                    </td>
+                    <td className="px-3 py-2 mono text-xs">{f.data_inizio || "—"} → {f.data_fine || "—"}</td>
+                    <td className="px-3 py-2 text-center">
+                      <Select value={f.stato} onValueChange={async v => { await api.put(`/commesse/${cid}/workflow/fasi/${f.id}`, { ...f, stato: v }); reload(); }}>
+                        <SelectTrigger className="h-7 text-xs w-32 mx-auto" data-testid={`fase-stato-${f.id}`}><SelectValue /></SelectTrigger>
+                        <SelectContent>{Object.entries(STATO_LABEL).map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <button onClick={() => openEdit(f)} className="p-1 text-zinc-600 hover:bg-zinc-100 rounded mr-1"><FileSignature className="h-4 w-4" /></button>
+                      <button className="text-rose-600 p-1" onClick={() => del(f.id)}><Trash2 className="h-4 w-4" /></button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {!fasi.length && <tr><td colSpan={5} className="px-3 py-12 text-center text-zinc-500">Nessuna fase pianificata. Clicca "Nuova fase" per iniziare con i template.</td></tr>}
+            </tbody>
+          </table>
+        )}
+
+        <div className="px-4 py-2 border-t bg-zinc-50/50 text-[11px] uppercase tracking-widest text-zinc-600 flex items-center gap-4 flex-wrap">
+          {Object.entries(STATO_FASE).map(([k, c]) => <span key={k} className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm" style={{ background: c }} /> {STATO_LABEL[k]}</span>)}
+          <span className="ml-4 flex items-center gap-1"><span className="w-3 h-3 bg-amber-100" /> weekend</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 bg-blue-200" /> oggi</span>
+        </div>
       </div>
+
+      {/* DIALOG fase con TEMPLATE PICKER + ASSEGNATARIO */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Nuova fase cantiere</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div><Label className="text-xs">Titolo</Label><Input value={form.titolo} onChange={e => setForm({ ...form, titolo: e.target.value })} data-testid="fase-titolo" /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label className="text-xs">Esecutore</Label>
-                <Select value={form.eseguito_da} onValueChange={v => setForm({ ...form, eseguito_da: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="interno">Operai interni</SelectItem><SelectItem value="artigiano">Artigiano esterno</SelectItem></SelectContent>
-                </Select>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{editFase ? "Modifica fase" : "Nuova fase cantiere"}</DialogTitle></DialogHeader>
+          <div className="space-y-4 text-sm">
+            {/* Template picker */}
+            {!editFase && (
+              <div>
+                <Label className="text-xs uppercase tracking-widest text-zinc-500">1. Scegli da template predefiniti (consigliato)</Label>
+                <div className="mt-2 max-h-[180px] overflow-y-auto border border-zinc-200 rounded p-2 space-y-1 bg-zinc-50/40">
+                  {Object.entries(tplByCat).map(([cat, tpls]) => (
+                    <div key={cat}>
+                      <div className="text-[10px] uppercase tracking-widest text-zinc-500 mt-1 mb-1">{cat}</div>
+                      <div className="flex flex-wrap gap-1">
+                        {tpls.map(t => (
+                          <button key={t.key} onClick={() => pickTemplate(t.key)} className={`text-xs px-2 py-1 rounded border ${form.template_key === t.key ? "border-zinc-900 bg-white" : "border-zinc-300 bg-white hover:border-zinc-500"}`} data-testid={`tpl-${t.key}`}>
+                            <span className="w-2 h-2 inline-block rounded-sm mr-1.5 align-middle" style={{ background: t.color }} />
+                            {t.titolo} <span className="text-zinc-400 ml-1">({t.durata_gg}g)</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              {form.eseguito_da === "artigiano" && <div><Label className="text-xs">Nome artigiano</Label><Input value={form.artigiano_nome} onChange={e => setForm({ ...form, artigiano_nome: e.target.value })} /></div>}
+            )}
+
+            <div>
+              <Label className="text-xs">{editFase ? "" : "2. "}Titolo fase</Label>
+              <Input value={form.titolo} onChange={e => setForm({ ...form, titolo: e.target.value })} placeholder="Es: Demolizioni e rimozioni" data-testid="fase-titolo" />
             </div>
+
+            {/* Date */}
             <div className="grid grid-cols-2 gap-3">
-              <div><Label className="text-xs">Data inizio</Label><Input type="date" value={form.data_inizio} onChange={e => setForm({ ...form, data_inizio: e.target.value })} data-testid="fase-inizio" /></div>
+              <div><Label className="text-xs">{editFase ? "" : "3. "}Data inizio</Label><Input type="date" value={form.data_inizio} onChange={e => setForm({ ...form, data_inizio: e.target.value })} data-testid="fase-inizio" /></div>
               <div><Label className="text-xs">Data fine</Label><Input type="date" value={form.data_fine} onChange={e => setForm({ ...form, data_fine: e.target.value })} data-testid="fase-fine" /></div>
             </div>
-            <div><Label className="text-xs">Note</Label><Input value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} /></div>
+
+            {/* ASSEGNAZIONE — chi fa la fase */}
+            <div className="border-t pt-3">
+              <Label className="text-xs uppercase tracking-widest text-zinc-500">{editFase ? "Esecutore" : "4. Chi esegue la fase?"}</Label>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                {Object.entries(ESECUTORE_TIPI).map(([k, t]) => (
+                  <button key={k} onClick={() => setForm({ ...form, eseguito_da_tipo: k, eseguito_da: k })} className={`px-3 py-3 rounded border-2 text-left transition ${form.eseguito_da_tipo === k ? "border-zinc-900 bg-zinc-50 shadow-sm" : "border-zinc-200 hover:border-zinc-400 bg-white"}`} data-testid={`fase-esec-${k}`}>
+                    <div className="text-xs font-bold">{t.label}</div>
+                  </button>
+                ))}
+              </div>
+              {form.eseguito_da_tipo === "artigiano" && (
+                <div className="mt-3 space-y-2">
+                  <Label className="text-xs">Scegli da preventivi artigiani caricati</Label>
+                  <Select value={form.artigiano_id || ""} onValueChange={v => { const a = subs.find(s => s.id === v); setForm({ ...form, artigiano_id: v, artigiano_nome: a?.artigiano_nome || form.artigiano_nome }); }}>
+                    <SelectTrigger data-testid="fase-art-select"><SelectValue placeholder="— oppure scrivi nome sotto —" /></SelectTrigger>
+                    <SelectContent>{subs.map(a => <SelectItem key={a.id} value={a.id}>{a.artigiano_nome} · {fmtEur(a.importo_offerto)}</SelectItem>)}{!subs.length && <div className="p-2 text-xs text-zinc-500">Nessun preventivo artigiano caricato</div>}</SelectContent>
+                  </Select>
+                  <Input value={form.artigiano_nome} onChange={e => setForm({ ...form, artigiano_nome: e.target.value })} placeholder="Nome artigiano / squadra (libero)" data-testid="fase-art-nome" />
+                </div>
+              )}
+              {form.eseguito_da_tipo === "fornitore" && (
+                <div className="mt-3"><Label className="text-xs">Nome fornitore</Label><Input value={form.fornitore_nome} onChange={e => setForm({ ...form, fornitore_nome: e.target.value })} placeholder="Es: Cucine Veneta · Lavanderia Miele" data-testid="fase-forn-nome" /></div>
+              )}
+              {form.eseguito_da_tipo === "cliente" && <div className="mt-2 text-xs text-amber-700 bg-amber-50 p-2 rounded">⚠️ La fase è gestita dal cliente in economia. Verrà mostrata in giallo nel calendario.</div>}
+              {form.eseguito_da_tipo === "interno" && <div className="mt-2 text-xs text-emerald-700 bg-emerald-50 p-2 rounded">✓ Operai interni — non serve preventivo esterno.</div>}
+            </div>
+
+            <div><Label className="text-xs">Note</Label><Input value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} placeholder="Eventuali note operative" /></div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Annulla</Button>
-            <Button onClick={async () => { await api.post(`/commesse/${cid}/workflow/fasi`, form); setOpen(false); setForm({ titolo: "", eseguito_da: "interno", artigiano_nome: "", data_inizio: "", data_fine: "", stato: "da_iniziare", note: "" }); reload(); }} style={{ background: "var(--brand)", color: "white" }} data-testid="fase-save">Salva</Button>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => { setOpen(false); setEditFase(null); }}>Annulla</Button>
+            <Button onClick={save} style={{ background: "var(--brand)", color: "white" }} data-testid="fase-save">{editFase ? "Aggiorna fase" : "Aggiungi fase"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

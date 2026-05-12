@@ -100,6 +100,27 @@ def build_commessa_workflow_router(db, get_current_user):
         return materiali
 
     # ---------- 4. COMPUTO METRICO (auto-genera dal preventivo) ----------
+    @r.post("/commesse-bulk-regen-computo")
+    async def bulk_regen_computo(user=Depends(get_current_user)):
+        """One-time: rigenera computo metrico per TUTTE le commesse senza computo. Solo admin."""
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin")
+        commesse = await db.commesse.find({}, {"_id": 0}).to_list(5000)
+        fixed = 0; skipped = 0
+        for c in commesse:
+            if ((c.get("computo_metrico") or {}).get("items") or []):
+                skipped += 1; continue
+            prev_id = c.get("preventivo_id")
+            if not prev_id:
+                skipped += 1; continue
+            try:
+                res = await gen_computo(c["id"], user)
+                if res.get("items"): fixed += 1
+                else: skipped += 1
+            except Exception:
+                skipped += 1
+        return {"fixed": fixed, "skipped": skipped, "total": len(commesse)}
+
     @r.post("/commesse/{cid}/workflow/computo")
     async def gen_computo(cid: str, user=Depends(get_current_user)):
         c = await _commessa(cid)
@@ -118,6 +139,29 @@ def build_commessa_workflow_router(db, get_current_user):
             or prev.get("computo")
             or []
         )
+        # Se PACCHETTO senza items → deriva dal package
+        if not voci_prev and prev.get("package_id"):
+            pkg = await db.packages.find_one({"id": prev["package_id"]}, {"_id": 0})
+            if pkg and pkg.get("items"):
+                mq = float(prev.get("mq") or pkg.get("mq_base") or 80)
+                derived = []
+                for it in pkg["items"]:
+                    qm = it.get("qty_mode", "fixed")
+                    if qm == "per_mq":
+                        qty = mq * float(it.get("qty_ratio") or 1)
+                    else:
+                        qty = float(it.get("qty_value") or it.get("qty") or 1)
+                    pu = float(it.get("unit_price_pkg") or it.get("prezzo_rivendita") or 0)
+                    derived.append({
+                        "voce_id": it.get("id"),
+                        "name": it.get("name") or "—",
+                        "qty": qty,
+                        "unit": it.get("unit") or "pz",
+                        "unit_price": pu,
+                        "total": round(qty * pu, 2),
+                        "category": it.get("category") or "",
+                    })
+                voci_prev = derived
         # Preserva le assegnazioni esistenti (matching su voce_id) per non perdere
         # il lavoro fatto dall'utente quando rigenera il computo.
         existing_cm = (c.get("computo_metrico") or {}).get("items") or []
@@ -337,11 +381,47 @@ def build_commessa_workflow_router(db, get_current_user):
         return rows
 
     # ---------- 6. FASI CANTIERE (chi fa cosa quando) ----------
+    # Template fasi pre-impostate per cantieri di ristrutturazione
+    FASI_TEMPLATES = [
+        {"key": "allestimento", "titolo": "Allestimento cantiere e protezioni", "durata_gg": 1, "ordine": 1, "color": "#71717A", "categoria": "preparazione"},
+        {"key": "demolizioni", "titolo": "Demolizioni e rimozioni", "durata_gg": 3, "ordine": 2, "color": "#DC2626", "categoria": "demolizioni"},
+        {"key": "smaltimenti", "titolo": "Smaltimento macerie", "durata_gg": 1, "ordine": 3, "color": "#52525B", "categoria": "smaltimenti"},
+        {"key": "muratura", "titolo": "Muratura nuovi tramezzi", "durata_gg": 4, "ordine": 4, "color": "#A16207", "categoria": "muratura"},
+        {"key": "tracce_impianti", "titolo": "Tracce impianti elettrico/idraulico", "durata_gg": 3, "ordine": 5, "color": "#7C3AED", "categoria": "impianti"},
+        {"key": "impianto_idraulico", "titolo": "Impianto idraulico", "durata_gg": 5, "ordine": 6, "color": "#0EA5E9", "categoria": "impianti"},
+        {"key": "impianto_elettrico", "titolo": "Impianto elettrico", "durata_gg": 5, "ordine": 7, "color": "#7C3AED", "categoria": "impianti"},
+        {"key": "impianto_termico", "titolo": "Impianto termico/condizionamento (HVAC)", "durata_gg": 4, "ordine": 8, "color": "#14B8A6", "categoria": "impianti"},
+        {"key": "intonaco", "titolo": "Intonaci e rasature", "durata_gg": 5, "ordine": 9, "color": "#D97706", "categoria": "finiture"},
+        {"key": "massetto", "titolo": "Massetto per pavimenti", "durata_gg": 2, "ordine": 10, "color": "#92400E", "categoria": "finiture"},
+        {"key": "rivestimenti_bagno", "titolo": "Rivestimenti bagno e cucina", "durata_gg": 5, "ordine": 11, "color": "#0F766E", "categoria": "finiture"},
+        {"key": "pavimenti", "titolo": "Posa pavimenti", "durata_gg": 4, "ordine": 12, "color": "#15803D", "categoria": "finiture"},
+        {"key": "controsoffitti", "titolo": "Controsoffitti in cartongesso", "durata_gg": 3, "ordine": 13, "color": "#0369A1", "categoria": "finiture"},
+        {"key": "tinteggiatura", "titolo": "Tinteggiatura pareti e soffitti", "durata_gg": 4, "ordine": 14, "color": "#FBBF24", "categoria": "finiture"},
+        {"key": "infissi", "titolo": "Sostituzione/posa infissi", "durata_gg": 2, "ordine": 15, "color": "#2563EB", "categoria": "infissi"},
+        {"key": "porte_interne", "titolo": "Posa porte interne", "durata_gg": 1, "ordine": 16, "color": "#9333EA", "categoria": "infissi"},
+        {"key": "sanitari", "titolo": "Posa sanitari e rubinetterie", "durata_gg": 1, "ordine": 17, "color": "#06B6D4", "categoria": "impianti"},
+        {"key": "elettrodomestici", "titolo": "Installazione elettrodomestici", "durata_gg": 1, "ordine": 18, "color": "#EC4899", "categoria": "impianti"},
+        {"key": "cucina", "titolo": "Montaggio cucina", "durata_gg": 2, "ordine": 19, "color": "#F97316", "categoria": "arredo"},
+        {"key": "pulizia_finale", "titolo": "Pulizia finale cantiere", "durata_gg": 1, "ordine": 20, "color": "#10B981", "categoria": "consegna"},
+        {"key": "consegna_cliente", "titolo": "Consegna chiavi al cliente", "durata_gg": 1, "ordine": 21, "color": "#1FAE52", "categoria": "consegna"},
+    ]
+
+    @r.get("/fasi-templates")
+    async def list_fasi_templates(user=Depends(get_current_user)):
+        return FASI_TEMPLATES
+
     class FaseIn(BaseModel):
         titolo: str
+        template_key: Optional[str] = None
+        categoria: Optional[str] = None
+        color: Optional[str] = None
         voce_ids: List[str] = []
-        eseguito_da: str = "interno"  # "interno" | artigiano_id
+        # Tipo esecutore: interno (operai propri), cliente (lavori in economia), artigiano (sub-appaltatore), fornitore (es. cucinieri)
+        eseguito_da_tipo: str = "artigiano"
+        eseguito_da: str = "artigiano"  # legacy
+        artigiano_id: Optional[str] = None
         artigiano_nome: Optional[str] = None
+        fornitore_nome: Optional[str] = None
         data_inizio: Optional[str] = None
         data_fine: Optional[str] = None
         stato: str = "da_iniziare"  # "da_iniziare" | "in_corso" | "completata" | "sospesa"

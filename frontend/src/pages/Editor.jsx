@@ -955,7 +955,35 @@ export default function Editor() {
                 <span className="ml-auto mono text-xs text-zinc-500">trascina · zoom</span>
               </div>
               <div className="relative" style={{ height: "calc(100% - 2rem)" }}>
-                <Viewer3D ref={viewer3DRef} project={{ ...project.data, viewMode: editMode }} catalog={catalog} selected={selected} onSelect={(s) => { setSelected(s); setSidebarOpen(true); }} onDrag={(payload) => {
+                {["electrical","plumbing","gas","hvac"].includes(tool) && (
+                  <div className="absolute top-2 left-2 z-10 bg-violet-600 text-white text-xs px-3 py-1.5 shadow-lg rounded-sm font-bold mono pointer-events-none" data-testid="3d-placement-hint">
+                    🎯 Modalità inserimento {tool}: clicca su un muro nel 3D per piazzare il punto
+                  </div>
+                )}
+                <Viewer3D ref={viewer3DRef} project={{ ...project.data, viewMode: editMode }} catalog={catalog} selected={selected} 
+                  placement={(["electrical","plumbing","gas","hvac"].includes(tool)) ? { tool, kind: tool === "electrical" ? electricalKind : tool === "plumbing" ? plumbingKind : tool === "hvac" ? hvacKind : "gas" } : null}
+                  onPlace={(payload) => {
+                    const { tool: pt, kind, x, y, wall_side, height_cm } = payload;
+                    const newPt = { id: Math.random().toString(36).slice(2, 10), x, y, wall_side, height_cm, phase: editMode };
+                    if (pt === "electrical") {
+                      newPt.type = kind || "presa";
+                      setProjectData(d => ({ ...d, electrical: [...(d.electrical || []), newPt] }));
+                      toast.success(`✓ Presa aggiunta in 3D · h=${height_cm}cm`);
+                    } else if (pt === "plumbing") {
+                      newPt.type = kind || "acqua-fredda";
+                      if (kind === "punto-completo") Object.assign(newPt, { has_fredda: true, has_calda: true, has_scarico: true });
+                      setProjectData(d => ({ ...d, plumbing: [...(d.plumbing || []), newPt] }));
+                      toast.success(`✓ Punto idraulico aggiunto in 3D · h=${height_cm}cm`);
+                    } else if (pt === "hvac") {
+                      newPt.kind = kind || "split";
+                      setProjectData(d => ({ ...d, hvac: [...(d.hvac || []), newPt] }));
+                      toast.success(`✓ ${kind || "split"} aggiunto in 3D · h=${height_cm}cm`);
+                    } else if (pt === "gas") {
+                      setProjectData(d => ({ ...d, gas: [...(d.gas || []), newPt] }));
+                      toast.success(`✓ Punto gas aggiunto in 3D · h=${height_cm}cm`);
+                    }
+                  }}
+                  onSelect={(s) => { setSelected(s); setSidebarOpen(true); }} onDrag={(payload) => {
                   const { kind, id } = payload;
                   if (kind === "items") {
                     setProjectData(d => ({ ...d, items: (d.items || []).map(it => it.id === id ? { ...it, x: payload.x, y: payload.y } : it) }));
@@ -969,6 +997,8 @@ export default function Editor() {
                     setProjectData(d => ({ ...d, doors: (d.doors || []).map(dr => dr.id === id ? { ...dr, t: payload.t } : dr) }));
                   } else if (kind === "windows") {
                     setProjectData(d => ({ ...d, windows: (d.windows || []).map(wn => wn.id === id ? { ...wn, t: payload.t } : wn) }));
+                  } else if (["electrical", "plumbing", "hvac", "gas"].includes(kind)) {
+                    setProjectData(d => ({ ...d, [kind]: (d[kind] || []).map(el => el.id === id ? { ...el, x: payload.x, y: payload.y } : el) }));
                   }
                 }} />
               </div>

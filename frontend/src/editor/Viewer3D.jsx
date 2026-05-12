@@ -541,7 +541,7 @@ function SceneRoot({ project, catalog }) {
  * - doors/windows: drag lungo il muro → aggiorna `t` (proiezione sul segmento)
  * Selezione click su tutto.
  */
-function Picker3D({ onSelect, onDrag, projectRef, dragActiveRef }) {
+function Picker3D({ onSelect, onDrag, onPlace, projectRef, placementRef, dragActiveRef }) {
   const { gl, camera, scene } = useThree();
   useEffect(() => {
     const ray = new THREE.Raycaster();
@@ -569,6 +569,8 @@ function Picker3D({ onSelect, onDrag, projectRef, dragActiveRef }) {
 
     const onDown = (ev) => {
       downX = ev.clientX; downY = ev.clientY; moved = false;
+      // Se siamo in modalità "placement" (inserimento nuovo punto MEP via 3D click) NON iniziare drag
+      if (placementRef?.current?.tool) return;
       screenToWorld(ev);
       const hits = ray.intersectObjects(scene.children, true);
       for (const h of hits) {
@@ -579,7 +581,7 @@ function Picker3D({ onSelect, onDrag, projectRef, dragActiveRef }) {
         const id = o.userData.id;
         if (!onDrag) break;
         // Aggancia il drag per tutti i kind supportati
-        if (["items", "rooms", "walls", "doors", "windows", "columns"].includes(kind)) {
+        if (["items", "rooms", "walls", "doors", "windows", "columns", "electrical", "plumbing", "hvac", "gas"].includes(kind)) {
           dragTarget = o;
           dragKind = kind;
           dragStart.copy(intersectGround());
@@ -604,6 +606,10 @@ function Picker3D({ onSelect, onDrag, projectRef, dragActiveRef }) {
             const win = (proj.windows || []).find((x) => x.id === id);
             const wall = win ? (proj.walls || []).find((w) => w.id === win.wallId) : null;
             if (win && wall) originalData = { t: win.t, wall };
+          } else if (kind === "electrical" || kind === "plumbing" || kind === "hvac" || kind === "gas") {
+            const arr = proj[kind] || [];
+            const el = arr.find((x) => x.id === id);
+            if (el) originalData = { x: el.x, y: el.y, height_cm: el.height_cm };
           }
           gl.domElement.style.cursor = "grabbing";
           if (dragActiveRef) dragActiveRef.current = true;
@@ -651,6 +657,10 @@ function Picker3D({ onSelect, onDrag, projectRef, dragActiveRef }) {
         const mz = ((w.y1 + w.y2) / 2);
         dragTarget.position.x = (mx + Math.cos(angle) * cxLocal) * CM;
         dragTarget.position.z = (mz + Math.sin(angle) * cxLocal) * CM;
+      } else if (["electrical", "plumbing", "hvac", "gas"].includes(dragKind)) {
+        // Drag libero sul piano XZ; il commit ri-proietterà sul muro più vicino
+        dragTarget.position.x = (originalData.x + deltaX) * CM;
+        dragTarget.position.z = (originalData.y + deltaZ) * CM;
       }
       ev.stopPropagation();
     };
@@ -682,6 +692,9 @@ function Picker3D({ onSelect, onDrag, projectRef, dragActiveRef }) {
           const px = cur.x * 100, py = cur.z * 100;
           let t = ((px - w.x1) * wdx + (py - w.y1) * wdy) / wlen2;
           payload.t = Math.max(0.02, Math.min(0.98, t));
+        } else if (["electrical", "plumbing", "hvac", "gas"].includes(dragKind)) {
+          payload.x = Math.round(originalData.x + deltaX);
+          payload.y = Math.round(originalData.y + deltaZ);
         }
         onDrag(payload);
         dragTarget = null;
@@ -697,6 +710,43 @@ function Picker3D({ onSelect, onDrag, projectRef, dragActiveRef }) {
       if (dragActiveRef) dragActiveRef.current = false;
       gl.domElement.style.cursor = "default";
       if (moved || !onSelect) return;
+      // PLACEMENT MODE: se l'utente ha selezionato un tool MEP, inserisce un nuovo punto sulla parete cliccata.
+      const placement = placementRef?.current;
+      if (placement?.tool && onPlace) {
+        screenToWorld(ev);
+        const hits = ray.intersectObjects(scene.children, true);
+        for (const h of hits) {
+          let o = h.object;
+          while (o && !o.userData?.kind) o = o.parent;
+          if (!o?.userData?.kind || !o.userData.id) continue;
+          if (o.userData.kind !== "walls") continue;
+          // Trova il muro nel project
+          const proj = projectRef.current || {};
+          const wall = (proj.walls || []).find((w) => w.id === o.userData.id);
+          if (!wall) break;
+          const hitPoint = h.point.clone(); // mondo (m)
+          // Proiezione sul segmento del muro (cm)
+          const px = hitPoint.x * 100, pz = hitPoint.z * 100;
+          const wdx = wall.x2 - wall.x1, wdy = wall.y2 - wall.y1;
+          const wlen2 = wdx * wdx + wdy * wdy || 1;
+          const t = Math.max(0.02, Math.min(0.98, ((px - wall.x1) * wdx + (pz - wall.y1) * wdy) / wlen2));
+          const onWallX = Math.round(wall.x1 + t * wdx);
+          const onWallY = Math.round(wall.y1 + t * wdy);
+          // Lato muro: usa la normale del muro vs la posizione del punto colpito (segno dot product)
+          const wlen = Math.sqrt(wlen2);
+          const nx = -wdy / wlen, ny = wdx / wlen;
+          const dxToWall = px - (wall.x1 + t * wdx);
+          const dyToWall = pz - (wall.y1 + t * wdy);
+          const dot = dxToWall * nx + dyToWall * ny;
+          const wall_side = dot > 0 ? 1 : -1;
+          // Altezza dal pavimento (cm)
+          const height_cm = Math.max(5, Math.min((proj.roomHeight || 270) - 5, Math.round(hitPoint.y * 100)));
+          onPlace({ tool: placement.tool, kind: placement.kind, x: onWallX, y: onWallY, wall_side, height_cm });
+          return;
+        }
+        return;
+      }
+      // Click-to-select standard
       screenToWorld(ev);
       const hits = ray.intersectObjects(scene.children, true);
       for (const h of hits) {
@@ -716,7 +766,7 @@ function Picker3D({ onSelect, onDrag, projectRef, dragActiveRef }) {
       gl.domElement.removeEventListener("pointermove", onMove);
       gl.domElement.removeEventListener("pointerup", onUp);
     };
-  }, [gl, camera, scene, onSelect, onDrag, projectRef, dragActiveRef]);
+  }, [gl, camera, scene, onSelect, onDrag, onPlace, projectRef, placementRef, dragActiveRef]);
   return null;
 }
 
@@ -826,11 +876,13 @@ function OrbitLite({ target = [0, 0, 0], dragActiveRef }) {
   return null;
 }
 
-const Viewer3D = forwardRef(function Viewer3D({ project, catalog, onSelect, onDrag, selected }, ref) {
+const Viewer3D = forwardRef(function Viewer3D({ project, catalog, onSelect, onDrag, onPlace, placement, selected }, ref) {
   const glRef = useRef(null);
   const projectRef = useRef(project);
+  const placementRef = useRef(placement);
   const dragActiveRef = useRef(false);
   useEffect(() => { projectRef.current = project; }, [project]);
+  useEffect(() => { placementRef.current = placement; }, [placement]);
 
   useImperativeHandle(ref, () => ({
     snapshot: () => {
@@ -887,7 +939,7 @@ const Viewer3D = forwardRef(function Viewer3D({ project, catalog, onSelect, onDr
       <Lights />
       <OrbitLite target={center} dragActiveRef={dragActiveRef} />
       <SceneRoot project={project} catalog={catalog} />
-      {(onSelect || onDrag) && <Picker3D onSelect={onSelect} onDrag={onDrag} projectRef={projectRef} dragActiveRef={dragActiveRef} />}
+      {(onSelect || onDrag || onPlace) && <Picker3D onSelect={onSelect} onDrag={onDrag} onPlace={onPlace} projectRef={projectRef} placementRef={placementRef} dragActiveRef={dragActiveRef} />}
       {selected && <Highlight3D selected={selected} />}
     </Canvas>
   );

@@ -1,0 +1,37 @@
+{
+  "summary": "Round 29 — verified 3D direct MEP placement and drag on project 51845afe-0ba4-4c58-837b-e08808c32a6a. ALL P0 flows work: (1) violet banner 'Modalità inserimento <tool>' with data-testid='3d-placement-hint' appears when electrical/hvac/plumbing/gas tool is active and updates text per tool; (2) clicking the 3D canvas (data-testid='canvas-3d') triggers onPlace → toast '✓ Presa aggiunta in 3D · h=XXcm' / '✓ split aggiunto in 3D · h=XXcm' AND elec/hvac DOM counts increment by 1 (electrical 3→4, hvac 1→2); (3) banner disappears as expected when switching back to select tool. Backend GET /api/projects/<id> confirms the newly-placed electrical entry with required fields {id, x, y, wall_side: ±1, height_cm: 86, phase: 'fatto', type: 'presa'}. Save+reload persistence VERIFIED after dismissing toast overlay. ROOT-CAUSE bug found: the Sonner placement toast and the 'Salva' button share the top-right region and the toast container intercepts pointer events for ~4s, swallowing Save clicks made immediately after placement. Reproduction: place an MEP point → click Salva within a few seconds → NO PUT /api/projects fires and NO 'Progetto salvato' toast shown (silent failure for user). Workaround works after the placement toast auto-dismisses, but real users will likely hit this race.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Sonner Toaster overlay vs Save button", "issue": "Placement toast (top-right) covers the 'Salva' button area (also top-right, x=1818-1904 on 1920px viewport) and the toast <section> intercepts pointer events. Clicking 'Salva' right after a placement is silently ignored — no API call, no success/error toast.", "selector": "[data-sonner-toast] vs [data-testid='save-project-button']", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Editor 3D placement hint", "issues": ["Banner text says generic 'electrical' / 'hvac' tool name — could be more user-friendly (e.g. 'Elettrico — clicca un muro per piazzare una presa')."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "FIX (HIGH): Reposition the Sonner Toaster (top-right) OR the Save button to avoid overlap. Recommended: configure Toaster position='bottom-right' in App.jsx, or add pointer-events: none on the toast container wrapper while keeping individual toast pointer-events-auto only where needed (Sonner supports this via the offset prop / className). Currently <li data-sonner-toast> intercepts clicks on the underlying Salva <button>.",
+    "Consider auto-saving after each onPlace placement (debounced ~500ms) so the user doesn't have to click Salva and run into the toast-overlap race.",
+    "P1 (3D drag of existing MEP) NOT exhaustively tested — the small purple cubes in the rendered 3D view are tiny (~5px on the back wall at default zoom) and a deterministic Playwright drag wasn't reliable. Code review confirms Picker3D onDown line 582 includes 'electrical','plumbing','hvac','gas' in draggable kinds and the onDrag handler in Editor.jsx commits new x/y. Manual smoke recommended."
+  ],
+  "critical_code_review_comments": [
+    "Editor.jsx line 959: data-testid='3d-placement-hint' banner uses pointer-events-none correctly so it does NOT intercept the canvas click. Good.",
+    "Editor.jsx line 965-984 onPlace handler: clean dispatch by tool, attaches phase=editMode to new point. The new point id uses Math.random().toString(36).slice(2,10) which is fine for client-side IDs but inconsistent with uid() used elsewhere — consider unifying via uid().",
+    "Editor.jsx line 244 save(): catches errors silently via `} catch { toast.error(...) }` but does NOT log the error. Add console.error(e) inside catch for debuggability.",
+    "Sonner <Toaster> default position is top-right which collides with the Salva button at the absolute right of the header. This is a UX/UI architecture issue that should be addressed globally.",
+    "Editor.jsx still 2732 LOC — exceeds 700 LOC threshold. Split into Toolbar, PropertiesPanel, MEP-placement-handler subfiles."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% — GET /api/projects/<id> returns electrical/plumbing/hvac/gas with all expected fields after persistence",
+    "frontend": "P0 banner+placement: 100%. P0 HVAC placement: 100%. P1 Save+reload persistence: PASS after toast dismissed (FAIL when toast blocks Save). P1 banner-hide on select: 100%. P1 drag existing MEP: code-reviewed only."
+  },
+  "test_credentials": "admin@admin.it / admin (role=admin, working). Cookie-based JWT.",
+  "seed_data_creation": "Added 1 electrical 'presa' point (id=qhic89iu, x=276, y=157, wall_side=1, height_cm=86, phase='fatto', type='presa') via 3D click and persisted to backend. Project now has electrical_count=4.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The 3D placement feature itself is fully functional (onPlace fires, toast shown, state updated, backend persists). The only blocker is the Sonner toast intercepting the Save button click. When automating, dismiss toasts via JS before clicking save: `await page.evaluate(\"document.querySelectorAll('[data-sonner-toast]').forEach(t=>t.remove())\")`. Save button data-testid is 'save-project-button'. Project ID: 51845afe-0ba4-4c58-837b-e08808c32a6a. Use viewport 1920x1080 and click 'view-both' button to enable 2D+3D split, then click on canvas-3d at relative (0.50, 0.36) to hit the back wall.",
+  "rca of the issue": "Bug: Save click silently no-ops right after MEP placement. RCA: <Toaster position='top-right'> (Sonner default) renders a fixed-position <section> that overlaps the absolute-right Salva <button> at x=1818-1904 / y=7-39 on 1920x1080. The active toast <li data-sonner-toast> within that section has pointer-events:auto and is rendered above the button, so Playwright (and real users) get their click delivered to the toast subtree rather than the button. The save() function therefore never runs — no PUT, no success/error toast. Mitigation: (1) move Toaster to position='bottom-right' or 'top-center'; (2) keep toast container's outer wrapper pointer-events:none and only re-enable on the dismiss-X (Sonner supports this pattern); (3) move Salva button slightly left or render it in a dedicated toolbar row below the toaster zone."
+}

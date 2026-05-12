@@ -21,8 +21,16 @@ export default function GestoreCantieri() {
 
   const convalida = async (assId, avId) => {
     try {
-      await api.post(`/subappaltatori/assegnazioni/${assId}/avanzamenti/${avId}/convalida`);
-      toast.success("Avanzamento convalidato. Pagamento sbloccato.");
+      const r = await api.post(`/subappaltatori/assegnazioni/${assId}/avanzamenti/${avId}/convalida`);
+      const importo = r?.data?.pagamento_importo || 0;
+      const movId = r?.data?.pagamento_movimento_id;
+      if (movId && importo > 0) {
+        toast.success(`SAL convalidato · Pagamento programmato di € ${importo.toLocaleString("it-IT", { minimumFractionDigits: 2 })} aggiunto alla Cassa Commessa`);
+      } else if (r?.data?.already_validated) {
+        toast.info("SAL già convalidato in precedenza.");
+      } else {
+        toast.success("Avanzamento convalidato. Pagamento sbloccato.");
+      }
       reload();
     } catch (e) { toast.error(e?.response?.data?.detail || "Errore"); }
   };
@@ -39,6 +47,10 @@ export default function GestoreCantieri() {
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Gestione Cantieri</h1>
         <p className="text-sm text-zinc-500 mt-1">Tutti i cantieri attivi e da iniziare. Convalida gli avanzamenti dei subappaltatori per sbloccare i pagamenti.</p>
+      </div>
+
+      <div className="bg-emerald-50 border border-emerald-200 rounded p-3 text-xs text-emerald-900 leading-relaxed" data-testid="sal-auto-pay-banner">
+        <strong>Auto-pagamento SAL attivo</strong> — ogni volta che convalidi un avanzamento, il sistema crea automaticamente un movimento <em>uscita programmata</em> nella <strong>Cassa Commessa</strong> con scadenza a 15 giorni, beneficiario subappaltatore, importo = <code>importo_pattuito × Δ% SAL</code>. Trovi i pagamenti nella tab <strong>Cassa & Pagamenti</strong> del Workflow Commessa.
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">

@@ -959,8 +959,13 @@ async def ai_floorplan_import(body: dict, user: Dict[str, Any] = Depends(get_cur
         raise HTTPException(500, f"Risposta AI non parsabile: {text[:200]}")
 
     rooms_in = data.get("rooms", [])
+    doors_in = data.get("doors", []) or []
+    windows_in = data.get("windows", []) or []
     out_rooms = []
     out_walls = []
+    # Raw doors/windows con coordinate (x,y) — snappiamo ai muri DOPO il rescale.
+    raw_doors = []
+    raw_windows = []
     for r in rooms_in:
         pts = r.get("points") or []
         if len(pts) < 3:
@@ -986,6 +991,32 @@ async def ai_floorplan_import(body: dict, user: Dict[str, Any] = Depends(get_cur
                 "x2": float(b["x"]), "y2": float(b["y"]),
                 "thickness": 10, "kind": "mattone",
             })
+    # Sanitize doors/windows con (x,y) — sopravvivono al rescale come coordinate raw
+    for d in doors_in:
+        try:
+            raw_doors.append({
+                "x": float(d.get("x", 0)),
+                "y": float(d.get("y", 0)),
+                "width": float(d.get("width", 80)),
+                "height": float(d.get("height", 210)),
+                "hinge": str(d.get("hinge", "left")).lower(),
+                "swing": str(d.get("swing", "in")).lower(),
+                "kind": str(d.get("kind", "interior")).lower(),
+            })
+        except Exception:
+            continue
+    for w in windows_in:
+        try:
+            raw_windows.append({
+                "x": float(w.get("x", 0)),
+                "y": float(w.get("y", 0)),
+                "width": float(w.get("width", 120)),
+                "height": float(w.get("height", 140)),
+                "sillHeight": float(w.get("sillHeight", 90)),
+                "kind": str(w.get("kind", "finestra")).lower(),
+            })
+        except Exception:
+            continue
 
     # ---- POST-PROCESSING: rescale finale per matchare le dimensioni note ----
     def _polygon_area_cm2(points):
@@ -1008,6 +1039,13 @@ async def ai_floorplan_import(body: dict, user: Dict[str, Any] = Depends(get_cur
         for w in out_walls:
             w["x1"] = w["x1"] * scale_factor; w["y1"] = w["y1"] * scale_factor
             w["x2"] = w["x2"] * scale_factor; w["y2"] = w["y2"] * scale_factor
+        # Scala anche le coordinate raw di porte/finestre (la width rimane in cm coerente con il rescale)
+        for d in raw_doors:
+            d["x"] = d["x"] * scale_factor; d["y"] = d["y"] * scale_factor
+            d["width"] = d["width"] * scale_factor
+        for w in raw_windows:
+            w["x"] = w["x"] * scale_factor; w["y"] = w["y"] * scale_factor
+            w["width"] = w["width"] * scale_factor
 
     applied_scale = None
     if out_rooms:
@@ -1043,16 +1081,87 @@ async def ai_floorplan_import(body: dict, user: Dict[str, Any] = Depends(get_cur
             except Exception:
                 logger.exception("rescale by bbox failed")
 
+    # ---- SNAP porte/finestre ai muri più vicini ----
+    def _snap_to_wall(px, py):
+        """Trova il muro più vicino al punto (px, py) e ritorna (wall_id, t in 0..1, dist)."""
+        best = None
+        for w in out_walls:
+            x1, y1, x2, y2 = w["x1"], w["y1"], w["x2"], w["y2"]
+            dx, dy = x2 - x1, y2 - y1
+            L2 = dx * dx + dy * dy
+            if L2 < 1:
+                continue
+            t = ((px - x1) * dx + (py - y1) * dy) / L2
+            t = max(0.0, min(1.0, t))
+            cx, cy = x1 + t * dx, y1 + t * dy
+            d2 = (cx - px) ** 2 + (cy - py) ** 2
+            if best is None or d2 < best[2]:
+                best = (w["id"], t, d2)
+        return best  # (wall_id, t, dist²) or None
+
+    out_doors = []
+    out_windows = []
+    # Soglia massima distanza punto→muro per accettare lo snap: 200cm
+    MAX_SNAP_CM = 200
+    for d in raw_doors:
+        snap = _snap_to_wall(d["x"], d["y"])
+        if not snap:
+            continue
+        wall_id, t, d2 = snap
+        if d2 > MAX_SNAP_CM ** 2:
+            # troppo lontano da un muro → scartato
+            continue
+        out_doors.append({
+            "id": uuid.uuid4().hex[:8],
+            "wallId": wall_id,
+            "t": round(float(t), 4),
+            "width": d["width"],
+            "height": d["height"],
+            "hinge": "right" if d["hinge"] not in ("left", "right") and d["hinge"] != "left" else d["hinge"],
+            "swing": "out" if d["swing"] == "out" else "in",
+            "kind": "entrance" if d["kind"] in ("entrance", "ingresso", "front") else "interior",
+        })
+    for w in raw_windows:
+        snap = _snap_to_wall(w["x"], w["y"])
+        if not snap:
+            continue
+        wall_id, t, d2 = snap
+        if d2 > MAX_SNAP_CM ** 2:
+            continue
+        kind = w["kind"]
+        if kind in ("vetrina", "showroom", "storefront"):
+            kind_out = "vetrina"
+        elif kind in ("portafinestra", "porta-finestra", "frenchdoor", "french"):
+            kind_out = "portafinestra"
+        else:
+            kind_out = "finestra"
+        out_windows.append({
+            "id": uuid.uuid4().hex[:8],
+            "wallId": wall_id,
+            "t": round(float(t), 4),
+            "width": w["width"],
+            "height": w["height"],
+            "sillHeight": 0 if kind_out in ("vetrina", "portafinestra") else w["sillHeight"],
+            "ante": 2,
+            "kind": kind_out,
+        })
+
+    logger.info(f"[floorplan] parsed {len(out_rooms)} rooms, {len(out_doors)}/{len(raw_doors)} doors snapped, {len(out_windows)}/{len(raw_windows)} windows snapped")
+
     return {
         "project_data": {
             "rooms": out_rooms,
             "walls": out_walls,
-            "doors": [], "windows": [], "items": [],
+            "doors": out_doors,
+            "windows": out_windows,
+            "items": [],
             "electrical": [], "plumbing": [], "gas": [], "hvac": [],
             "demolitions": [], "tiling": [],
             "roomHeight": 270, "currency": "EUR",
         },
         "rooms_count": len(out_rooms),
+        "doors_count": len(out_doors),
+        "windows_count": len(out_windows),
         "scale_applied": applied_scale,
         "extra_photos_used": len(cleaned_extras),
     }

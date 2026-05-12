@@ -206,12 +206,80 @@ def build_round10_router(db, get_current_user, jwt_create_access):
 
     @r.post("/subappaltatori/assegnazioni/{ass_id}/avanzamenti/{av_id}/convalida")
     async def convalida_avanzamento(ass_id: str, av_id: str, user=Depends(get_current_user)):
-        """Solo gestore/admin/venditore (controllore cantiere) può convalidare → sblocca pagamento."""
+        """Solo gestore/admin/venditore (controllore cantiere) può convalidare → sblocca pagamento.
+        Quando si convalida un avanzamento, viene creato AUTOMATICAMENTE un movimento
+        di Cassa Commessa (uscita, stato_pagamento=programmato) per la quota corrispondente.
+        L'importo viene calcolato come: importo_pattuito × (Δ percentuale convalidata).
+        Vengono evitati doppi pagamenti tracciando avanzamenti già pagati.
+        """
         if user.get("role") not in ("admin", "gestore", "venditore"):
             raise HTTPException(403, "Non autorizzato a convalidare")
         ass = await db.subapp_assegnazioni.find_one({"id": ass_id}, {"_id": 0})
         if not ass:
             raise HTTPException(404, "Assegnazione non trovata")
+
+        # Trova l'avanzamento corrente e blocca se è già stato convalidato (idempotenza)
+        target_av = None
+        for av in (ass.get("avanzamenti") or []):
+            if av.get("id") == av_id:
+                target_av = av
+                break
+        if not target_av:
+            raise HTTPException(404, "Avanzamento non trovato nell'assegnazione")
+        if target_av.get("convalidato"):
+            return {"ok": True, "already_validated": True}
+
+        # Calcola la quota di pagamento da generare in base alla % attuale meno quella già convalidata in passato
+        importo_pattuito = float(ass.get("importo_pattuito") or 0)
+        perc_corrente = float(target_av.get("percentuale") or 0)
+        # Somma % già pagate (degli avanzamenti già convalidati con pagamento generato)
+        perc_gia_pagata = 0.0
+        for av in (ass.get("avanzamenti") or []):
+            if av.get("id") == av_id:
+                continue
+            if av.get("convalidato") and av.get("pagamento_movimento_id"):
+                perc_gia_pagata += float(av.get("percentuale") or 0)
+        delta_perc = max(0.0, perc_corrente - perc_gia_pagata)
+        importo_quota = round(importo_pattuito * delta_perc / 100.0, 2)
+
+        # Recupera nome subappaltatore
+        sub_nome = None
+        try:
+            sub_doc = await db.subappaltatori.find_one({"id": ass.get("subappaltatore_id")}, {"_id": 0})
+            if sub_doc:
+                sub_nome = sub_doc.get("nome")
+        except Exception:
+            sub_nome = None
+
+        # Crea il movimento di cassa PROGRAMMATO se importo>0 e c'è commessa_id
+        pagamento_movimento_id = None
+        if importo_quota > 0 and ass.get("commessa_id"):
+            mov_id = f"mov-{uuid.uuid4().hex[:10]}"
+            now_dt = datetime.now(timezone.utc)
+            scadenza = (now_dt + timedelta(days=15)).date().isoformat()
+            mov = {
+                "id": mov_id,
+                "commessa_id": ass["commessa_id"],
+                "tipo": "uscita",
+                "importo": importo_quota,
+                "data": now_dt.date().isoformat(),
+                "data_scadenza": scadenza,
+                "stato_pagamento": "programmato",
+                "descrizione": f"SAL convalidato {perc_corrente:.0f}% — {target_av.get('descrizione', 'avanzamento')} — {sub_nome or ass.get('subappaltatore_id')}",
+                "beneficiario_tipo": "subappaltatore",
+                "beneficiario_id": ass.get("subappaltatore_id"),
+                "beneficiario_nome": sub_nome or "Subappaltatore",
+                "categoria": "avanzamento",
+                "artigiano_id": ass.get("subappaltatore_id"),
+                "artigiano_nome": sub_nome,
+                "created_at": now_iso(),
+                "created_by": user["id"],
+                "auto_generated": True,
+                "source": {"type": "sal_convalida", "ass_id": ass_id, "avanzamento_id": av_id},
+            }
+            await db.commesse_cassa.insert_one(mov)
+            pagamento_movimento_id = mov_id
+
         await db.subapp_assegnazioni.update_one(
             {"id": ass_id, "avanzamenti.id": av_id},
             {"$set": {
@@ -219,9 +287,18 @@ def build_round10_router(db, get_current_user, jwt_create_access):
                 "avanzamenti.$.convalidato_da": user["id"],
                 "avanzamenti.$.convalidato_il": now_iso(),
                 "avanzamenti.$.pagamento_sbloccato": True,
+                "avanzamenti.$.pagamento_movimento_id": pagamento_movimento_id,
+                "avanzamenti.$.pagamento_importo": importo_quota,
             }},
         )
-        return {"ok": True, "convalidato_da": user["id"], "convalidato_il": now_iso()}
+        return {
+            "ok": True,
+            "convalidato_da": user["id"],
+            "convalidato_il": now_iso(),
+            "pagamento_movimento_id": pagamento_movimento_id,
+            "pagamento_importo": importo_quota,
+            "delta_percentuale": delta_perc,
+        }
 
     # ============================================================
     # DOCUMENTI SUBAPPALTATORE (DURC, visura, certificazioni, misure, ecc.)

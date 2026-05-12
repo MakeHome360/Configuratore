@@ -1,5 +1,43 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 48 — Feb 2026 — Fix Import Planimetria porte/finestre + Auto-pagamento SAL)
+### 🔴 Fix CRITICO Import Planimetria: porte/finestre ora arrivano davvero
+**Bug root**: il prompt Gemini chiedeva `doors`/`windows` ma il backend in `server.py:ai_floorplan_import` parsava SOLO `rooms` e a riga 1050 forzava `"doors": [], "windows": []` hardcoded → l'output dell'AI veniva BUTTATO. Per questo l'utente vedeva la pianta importata "più piccola e senza porte/finestre".
+
+**Fix**:
+- Parse di `doors[]`/`windows[]` dalla risposta AI con sanitization (x, y, width, hinge, swing, kind, sillHeight)
+- **Snap to wall** algoritmico: per ogni porta/finestra trova il muro più vicino tra quelli generati dalle stanze, calcola `wallId` + `t∈[0,1]` (parametro lungo il muro). Soglia max 200cm dal muro → altrimenti scartata.
+- **Rescale coerente**: `_apply_scale` ora scala ANCHE le coordinate raw di porte/finestre (x, y, width), non solo rooms/walls
+- Supporto `kind='vetrina'` (vetrina commerciale full-height) e `kind='portafinestra'` con `sillHeight=0` automatico
+- Default `ante=2` per finestre
+- Response include `doors_count` e `windows_count` (testabili dal frontend)
+- Logging: `[floorplan] parsed N rooms, X/Y doors snapped, X/Y windows snapped`
+
+### 🟢 P1 Convalida SAL → Auto-pagamento Cassa Commessa
+**Prima**: cliccare "Convalida & sblocca pagamento" sul Gestore Cantieri segnava solo `convalidato=true` ma NON creava alcun movimento di cassa → il pagamento al sub restava manuale.
+
+**Adesso** (`routes_round10.py:convalida_avanzamento`):
+- Calcolo automatico importo: `importo_pattuito × (perc_corrente − Σ perc_già_pagate)` → solo il DELTA non già pagato
+- Crea movimento in `commesse_cassa`:
+  - `tipo='uscita'`, `stato_pagamento='programmato'`, scadenza +15 giorni
+  - `beneficiario_tipo='subappaltatore'`, `beneficiario_nome` recuperato da subappaltatori.nome
+  - `categoria='avanzamento'`, `auto_generated=true`, `source={type:'sal_convalida', ass_id, avanzamento_id}`
+- **Idempotenza**: se l'avanzamento è già convalidato → ritorna `already_validated:true` senza duplicare
+- **Tracking**: l'avanzamento salva `pagamento_movimento_id` per evitare doppi pagamenti su SAL incrementali
+- **Frontend** (`GestoreCantieri.jsx`):
+  - Banner emerald in alto "Auto-pagamento SAL attivo" spiega il flusso
+  - Toast post-convalida mostra importo programmato: `"SAL convalidato · Pagamento programmato di € 5.000,00 aggiunto alla Cassa Commessa"`
+
+### Test E2E (4/4 passati)
+- `test_floorplan_parses_doors_windows` ✅
+- `test_floorplan_rescale_applies_to_doors` ✅ (target 48m² → factor 2.0)
+- `test_sal_convalida_genera_cassa_movimento` ✅ (50% di 10k = 5k programmato + idempotenza)
+- `test_sal_convalida_solo_delta_perc` ✅ (60% dopo 30% già pagato → genera solo Δ3.000€)
+
+### Verifiche su P1 pre-esistenti
+- **Drag interattivo demolizione parziale**: già funzionante da Round 25 (`demo-partial-drag` + maniglie `demo-handle` in Canvas2D.jsx:550-577)
+- **Quote sx/dx/h Prospetti**: già funzionante da Round 33 (tabella ordinata `N° | SIGLA | SX | DX | H` in Prospetti.jsx:218-267)
+
 ## Recent Updates (Round 47 — Mag 2026 — Blog SEO con 50 articoli pre-scritti)
 ### 📰 Blog completo per acquisizione organica
 **Obiettivo**: aumentare traffico organico tramite contenuti SEO-ottimizzati sulle keyword "ristrutturazione", "bagno", "cucina", "preventivo", "bonus", "costi", ecc.

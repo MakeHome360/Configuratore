@@ -38,7 +38,12 @@ export default function CommessaWorkflow() {
       <PageHeader
         title={`Cantiere ${c.numero || cid}`}
         subtitle={<>{c.cliente?.nome} {c.cliente?.cognome} · {c.mq || 0} mq · stato <b className="text-zinc-700">{c.stato}</b></>}
-        actions={<Button variant="outline" onClick={() => nav("/commesse")} data-testid="btn-back-commesse">← Tutte le commesse</Button>}
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => nav(`/dettagliocommessa/${cid}`)} data-testid="btn-classic-view" className="border-blue-500 text-blue-700">← Vista classica (Calendario / Voci-Acquisti)</Button>
+            <Button variant="outline" onClick={() => nav("/commesse")} data-testid="btn-back-commesse">Tutte le commesse</Button>
+          </div>
+        }
       />
       <Page>
         {/* KPI row marginalità */}

@@ -52,9 +52,14 @@ export default function AdminPacchetti() {
                 return (it.qty_ratio || 0) * m;
               };
               const ricavo = p.price_per_m2 * mq;
-              const costi = (p.items || []).reduce((s, it) => s + calcQty(it, mq, ml) * (it.prezzo_rivendita || 0), 0);
+              // COSTI = sommatoria (qty × prezzo_acquisto) = costo netto al fornitore.
+              // NON usare prezzo_rivendita: quello è il prezzo di vendita al cliente, non il costo.
+              const costi = (p.items || []).reduce((s, it) => s + calcQty(it, mq, ml) * (it.prezzo_acquisto || 0), 0);
+              // RIVENDITA TOTALE = sommatoria (qty × prezzo_rivendita) = se si vendessero le voci a listino
+              const rivenditaTotale = (p.items || []).reduce((s, it) => s + calcQty(it, mq, ml) * (it.prezzo_rivendita || 0), 0);
               const margine = ricavo - costi;
               const marginePct = ricavo ? (margine / ricavo) * 100 : 0;
+              const margineListinoPct = rivenditaTotale ? ((rivenditaTotale - costi) / rivenditaTotale) * 100 : 0;
               const isOpen = expanded === p.id;
               return (
                 <div key={p.id} className="bg-white border border-zinc-200 rounded-lg p-5" data-testid={`adm-pkg-${p.id}`}>
@@ -69,10 +74,12 @@ export default function AdminPacchetti() {
                     </div>
                   </div>
                   <div className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Marginalità stimata @ {mq} mq</div>
-                  <div className="grid grid-cols-3 gap-2 text-sm pb-3 border-b border-zinc-100">
-                    <div><div className="text-[10px] text-zinc-500">Ricavo</div><div className="font-semibold">{fmtEur(ricavo)}</div></div>
-                    <div><div className="text-[10px] text-zinc-500">Costi ({p.items.length} voci)</div><div className="font-semibold">{fmtEur(costi)}</div></div>
-                    <div><div className="text-[10px] text-zinc-500">Margine</div><div className={`font-semibold ${margine >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{marginePct.toFixed(1)}%</div></div>
+                  <div className="grid grid-cols-2 gap-2 text-sm pb-3 border-b border-zinc-100">
+                    <div><div className="text-[10px] text-zinc-500">Ricavo pacchetto</div><div className="font-semibold">{fmtEur(ricavo)}</div></div>
+                    <div><div className="text-[10px] text-zinc-500">Costo netto ({p.items.length} voci)</div><div className="font-semibold">{fmtEur(costi)}</div></div>
+                    <div><div className="text-[10px] text-zinc-500">Rivendita totale (listino)</div><div className="font-semibold text-zinc-600">{fmtEur(rivenditaTotale)}</div></div>
+                    <div><div className="text-[10px] text-zinc-500">Margine con pacchetto</div><div className={`font-semibold ${margine >= 0 ? "text-emerald-600" : "text-rose-600"}`} data-testid={`pkg-margin-${p.id}`}>{marginePct.toFixed(2)}%</div></div>
+                    <div className="col-span-2"><div className="text-[10px] text-zinc-500">Margine con listino (se vendute a prezzo pieno)</div><div className={`font-semibold ${margineListinoPct >= 0 ? "text-emerald-700" : "text-rose-600"}`}>{margineListinoPct.toFixed(2)}%</div></div>
                   </div>
                   <div className="flex items-center justify-between mt-3">
                     <button onClick={() => setExpanded(isOpen ? null : p.id)} className="text-sm flex items-center gap-1 text-zinc-600 hover:text-zinc-900">
@@ -89,8 +96,8 @@ export default function AdminPacchetti() {
                         const ml2 = m * 0.4;
                         const calcQty2 = (it) => it.qty_mode === "fissa" ? (it.qty_value || 0) : (it.qty_mode === "ml" ? (it.qty_ratio || 0) * ml2 : (it.qty_ratio || 0) * m);
                         const r = p.price_per_m2 * m;
-                        const cc = (p.items || []).reduce((s, it) => s + calcQty2(it) * (it.prezzo_rivendita || 0), 0);
-                        return <div key={m} className="p-2 bg-zinc-50 rounded"><div className="font-mono">{m} mq</div><div>{fmtEur(r)}</div><div className={((r-cc)/r*100) >= 0 ? "text-emerald-600" : "text-rose-600"}>{((r-cc)/r*100).toFixed(1)}%</div></div>;
+                        const cc = (p.items || []).reduce((s, it) => s + calcQty2(it) * (it.prezzo_acquisto || 0), 0);
+                        return <div key={m} className="p-2 bg-zinc-50 rounded"><div className="font-mono">{m} mq</div><div className="text-[10px] text-zinc-500">Ricavo</div><div>{fmtEur(r)}</div><div className="text-[10px] text-zinc-500 mt-1">Costo netto</div><div>{fmtEur(cc)}</div><div className={`mt-1 font-semibold ${((r-cc)/r*100) >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{((r-cc)/r*100).toFixed(2)}%</div></div>;
                       })}
                     </div>
                   )}
@@ -240,7 +247,7 @@ function PackageDialog({ pkg, voci, onClose, onSaved, isNew }) {
                       Prezzo {v.prezzo_rivendita?.toFixed(2)}€/{v.unit} (acq {v.prezzo_acquisto?.toFixed(2)}€ × {v.ricarico}x) ← <strong>dal Backoffice</strong>
                     </div>
                     <div className="text-[10px] text-zinc-500 italic">
-                      {it.qty_mode === "fissa" ? `${it.qty_value || 0} ${v.unit} fisse` : it.qty_mode === "ml" ? `${it.qty_ratio || 0} × ml abitazione` : `${it.qty_ratio || 0} × MQ abitazione`} = costo @70mq: <strong>{((it.qty_mode === "fissa" ? (it.qty_value || 0) : it.qty_mode === "ml" ? (it.qty_ratio || 0) * 28 : (it.qty_ratio || 0) * 70) * (v.prezzo_rivendita || 0)).toFixed(0)}€</strong>
+                      {it.qty_mode === "fissa" ? `${it.qty_value || 0} ${v.unit} fisse` : it.qty_mode === "ml" ? `${it.qty_ratio || 0} × ml abitazione` : `${it.qty_ratio || 0} × MQ abitazione`} → @70mq: costo netto <strong>{((it.qty_mode === "fissa" ? (it.qty_value || 0) : it.qty_mode === "ml" ? (it.qty_ratio || 0) * 28 : (it.qty_ratio || 0) * 70) * (v.prezzo_acquisto || 0)).toFixed(0)}€</strong> · rivendita <strong>{((it.qty_mode === "fissa" ? (it.qty_value || 0) : it.qty_mode === "ml" ? (it.qty_ratio || 0) * 28 : (it.qty_ratio || 0) * 70) * (v.prezzo_rivendita || 0)).toFixed(0)}€</strong>
                     </div>
                   </div>
                 );

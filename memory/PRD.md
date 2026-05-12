@@ -1,5 +1,22 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 40 — Mag 2026 — Fix marginalità Pacchetti & Voci)
+- 🐛 **BUG CRITICO P0 risolto**: la card "Pacchetti & Voci" mostrava marginalità sbagliate (BASIC 4.2%, PREMIUM -17.1%, ELITE 34.6%). Il calcolo costi usava `prezzo_rivendita` (= prezzo di vendita al cliente) invece di `prezzo_acquisto` (= costo netto al fornitore). Identico errore del foglio Numbers di confronto del cliente.
+- ✅ **Fix in `/app/frontend/src/pages/admin/AdminPacchetti.jsx`** (linee 54-61, 87-98, 250):
+  - `costi = Σ (qty × prezzo_acquisto)` per voce inclusa (costo netto al fornitore)
+  - `rivenditaTotale = Σ (qty × prezzo_rivendita)` (somma listino se vendute singolarmente)
+  - `Margine con pacchetto = (ricavo - costi) / ricavo` ← KPI principale
+  - `Margine con listino = (rivendita_tot - costi) / rivendita_tot` ← KPI confronto
+- ✅ **UI migliorata**: card pacchetto ora mostra 4 KPI invece di 3 (Ricavo · Costo netto · Rivendita totale · Margine pacchetto + Margine listino). Layout 2×2 + riga full-width per margine listino.
+- ✅ **Preview MQ diversi** (50/70/90/120) corretta con stesso fix + label "Ricavo / Costo netto / Margine".
+- ✅ **Verifica numeri post-fix con DB attuale** (70mq):
+  - BASIC:   ricavo €26.600 · costo netto €5.566 · margine **79.1%** (era 4.2%)
+  - SMART:   ricavo €34.300 · costo netto €15.526 · margine **54.7%** (era 5.5%)
+  - PREMIUM: ricavo €55.300 · costo netto €34.327 · margine **37.9%** (era -17.1%)
+  - ELITE:   ricavo €82.600 · costo netto €28.542 · margine **65.4%** (era 34.6%)
+- ⚠️ **Backend già corretto**: `routes_commessa_workflow.py:516,528` calcola correttamente `costo_previsionale/confermato` su `prezzo_acquisto`. Bug era esclusivamente lato frontend admin card.
+- 🟡 **Discrepanza residua col foglio Numbers del cliente**: il foglio "PREVENTIVATORE SOFT" indica per BASIC@70mq costi netti €13.743 / margine 48.33%. Il nostro DB BASIC ha qty incluse più magre (€5.566). Serve allineare le `qty_ratio` delle voci pacchetto al foglio Numbers (lavoro separato, da confermare voce per voce).
+
 ## Recent Updates (Round 39 — Feb 2026 — Unificazione definitiva + auto-computo + voci preventivo)
 - ✅ **UNA SOLA pagina commessa**: `DettaglioCommessa` ora redirige sempre a `/commesse/{id}/workflow`. Eliminata ogni duplicazione di tab Documenti/Computo.
 - ✅ **11 tab nel Workflow** (era 9): Contratto · Checklist · Documenti · Materiali · Computo · Artigiani/Sub · **Lavorazioni/Calendario (NEW)** · Fasi cantiere (Gantt) · **Voci e Acquisti (NEW)** · Cassa & Pagamenti · Resoconto.

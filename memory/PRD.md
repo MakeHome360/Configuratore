@@ -1,5 +1,13 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 39 — Feb 2026 — Unificazione definitiva + auto-computo + voci preventivo)
+- ✅ **UNA SOLA pagina commessa**: `DettaglioCommessa` ora redirige sempre a `/commesse/{id}/workflow`. Eliminata ogni duplicazione di tab Documenti/Computo.
+- ✅ **11 tab nel Workflow** (era 9): Contratto · Checklist · Documenti · Materiali · Computo · Artigiani/Sub · **Lavorazioni/Calendario (NEW)** · Fasi cantiere (Gantt) · **Voci e Acquisti (NEW)** · Cassa & Pagamenti · Resoconto.
+- ✅ **Lavorazioni / Calendario**: nuova tab con vista giornaliera a 4 mesi (120 giorni), barre colorate per ogni lavorazione, drag&edit data inizio/fine, sub-appaltatore assegnato, 8 colori a scelta. Modal di edit con date, colore, note.
+- ✅ **Voci e Acquisti**: nuova tab con riconciliazione preventivato vs effettivo per ogni sub/fornitore. Colonne: Voce, Sub-appaltatore, Preventivato, Effettivo, **Δ** (rosso se sforato, verde se sotto budget), Pagato. Tfoot con totali.
+- ✅ **Auto-generazione computo metrico** alla creazione commessa da preventivo accettato: legge `preventivo.items[]`, costruisce `commessa.computo_metrico` automaticamente (niente più click manuale su "Rigenera"). Codice in `routes_biz.py:create_commessa`.
+- ✅ **Riepilogo preventivo mostra le voci**: nello Step 6 (Riepilogo) del `PreventivoPacchetto.jsx` ora c'è una tabella dettagliata con tutte le `prev.items[]` (Voce, Qty, U.M., Prezzo, Totale). Righe `from_configuratore` evidenziate in ambra.
+
 ## Recent Updates (Round 38 — Feb 2026 — Notifiche Live cross-cantieri)
 - ✅ **`GET /api/dashboard-alerts`**: endpoint aggregato che restituisce:
   - `scadenze_scadute`: pagamenti programmati con data passata (border-left rosso).

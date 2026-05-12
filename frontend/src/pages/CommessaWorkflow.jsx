@@ -39,10 +39,7 @@ export default function CommessaWorkflow() {
         title={`Cantiere ${c.numero || cid}`}
         subtitle={<>{c.cliente?.nome} {c.cliente?.cognome} · {c.mq || 0} mq · stato <b className="text-zinc-700">{c.stato}</b></>}
         actions={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => nav(`/dettagliocommessa/${cid}`)} data-testid="btn-classic-view" className="border-blue-500 text-blue-700">← Vista classica (Calendario / Voci-Acquisti)</Button>
-            <Button variant="outline" onClick={() => nav("/commesse")} data-testid="btn-back-commesse">Tutte le commesse</Button>
-          </div>
+          <Button variant="outline" onClick={() => nav("/commesse")} data-testid="btn-back-commesse">← Tutte le commesse</Button>
         }
       />
       <Page>
@@ -64,9 +61,11 @@ export default function CommessaWorkflow() {
             <TabsTrigger value="materiali" data-testid="tab-materiali"><ListChecks className="h-4 w-4 mr-1.5" /> 4. Materiali</TabsTrigger>
             <TabsTrigger value="computo" data-testid="tab-computo"><Calculator className="h-4 w-4 mr-1.5" /> 5. Computo</TabsTrigger>
             <TabsTrigger value="artigiani" data-testid="tab-artigiani"><Hammer className="h-4 w-4 mr-1.5" /> 6. Artigiani / Sub</TabsTrigger>
-            <TabsTrigger value="fasi" data-testid="tab-fasi"><CalendarRange className="h-4 w-4 mr-1.5" /> 7. Fasi cantiere</TabsTrigger>
-            <TabsTrigger value="cassa" data-testid="tab-cassa"><Wallet className="h-4 w-4 mr-1.5" /> 8. Cassa & Pagamenti</TabsTrigger>
-            <TabsTrigger value="resoconto" data-testid="tab-resoconto"><FileBarChart2 className="h-4 w-4 mr-1.5" /> 9. Resoconto</TabsTrigger>
+            <TabsTrigger value="lavorazioni" data-testid="tab-lavorazioni"><CalendarRange className="h-4 w-4 mr-1.5" /> 7. Lavorazioni / Calendario</TabsTrigger>
+            <TabsTrigger value="fasi" data-testid="tab-fasi"><CalendarRange className="h-4 w-4 mr-1.5" /> 8. Fasi cantiere (Gantt)</TabsTrigger>
+            <TabsTrigger value="voci-acquisti" data-testid="tab-voci-acquisti"><Wallet className="h-4 w-4 mr-1.5" /> 9. Voci e Acquisti</TabsTrigger>
+            <TabsTrigger value="cassa" data-testid="tab-cassa"><Wallet className="h-4 w-4 mr-1.5" /> 10. Cassa & Pagamenti</TabsTrigger>
+            <TabsTrigger value="resoconto" data-testid="tab-resoconto"><FileBarChart2 className="h-4 w-4 mr-1.5" /> 11. Resoconto</TabsTrigger>
           </TabsList>
 
           {/* 1. CONTRATTO */}
@@ -81,11 +80,15 @@ export default function CommessaWorkflow() {
           <TabsContent value="computo" className="mt-4"><ComputoTab wf={wf} cid={cid} reload={reload} /></TabsContent>
           {/* 6. ARTIGIANI */}
           <TabsContent value="artigiani" className="mt-4"><Artigiani wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 7. FASI */}
+          {/* 7. LAVORAZIONI / CALENDARIO TASK */}
+          <TabsContent value="lavorazioni" className="mt-4"><LavorazioniTab wf={wf} cid={cid} reload={reload} /></TabsContent>
+          {/* 8. FASI Gantt */}
           <TabsContent value="fasi" className="mt-4"><Fasi wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 8. CASSA */}
+          {/* 9. VOCI E ACQUISTI */}
+          <TabsContent value="voci-acquisti" className="mt-4"><VociAcquistiTab wf={wf} cid={cid} reload={reload} /></TabsContent>
+          {/* 10. CASSA */}
           <TabsContent value="cassa" className="mt-4"><Cassa wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 9. RESOCONTO */}
+          {/* 11. RESOCONTO */}
           <TabsContent value="resoconto" className="mt-4"><Resoconto cid={cid} marg={marg} wf={wf} /></TabsContent>
         </Tabs>
       </Page>
@@ -1000,6 +1003,217 @@ function Cassa({ wf, cid, reload }) {
 }
 
 // ---- 8. RESOCONTO ----
+
+// ---- 9. VOCI E ACQUISTI ----
+const FASE_COLORS = ["#0F766E", "#2563EB", "#9333EA", "#F59E0B", "#DC2626", "#0EA5E9", "#10B981", "#F97316"];
+
+function VociAcquistiTab({ wf, cid, reload }) {
+  const c = wf.commessa || {};
+  const [items, setItems] = useState(c.voci_acquisti || []);
+  const tot = useMemo(() => items.reduce((s, v) => ({
+    prev: s.prev + (parseFloat(v.preventivato) || 0),
+    eff: s.eff + (parseFloat(v.effettivo) || 0),
+    pag: s.pag + ((v.pagato && (parseFloat(v.effettivo) || 0)) || 0),
+  }), { prev: 0, eff: 0, pag: 0 }), [items]);
+
+  const save = async () => {
+    try {
+      await api.put(`/commesse/${cid}`, { ...c, voci_acquisti: items });
+      toast.success("Voci e acquisti salvati");
+      reload();
+    } catch (e) { toast.error("Errore: " + (e?.response?.data?.detail || e.message)); }
+  };
+
+  const add = () => setItems([...items, { voce: "", subappaltatore: "", preventivato: 0, effettivo: 0, pagato: false, note: "" }]);
+  const upd = (i, k, v) => setItems(items.map((x, j) => j === i ? { ...x, [k]: v } : x));
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-white border border-zinc-200 rounded">
+        <div className="flex items-center justify-between p-4 border-b border-zinc-200">
+          <div>
+            <h3 className="font-semibold">Voci e Acquisti — riconciliazione preventivato vs effettivo</h3>
+            <p className="text-xs text-zinc-500">Confronto tra quanto previsto in preventivo e quanto effettivamente speso per ogni subappaltatore/fornitore.</p>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={add} data-testid="va-add"><Plus className="h-4 w-4 mr-1" /> Voce</Button>
+            <Button size="sm" onClick={save} style={{ background: "var(--brand)", color: "white" }} data-testid="va-save">Salva</Button>
+          </div>
+        </div>
+        <table className="w-full text-sm">
+          <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
+            <th className="px-2 py-2 text-left">Voce</th>
+            <th className="px-2 py-2 text-left">Sub-appaltatore / Fornitore</th>
+            <th className="px-2 py-2 text-right w-32">Preventivato</th>
+            <th className="px-2 py-2 text-right w-32">Effettivo</th>
+            <th className="px-2 py-2 text-right w-28">Δ</th>
+            <th className="px-2 py-2 text-center w-20">Pagato</th>
+            <th className="w-10"></th>
+          </tr></thead>
+          <tbody className="divide-y divide-zinc-100">
+            {items.map((v, i) => {
+              const delta = (parseFloat(v.effettivo) || 0) - (parseFloat(v.preventivato) || 0);
+              return (
+                <tr key={i}>
+                  <td className="px-2 py-1.5"><Input value={v.voce} onChange={(e) => upd(i, "voce", e.target.value)} placeholder="Es: Impianto idraulico" className="h-8 text-xs" data-testid={`va-voce-${i}`} /></td>
+                  <td className="px-2 py-1.5"><Input value={v.subappaltatore} onChange={(e) => upd(i, "subappaltatore", e.target.value)} placeholder="Nome sub/fornitore" className="h-8 text-xs" /></td>
+                  <td className="px-2 py-1.5"><Input type="number" value={v.preventivato} onChange={(e) => upd(i, "preventivato", parseFloat(e.target.value) || 0)} className="h-8 text-xs text-right mono" /></td>
+                  <td className="px-2 py-1.5"><Input type="number" value={v.effettivo} onChange={(e) => upd(i, "effettivo", parseFloat(e.target.value) || 0)} className="h-8 text-xs text-right mono" /></td>
+                  <td className={`px-2 py-1.5 text-right mono font-bold ${delta > 0 ? "text-rose-600" : delta < 0 ? "text-emerald-600" : "text-zinc-500"}`}>{delta > 0 ? "+" : ""}{fmtEur(delta)}</td>
+                  <td className="px-2 py-1.5 text-center"><input type="checkbox" checked={!!v.pagato} onChange={(e) => upd(i, "pagato", e.target.checked)} className="h-4 w-4" data-testid={`va-pagato-${i}`} /></td>
+                  <td className="px-2 py-1.5"><button onClick={() => setItems(items.filter((_, j) => j !== i))} className="text-rose-600 p-1"><Trash2 className="h-4 w-4" /></button></td>
+                </tr>
+              );
+            })}
+            {!items.length && <tr><td colSpan={7} className="px-3 py-12 text-center text-zinc-500">Nessuna voce. Clicca "Voce" per aggiungere la prima.</td></tr>}
+          </tbody>
+          {items.length > 0 && (
+            <tfoot className="bg-zinc-50 font-bold">
+              <tr>
+                <td colSpan={2} className="px-2 py-2 text-right uppercase text-xs">Totali</td>
+                <td className="px-2 py-2 text-right mono">{fmtEur(tot.prev)}</td>
+                <td className="px-2 py-2 text-right mono">{fmtEur(tot.eff)}</td>
+                <td className={`px-2 py-2 text-right mono ${tot.eff - tot.prev > 0 ? "text-rose-600" : "text-emerald-600"}`}>{tot.eff - tot.prev > 0 ? "+" : ""}{fmtEur(tot.eff - tot.prev)}</td>
+                <td className="px-2 py-2 text-right mono text-emerald-700">{fmtEur(tot.pag)}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ---- 7. LAVORAZIONI / CALENDARIO TASK ----
+function LavorazioniTab({ wf, cid, reload }) {
+  const c = wf.commessa || {};
+  const [tasks, setTasks] = useState(c.calendario || []);
+  const [editTask, setEditTask] = useState(null);
+  const today = new Date();
+  const monthsToShow = 4;
+  const daysPerMonth = 30;
+  const totalDays = monthsToShow * daysPerMonth;
+  const dayWidth = 18;
+
+  const save = async (next) => {
+    try {
+      await api.put(`/commesse/${cid}`, { ...c, calendario: next });
+      setTasks(next);
+      reload();
+    } catch (e) { toast.error("Errore: " + (e?.response?.data?.detail || e.message)); }
+  };
+
+  const addTask = () => setEditTask({
+    id: `task-${Date.now()}`,
+    name: "Nuova lavorazione",
+    color: FASE_COLORS[tasks.length % FASE_COLORS.length],
+    data_inizio: today.toISOString().slice(0, 10),
+    data_fine: new Date(today.getTime() + 7 * 86400000).toISOString().slice(0, 10),
+    subappaltatore: "", note: "",
+  });
+  const saveTask = (t) => {
+    const ex = tasks.findIndex((x) => x.id === t.id);
+    const next = ex >= 0 ? tasks.map((x, i) => i === ex ? t : x) : [...tasks, t];
+    save(next); setEditTask(null);
+  };
+  const delTask = (id) => save(tasks.filter((t) => t.id !== id));
+
+  const earliest = tasks.reduce((m, t) => { const d = new Date(t.data_inizio); return d < m ? d : m; }, new Date());
+  const baseDate = new Date(earliest); baseDate.setDate(baseDate.getDate() - 3);
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-white border border-zinc-200 rounded">
+        <div className="flex items-center justify-between p-4 border-b border-zinc-200">
+          <div>
+            <h3 className="font-semibold">Lavorazioni del cantiere — calendario giornaliero</h3>
+            <p className="text-xs text-zinc-500">Pianifica chi fa cosa e quando, vista giornaliera dettagliata (alternativa alla vista Fasi Gantt).</p>
+          </div>
+          <Button size="sm" onClick={addTask} data-testid="lav-add" style={{ background: "var(--brand)", color: "white" }}><Plus className="h-4 w-4 mr-1" /> Lavorazione</Button>
+        </div>
+        <div className="overflow-x-auto" style={{ maxWidth: "100%" }}>
+          <div style={{ minWidth: totalDays * dayWidth + 280 }}>
+            <div className="flex sticky top-0 bg-zinc-50 border-b border-zinc-200 text-[10px] mono">
+              <div className="w-[280px] shrink-0 px-3 py-2 font-semibold text-zinc-700 border-r">Lavorazione</div>
+              <div className="flex">
+                {Array.from({ length: totalDays }).map((_, d) => {
+                  const dt = new Date(baseDate); dt.setDate(dt.getDate() + d);
+                  const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+                  const isToday = dt.toDateString() === today.toDateString();
+                  const showLabel = dt.getDate() === 1 || d === 0;
+                  return (
+                    <div key={d} className={`shrink-0 ${isWeekend ? "bg-amber-50" : ""} ${isToday ? "bg-blue-100 ring-1 ring-blue-400" : ""} border-r border-zinc-100 text-center`} style={{ width: dayWidth, height: 36 }}>
+                      {showLabel && <div className="text-[9px] font-bold mt-1">{dt.toLocaleString("it-IT", { month: "short" })}</div>}
+                      <div className="mt-0.5">{dt.getDate()}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            {tasks.map((t) => {
+              const ds = new Date(t.data_inizio), de = new Date(t.data_fine);
+              const startDay = Math.round((ds - baseDate) / 86400000);
+              const dur = Math.max(1, Math.round((de - ds) / 86400000) + 1);
+              return (
+                <div key={t.id} className="flex border-b border-zinc-100 hover:bg-zinc-50 group" data-testid={`lav-row-${t.id}`}>
+                  <div className="w-[280px] shrink-0 px-3 py-2 border-r text-sm flex items-center justify-between gap-2">
+                    <div className="truncate flex-1">
+                      <div className="font-medium truncate">{t.name}</div>
+                      {t.subappaltatore && <div className="text-[10px] text-zinc-500">🔨 {t.subappaltatore}</div>}
+                    </div>
+                    <div className="opacity-0 group-hover:opacity-100 flex gap-1">
+                      <button onClick={() => setEditTask(t)} className="p-1 hover:bg-zinc-100 rounded"><FileSignature className="h-3.5 w-3.5 text-zinc-500" /></button>
+                      <button onClick={() => delTask(t.id)} className="p-1 hover:bg-rose-100 rounded"><Trash2 className="h-3.5 w-3.5 text-rose-500" /></button>
+                    </div>
+                  </div>
+                  <div className="relative" style={{ width: totalDays * dayWidth, height: 40 }}>
+                    <div className="absolute top-2 rounded text-white text-[10px] px-2 py-1.5 truncate font-medium cursor-pointer hover:opacity-90 shadow-md"
+                      style={{ left: startDay * dayWidth, width: dur * dayWidth - 2, background: t.color }}
+                      onClick={() => setEditTask(t)} data-testid={`lav-bar-${t.id}`}>
+                      {t.name} <span className="opacity-75">({dur}g)</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {!tasks.length && <div className="px-4 py-12 text-center text-zinc-500 text-sm">Nessuna lavorazione pianificata. Clicca "Lavorazione" per aggiungere la prima.</div>}
+          </div>
+        </div>
+      </div>
+
+      {editTask && (
+        <Dialog open={true} onOpenChange={() => setEditTask(null)}>
+          <DialogContent>
+            <DialogHeader><DialogTitle>Lavorazione</DialogTitle></DialogHeader>
+            <div className="space-y-3 text-sm">
+              <div><Label>Nome lavorazione</Label><Input value={editTask.name} onChange={(e) => setEditTask({ ...editTask, name: e.target.value })} data-testid="lav-task-name" /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Inizio</Label><Input type="date" value={editTask.data_inizio} onChange={(e) => setEditTask({ ...editTask, data_inizio: e.target.value })} data-testid="lav-task-start" /></div>
+                <div><Label>Fine</Label><Input type="date" value={editTask.data_fine} onChange={(e) => setEditTask({ ...editTask, data_fine: e.target.value })} data-testid="lav-task-end" /></div>
+              </div>
+              <div><Label>Sub-appaltatore / squadra</Label><Input value={editTask.subappaltatore} onChange={(e) => setEditTask({ ...editTask, subappaltatore: e.target.value })} /></div>
+              <div>
+                <Label>Colore</Label>
+                <div className="flex gap-1.5 flex-wrap mt-1">
+                  {FASE_COLORS.map((col) => (
+                    <button key={col} onClick={() => setEditTask({ ...editTask, color: col })} className={`h-8 w-8 rounded border-2 ${editTask.color === col ? "border-zinc-900 ring-2 ring-zinc-300" : "border-zinc-200"}`} style={{ background: col }} />
+                  ))}
+                </div>
+              </div>
+              <div><Label>Note</Label><Input value={editTask.note || ""} onChange={(e) => setEditTask({ ...editTask, note: e.target.value })} /></div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditTask(null)}>Annulla</Button>
+              <Button onClick={() => saveTask(editTask)} style={{ background: "var(--brand)", color: "white" }} data-testid="lav-task-save">Salva</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  );
+}
+
 function Resoconto({ cid, marg, wf }) {
   const [r, setR] = useState(null);
   useEffect(() => { api.get(`/commesse/${cid}/workflow/resoconto`).then(x => setR(x.data)); }, [cid]);

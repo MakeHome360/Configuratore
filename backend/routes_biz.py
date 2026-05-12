@@ -1114,6 +1114,34 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
         }
         await db.commesse.insert_one(doc)
         await db.preventivi.update_one({"id": prev["id"]}, {"$set": {"commessa_id": doc["id"]}})
+        # Auto-genera computo metrico dalle voci preventivo (così non serve fare clic manuale)
+        try:
+            voci_prev = prev.get("items") or prev.get("voci_dettaglio") or prev.get("computo") or []
+            cm_items = []
+            for v in voci_prev:
+                qty = float(v.get("qty") or v.get("quantita") or v.get("qty_richiesta") or 0)
+                pu = float(v.get("unit_price") or v.get("prezzo_rivendita") or v.get("prezzo") or 0)
+                tot = float(v.get("total") or v.get("totale") or 0)
+                if tot == 0 and qty and pu:
+                    tot = round(qty * pu, 2)
+                cm_items.append({
+                    "id": uuid.uuid4().hex,
+                    "voce_id": v.get("voce_id") or v.get("id"),
+                    "name": v.get("name") or v.get("descrizione") or "—",
+                    "qty": qty,
+                    "unit": v.get("unit") or "pz",
+                    "prezzo_unit": pu,
+                    "totale": tot,
+                    "category": v.get("category") or "",
+                    "stato_assegnazione": "da_assegnare",
+                    "artigiano_id": None, "artigiano_nome": None, "note_assegnazione": None,
+                })
+            if cm_items:
+                cm = {"items": cm_items, "totale": round(sum(i["totale"] for i in cm_items), 2), "generated_at": now_iso(), "generated_from_preventivo_id": prev["id"]}
+                await db.commesse.update_one({"id": doc["id"]}, {"$set": {"computo_metrico": cm}})
+                doc["computo_metrico"] = cm
+        except Exception as ex:
+            print(f"[create_commessa] auto-gen computo failed: {ex}")
         doc.pop("_id", None)
         return doc
 

@@ -662,6 +662,35 @@ export default function PreventivoPacchetto() {
                   {totals.extras > 0 && <Row label="Extra lavorazioni" value={fmtEuro(totals.extras)} />}
                   {totals.optional > 0 && <Row label="Optional" value={fmtEuro(totals.optional)} />}
                   {totals.bagno > 0 && <Row label={`Bagno ${bathroomTiers.find(t => t.id === prev.bathroom_tier)?.name || ""}`} value={fmtEuro(totals.bagno)} />}
+                  {/* DETTAGLIO VOCI DEL PREVENTIVO */}
+                  {(prev.items || []).length > 0 && (
+                    <div className="pt-2" data-testid="riepilogo-voci-table">
+                      <div className="label-kicker mb-2">Dettaglio voci</div>
+                      <table className="w-full text-sm">
+                        <thead className="text-[10px] uppercase text-zinc-500 border-b border-zinc-200"><tr>
+                          <th className="py-1.5 text-left">Voce</th>
+                          <th className="py-1.5 text-right w-20">Qty</th>
+                          <th className="py-1.5 text-left w-16">U.M.</th>
+                          <th className="py-1.5 text-right w-24">Prezzo</th>
+                          <th className="py-1.5 text-right w-28">Totale</th>
+                        </tr></thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {(prev.items || []).map((it, i) => (
+                            <tr key={i} className={it.from_configuratore ? "bg-amber-50/40" : ""}>
+                              <td className="py-1.5">
+                                <div className="font-medium">{it.name}</div>
+                                {it.category && <div className="text-[10px] uppercase text-zinc-500">{it.category}</div>}
+                              </td>
+                              <td className="py-1.5 text-right mono">{fmtNum(it.qty || 0, 2)}</td>
+                              <td className="py-1.5 text-xs">{it.unit || "—"}</td>
+                              <td className="py-1.5 text-right mono">{fmtEuro(it.unit_price || 0)}</td>
+                              <td className="py-1.5 text-right mono font-semibold">{fmtEuro(it.total || (it.qty * it.unit_price) || 0)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                   <Separator />
                   <Row label="Subtotale" value={fmtEuro(totals.subtotal)} bold />
                   {totals.sconto > 0 && <Row label={`Sconto ${prev.sconto_pct}%`} value={`- ${fmtEuro(totals.sconto)}`} />}

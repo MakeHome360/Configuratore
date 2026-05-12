@@ -30,8 +30,8 @@ export default function Navbar() {
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#1FAE52] animate-pulse" />
             <span>Preventivo bloccato · Nessun costo nascosto · Garanzia 5 anni</span>
           </div>
-          <a href="tel:+390000000000" className="flex items-center gap-2 hover:text-[#1FAE52] transition-colors" data-testid="nav-phone">
-            <Phone size={12} /> 800 123 456
+          <a href="tel:+393928011777" className="flex items-center gap-2 hover:text-[#1FAE52] transition-colors" data-testid="nav-phone">
+            <Phone size={12} /> Loano 392 801 1777 <span className="opacity-60">·</span> Vigevano 329 477 255
           </a>
         </div>
       </div>

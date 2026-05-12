@@ -194,6 +194,14 @@ export default function Landing() {
   const [contactSent, setContactSent] = useState(false);
   return (
     <div className="bg-white text-[#0A0A0A]" data-testid="landing-page" style={{ fontFamily: "Outfit, system-ui, sans-serif" }}>
+      {/* TOP STRIP — PROSSIME APERTURE */}
+      <div className="bg-[#1FAE52] text-white py-2.5 px-4 text-center text-[12px] sm:text-[13px] font-bold tracking-wide" data-testid="prossime-aperture-banner">
+        <span className="inline-flex items-center gap-2">
+          <Sparkles size={14} className="animate-pulse" />
+          <span>PROSSIME APERTURE: <span className="underline underline-offset-2">BRA'</span> E <span className="underline underline-offset-2">SETTIMO TORINESE</span></span>
+          <Sparkles size={14} className="animate-pulse" />
+        </span>
+      </div>
       <Navbar />
 
       {/* HERO */}
@@ -540,8 +548,8 @@ export default function Landing() {
             <a href="#contatti" className="group inline-flex items-center gap-2 bg-[#1FAE52] hover:bg-[#168540] text-white px-7 py-4 rounded-full text-[15px] font-bold transition-all" data-testid="processo-cta">
               Inizia con un sopralluogo gratuito <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
             </a>
-            <a href="tel:+390000000000" className="inline-flex items-center gap-2 text-zinc-300 hover:text-white text-[15px] font-semibold">
-              <Phone size={16} /> 800 123 456
+            <a href="tel:+393928011777" className="inline-flex items-center gap-2 text-zinc-300 hover:text-white text-[15px] font-semibold">
+              <Phone size={16} /> 392 801 1777 <span className="text-zinc-500 text-[12px] font-normal">· Loano</span>
             </a>
           </div>
         </div>
@@ -633,18 +641,58 @@ export default function Landing() {
             <p className="text-[16px] text-zinc-600 mb-8 leading-relaxed">
               Compila il form: ti richiamiamo entro 24h per fissare un sopralluogo gratuito senza alcun impegno. Oppure chiamaci direttamente.
             </p>
-            <div className="space-y-4">
-              <a href="tel:+390000000000" className="flex items-center gap-4 group" data-testid="contact-phone">
-                <div className="w-12 h-12 bg-[#0A0A0A] group-hover:bg-[#1FAE52] flex items-center justify-center rounded-full transition-colors">
-                  <Phone size={18} className="text-white" />
+            <div className="space-y-5">
+              {/* SHOWROOM LOANO */}
+              <div className="bg-[#F5F5F2] border-l-4 border-[#1FAE52] p-5" data-testid="sede-loano">
+                <div className="flex items-start gap-4">
+                  <div className="w-11 h-11 bg-[#1FAE52] flex items-center justify-center rounded-full flex-shrink-0">
+                    <MapPin size={18} className="text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#1FAE52] font-bold mb-1">Showroom Loano (SV)</div>
+                    <div className="text-[16px] font-bold leading-tight">Via Aurelia 180</div>
+                    <div className="text-[14px] text-zinc-600 mb-2">presso Creo Kitchens Store · Loano (Savona)</div>
+                    <a href="tel:+393928011777" className="inline-flex items-center gap-2 text-[15px] font-bold text-[#0A0A0A] hover:text-[#1FAE52] transition-colors" data-testid="tel-loano">
+                      <Phone size={15} /> 392 801 1777
+                    </a>
+                  </div>
                 </div>
-                <div>
-                  <div className="text-[12px] text-zinc-500 font-medium">Chiamaci subito</div>
-                  <div className="text-[18px] font-bold">800 123 456</div>
+              </div>
+
+              {/* SHOWROOM VIGEVANO */}
+              <div className="bg-[#F5F5F2] border-l-4 border-[#1FAE52] p-5" data-testid="sede-vigevano">
+                <div className="flex items-start gap-4">
+                  <div className="w-11 h-11 bg-[#1FAE52] flex items-center justify-center rounded-full flex-shrink-0">
+                    <MapPin size={18} className="text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#1FAE52] font-bold mb-1">Showroom Vigevano (PV)</div>
+                    <div className="text-[16px] font-bold leading-tight">Via Binasco 45</div>
+                    <div className="text-[14px] text-zinc-600 mb-2">presso Lube Store · Vigevano</div>
+                    <a href="tel:+39329477255" className="inline-flex items-center gap-2 text-[15px] font-bold text-[#0A0A0A] hover:text-[#1FAE52] transition-colors" data-testid="tel-vigevano">
+                      <Phone size={15} /> 329 477 255
+                    </a>
+                  </div>
                 </div>
-              </a>
-              <a href="mailto:info@sadicasa.it" className="flex items-center gap-4 group" data-testid="contact-email">
-                <div className="w-12 h-12 bg-[#0A0A0A] group-hover:bg-[#1FAE52] flex items-center justify-center rounded-full transition-colors">
+              </div>
+
+              {/* PROSSIME APERTURE */}
+              <div className="bg-[#0A0A0A] text-white p-5" data-testid="prossime-aperture-card">
+                <div className="flex items-start gap-4">
+                  <div className="w-11 h-11 bg-[#1FAE52] flex items-center justify-center rounded-full flex-shrink-0">
+                    <Sparkles size={18} className="text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-[#1FAE52] font-bold mb-1">Prossime aperture</div>
+                    <div className="text-[16px] font-bold leading-tight">Brà <span className="text-zinc-400 font-light mx-1">·</span> Settimo Torinese</div>
+                    <div className="text-[13px] text-zinc-400 mt-1">Resta aggiornato: <a href="mailto:info@sadicasa.it" className="underline hover:text-[#1FAE52]">info@sadicasa.it</a></div>
+                  </div>
+                </div>
+              </div>
+
+              {/* EMAIL */}
+              <a href="mailto:info@sadicasa.it" className="flex items-center gap-4 group pt-2" data-testid="contact-email">
+                <div className="w-11 h-11 bg-[#0A0A0A] group-hover:bg-[#1FAE52] flex items-center justify-center rounded-full transition-colors">
                   <Mail size={18} className="text-white" />
                 </div>
                 <div>
@@ -652,15 +700,6 @@ export default function Landing() {
                   <div className="text-[16px] font-semibold">info@sadicasa.it</div>
                 </div>
               </a>
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-[#0A0A0A] flex items-center justify-center rounded-full">
-                  <MapPin size={18} className="text-white" />
-                </div>
-                <div>
-                  <div className="text-[12px] text-zinc-500 font-medium">Vieni in showroom</div>
-                  <div className="text-[16px] font-semibold">Via Roma 123, Milano</div>
-                </div>
-              </div>
             </div>
           </div>
           <form
@@ -743,16 +782,39 @@ export default function Landing() {
             </ul>
           </div>
           <div>
-            <div className="text-[11px] font-bold tracking-widest text-zinc-500 mb-4">CONTATTI</div>
-            <ul className="space-y-3 text-[14px]">
-              <li className="flex items-start gap-3 text-zinc-300">
-                <Phone size={14} className="mt-1 text-[#1FAE52]" /> 800 123 456
+            <div className="text-[11px] font-bold tracking-widest text-zinc-500 mb-4">SHOWROOM</div>
+            <ul className="space-y-4 text-[13.5px]">
+              <li className="text-zinc-300">
+                <div className="flex items-start gap-3">
+                  <MapPin size={14} className="mt-1 text-[#1FAE52] flex-shrink-0" />
+                  <div>
+                    <div className="font-bold">Loano (SV)</div>
+                    <div className="text-zinc-400">Via Aurelia 180 · Creo Kitchens Store</div>
+                    <a href="tel:+393928011777" className="text-[#1FAE52] hover:underline mono text-[12.5px]">392 801 1777</a>
+                  </div>
+                </div>
               </li>
-              <li className="flex items-start gap-3 text-zinc-300">
+              <li className="text-zinc-300">
+                <div className="flex items-start gap-3">
+                  <MapPin size={14} className="mt-1 text-[#1FAE52] flex-shrink-0" />
+                  <div>
+                    <div className="font-bold">Vigevano (PV)</div>
+                    <div className="text-zinc-400">Via Binasco 45 · Lube Store</div>
+                    <a href="tel:+39329477255" className="text-[#1FAE52] hover:underline mono text-[12.5px]">329 477 255</a>
+                  </div>
+                </div>
+              </li>
+              <li className="text-zinc-300">
+                <div className="flex items-start gap-3">
+                  <Sparkles size={14} className="mt-1 text-[#1FAE52] flex-shrink-0" />
+                  <div>
+                    <div className="font-bold text-[#1FAE52]">Prossime aperture</div>
+                    <div className="text-zinc-400">Brà · Settimo Torinese</div>
+                  </div>
+                </div>
+              </li>
+              <li className="flex items-start gap-3 text-zinc-300 pt-1">
                 <Mail size={14} className="mt-1 text-[#1FAE52]" /> info@sadicasa.it
-              </li>
-              <li className="flex items-start gap-3 text-zinc-300">
-                <MapPin size={14} className="mt-1 text-[#1FAE52]" /> Via Roma 123<br />20100 Milano
               </li>
               <li className="flex items-start gap-3 text-zinc-300">
                 <Clock size={14} className="mt-1 text-[#1FAE52]" /> Lun–Sab 9.00–19.00

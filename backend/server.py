@@ -799,22 +799,68 @@ async def ai_floorplan_import(body: dict, user: Dict[str, Any] = Depends(get_cur
             raise HTTPException(status_code=400, detail=f"Errore conversione PDF: {str(e)[:200]}. Salva la planimetria come JPG/PNG e riprova.")
 
     session_id = f"floorplan-{user['id']}-{uuid.uuid4().hex[:8]}"
+
+    # Riferimenti dimensionali forniti dall'utente per calibrare
+    known_area_m2 = body.get("known_area_m2")  # m² totali noti
+    known_width_cm = body.get("known_width_cm")  # larghezza totale nota in cm
+    known_height_cm = body.get("known_height_cm")  # profondità totale nota in cm
+    reference_door_cm = body.get("reference_door_cm") or 80  # porta standard = 80 cm
+    reference_tile_cm = body.get("reference_tile_cm")  # piastrella di riferimento (se presente nelle foto)
+    extra_images_b64 = body.get("extra_images") or []  # lista di foto del locale (max 5)
+    if not isinstance(extra_images_b64, list):
+        extra_images_b64 = []
+    # Pulisci data URL e limita a max 5 foto di riferimento per non saturare prompt
+    cleaned_extras = []
+    for ex in extra_images_b64[:5]:
+        if not isinstance(ex, str) or not ex:
+            continue
+        if "," in ex:
+            ex = ex.split(",", 1)[1]
+        if len(ex) > 50:  # sanity
+            cleaned_extras.append(ex)
+
+    # Costruisci sistema/prompt dinamico con i riferimenti
+    refs_lines = []
+    if known_area_m2:
+        refs_lines.append(f"- Total floor area MUST be approximately {float(known_area_m2):.1f} m² (user-confirmed).")
+    if known_width_cm:
+        refs_lines.append(f"- Overall building width MUST be approximately {float(known_width_cm):.0f} cm.")
+    if known_height_cm:
+        refs_lines.append(f"- Overall building depth MUST be approximately {float(known_height_cm):.0f} cm.")
+    refs_lines.append(f"- Standard interior door width = {float(reference_door_cm):.0f} cm (use as scale anchor if visible).")
+    if reference_tile_cm:
+        refs_lines.append(f"- Floor tiles visible in photos are {float(reference_tile_cm):.0f}×{float(reference_tile_cm):.0f} cm (count them to derive room size).")
+    if cleaned_extras:
+        refs_lines.append(f"- {len(cleaned_extras)} ADDITIONAL PHOTOS of the actual rooms are attached. Use them to calibrate proportions: count visible doors/windows, count floor tiles, identify furniture (standard bed = 160×200cm, sofa = 200×90cm, toilet = 40×60cm, refrigerator = 60×60cm) and cross-check against the 2D plan.")
+    refs_block = ("\n\nDIMENSIONAL REFERENCES TO HONOR:\n" + "\n".join(refs_lines)) if refs_lines else ""
+
+    system_msg = (
+        "You are a CAD assistant that converts floorplan images into structured JSON.\n"
+        "Output ONLY valid JSON, no prose, no markdown fences.\n"
+        "Coordinates in CENTIMETERS, origin top-left. Estimate REALISTIC apartment dimensions.\n"
+        "Schema: {\"rooms\":[{\"name\":\"Cucina\",\"points\":[{\"x\":0,\"y\":0},{\"x\":400,\"y\":0},{\"x\":400,\"y\":350},{\"x\":0,\"y\":350}],\"floorMaterial\":\"floor-ceramic\",\"electrical\":true,\"plumbing\":false}]}\n"
+        "Use rectangular polygons unless the room is clearly L-shaped. Identify rooms by labels (Cucina, Bagno, Camera, Soggiorno, Ingresso, Corridoio, Studio) when visible.\n"
+        "Use floor-ceramic for kitchens/bathrooms, floor-parquet for bedrooms/livingroom. Set plumbing=true for bathrooms/kitchens.\n"
+        "Place rooms adjacent (no gaps) to mimic the source layout. Limit to 2-12 rooms total."
+        + refs_block
+    )
+
     chat = LlmChat(
         api_key=EMERGENT_LLM_KEY,
         session_id=session_id,
-        system_message=(
-            "You are a CAD assistant that converts floorplan images into structured JSON.\n"
-            "Output ONLY valid JSON, no prose, no markdown fences.\n"
-            "Coordinates in CENTIMETERS, origin top-left. Estimate realistic apartment dimensions (typical room 300-500cm).\n"
-            "Schema: {\"rooms\":[{\"name\":\"Cucina\",\"points\":[{\"x\":0,\"y\":0},{\"x\":400,\"y\":0},{\"x\":400,\"y\":350},{\"x\":0,\"y\":350}],\"floorMaterial\":\"floor-ceramic\",\"electrical\":true,\"plumbing\":false}]}\n"
-            "Use rectangular polygons unless the room is clearly L-shaped. Identify rooms by labels (Cucina, Bagno, Camera, Soggiorno, Ingresso, Corridoio, Studio) when visible.\n"
-            "Use floor-ceramic for kitchens/bathrooms, floor-parquet for bedrooms/livingroom.\n"
-            "Set plumbing=true for bathrooms/kitchens.\n"
-            "Place rooms adjacent (no gaps) to mimic the source layout. Limit to 2-8 rooms total."
-        ),
+        system_message=system_msg,
     ).with_model("gemini", "gemini-2.5-pro")
     try:
-        msg = UserMessage(text="Analizza questa pianta e ritorna il JSON strutturato delle stanze.", file_contents=[ImageContent(img_b64)])
+        # Costruisci il prompt utente. Se ci sono foto extra, le includiamo nel multimodal payload.
+        user_text = (
+            "Analizza la PIANTA 2D (primo allegato) e ritorna il JSON strutturato delle stanze in cm. "
+            "Se sono presenti FOTO AGGIUNTIVE del locale, usale per CALIBRARE le proporzioni reali contando "
+            "porte standard (80cm), piastrelle, mobili. La metratura totale e le dimensioni note (se specificate "
+            "nel system message) DEVONO essere rispettate scalando opportunamente la pianta. "
+            "Non inventare stanze non visibili nella pianta 2D."
+        )
+        attachments = [ImageContent(img_b64)] + [ImageContent(x) for x in cleaned_extras]
+        msg = UserMessage(text=user_text, file_contents=attachments)
         response = await chat.send_message(msg)
     except Exception as e:
         logger.exception("AI floorplan import failed")
@@ -868,6 +914,63 @@ async def ai_floorplan_import(body: dict, user: Dict[str, Any] = Depends(get_cur
                 "x2": float(b["x"]), "y2": float(b["y"]),
                 "thickness": 10, "kind": "mattone",
             })
+
+    # ---- POST-PROCESSING: rescale finale per matchare le dimensioni note ----
+    def _polygon_area_cm2(points):
+        if len(points) < 3:
+            return 0.0
+        a = 0.0
+        for i in range(len(points)):
+            p1 = points[i]
+            p2 = points[(i + 1) % len(points)]
+            a += (p1["x"] * p2["y"] - p2["x"] * p1["y"])
+        return abs(a / 2.0)
+
+    def _apply_scale(scale_factor):
+        if not scale_factor or abs(scale_factor - 1.0) < 0.01:
+            return
+        for r in out_rooms:
+            for p in r["points"]:
+                p["x"] = p["x"] * scale_factor
+                p["y"] = p["y"] * scale_factor
+        for w in out_walls:
+            w["x1"] = w["x1"] * scale_factor; w["y1"] = w["y1"] * scale_factor
+            w["x2"] = w["x2"] * scale_factor; w["y2"] = w["y2"] * scale_factor
+
+    applied_scale = None
+    if out_rooms:
+        # Priorità: known_area_m2 > known_width_cm/known_height_cm > nessuno
+        if known_area_m2:
+            try:
+                target_cm2 = float(known_area_m2) * 10000.0
+                current_cm2 = sum(_polygon_area_cm2(r["points"]) for r in out_rooms)
+                if current_cm2 > 100:  # almeno qualche cm² per evitare divisioni
+                    # L'area scala con il quadrato della scala lineare
+                    import math as _math
+                    scale = _math.sqrt(target_cm2 / current_cm2)
+                    _apply_scale(scale)
+                    applied_scale = {"by": "area_m2", "factor": round(scale, 3), "target_m2": float(known_area_m2)}
+            except Exception:
+                logger.exception("rescale by area failed")
+        elif known_width_cm or known_height_cm:
+            try:
+                xs = [p["x"] for r in out_rooms for p in r["points"]]
+                ys = [p["y"] for r in out_rooms for p in r["points"]]
+                cur_w = max(xs) - min(xs) if xs else 0
+                cur_h = max(ys) - min(ys) if ys else 0
+                scales = []
+                if known_width_cm and cur_w > 10:
+                    scales.append(float(known_width_cm) / cur_w)
+                if known_height_cm and cur_h > 10:
+                    scales.append(float(known_height_cm) / cur_h)
+                if scales:
+                    # Media dei fattori (mantiene proporzioni dichiarate)
+                    scale = sum(scales) / len(scales)
+                    _apply_scale(scale)
+                    applied_scale = {"by": "bbox", "factor": round(scale, 3), "target_w_cm": known_width_cm, "target_h_cm": known_height_cm}
+            except Exception:
+                logger.exception("rescale by bbox failed")
+
     return {
         "project_data": {
             "rooms": out_rooms,
@@ -878,6 +981,8 @@ async def ai_floorplan_import(body: dict, user: Dict[str, Any] = Depends(get_cur
             "roomHeight": 270, "currency": "EUR",
         },
         "rooms_count": len(out_rooms),
+        "scale_applied": applied_scale,
+        "extra_photos_used": len(cleaned_extras),
     }
 
 

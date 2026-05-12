@@ -1,5 +1,38 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 44 — Mag 2026 — Import planimetria con dimensioni reali + foto multiple)
+### 🎯 Calibrazione dimensionale planimetria (problema misure non realistiche)
+**Causa**: l'AI Gemini stimava le dimensioni in cm a sentimento dalle proporzioni dell'immagine. Per locali fotografati o digitalizzati in scala arbitraria le dimensioni risultanti non corrispondevano alla metratura reale del cliente.
+
+**Soluzione a 3 livelli**:
+
+#### 1. Dimensioni note dell'utente (ground truth)
+Nuovi campi nel modal Importa Pianta:
+- **Metratura (m²)**: se fornita, l'output viene **scalato linearmente di √(target/current)** per ottenere esattamente la metratura totale dichiarata.
+- **Larghezza + Profondità (m)**: scaling sull'ingombro complessivo (bbox) tramite media dei fattori width/height per mantenere proporzioni.
+- **Porta standard (cm)**: anchor di calibrazione (default 80 cm).
+- **Piastrella pavimento (cm)**: se le foto extra mostrano piastrelle visibili, l'AI le conta per derivare le dimensioni stanza.
+
+**Post-processing backend** (`/api/ai/floorplan-import`): dopo aver ricevuto la pianta dall'AI, calcola l'area totale dei poligoni, confronta col target, applica il fattore di scala a tutti i punti rooms + walls. Ritorna `scale_applied: {by, factor, target_m2|target_w_cm/target_h_cm}` nella response.
+
+**Test E2E**: target 120m² → output 120.00m² ✓ · target 10×8m → output 1000×800cm ✓
+
+#### 2. Foto aggiuntive del locale (cross-check)
+- Nuovo campo nel modal: upload fino a **5 foto** del locale reale (camere, bagno, cucina, ecc).
+- Le foto vengono ottimizzate client-side (max 1280px JPEG q=0.8) e inviate come multimodal payload Gemini insieme alla pianta 2D.
+- System prompt aggiornato: "Use the X ADDITIONAL PHOTOS to calibrate proportions: count visible doors/windows, count floor tiles, identify furniture (standard bed = 160×200cm, sofa = 200×90cm, toilet = 40×60cm, refrigerator = 60×60cm) and cross-check against the 2D plan."
+- Response include `extra_photos_used: N`.
+
+#### 3. UI/UX modal
+- 2 sezioni colorate: 📏 amber per dimensioni note + 📸 blu per foto extra.
+- Toast risultato include scala applicata e foto usate: `"Planimetria importata · 3 stanze · scalata a 85m² (×1.42) · 3 foto ref"`.
+
+### Note tecniche
+- Backend usa `pypdfium2` (PDF) e `LlmChat` Gemini multimodal con N immagini.
+- I PDF passano per la stessa pipeline: prima pagina → PNG → eventuale rescale finale → AI.
+- Frontend timeout 180s per gestire elaborazioni multi-foto.
+- Limite hard: max 5 foto extra (oltre satura il prompt).
+
 ## Recent Updates (Round 43 — Mag 2026 — Import planimetria PDF)
 ### 📄 Import planimetria — supporto PDF
 - **Causa**: il modal "Importa Pianta" accettava solo `image/*`. I PDF venivano rifiutati dal file picker e `optimizeImage` crashava sul tipo `application/pdf`.

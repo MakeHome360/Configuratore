@@ -467,8 +467,8 @@ export default function Editor() {
     setAiLoading(false);
   };
 
-  const importFloorplan = async () => {
-    if (!floorplanFile) { toast.error("Seleziona un'immagine"); return; }
+  const importFloorplan = async (opts = {}) => {
+    if (!floorplanFile) { toast.error("Seleziona un'immagine o un PDF"); return; }
     setFloorplanLoading(true);
     try {
       // Resize via canvas: max 1600px lato lungo, JPEG q=0.85 → riduce drasticamente tempo AI
@@ -519,10 +519,43 @@ export default function Editor() {
 
       try {
         const payload = { image_base64: b64, mime: isPdf ? "application/pdf" : (floorplanFile.type || "image/png") };
+        // Dimensioni note → cm
+        const areaM2 = parseFloat(opts.knownArea) || 0;
+        const wM = parseFloat(opts.knownWidth) || 0;
+        const hM = parseFloat(opts.knownDepth) || 0;
+        if (areaM2 > 0) payload.known_area_m2 = areaM2;
+        if (wM > 0) payload.known_width_cm = Math.round(wM * 100);
+        if (hM > 0) payload.known_height_cm = Math.round(hM * 100);
+        if (opts.refDoor && parseFloat(opts.refDoor) > 0) payload.reference_door_cm = parseFloat(opts.refDoor);
+        if (opts.refTile && parseFloat(opts.refTile) > 0) payload.reference_tile_cm = parseFloat(opts.refTile);
+        // Foto extra: convertite a base64
+        if (Array.isArray(opts.extraFiles) && opts.extraFiles.length) {
+          const extras = [];
+          for (const ef of opts.extraFiles.slice(0, 5)) {
+            try {
+              // ottimizza le foto extra a max 1280px JPEG q=0.8 per non saturare la request
+              let exBlob;
+              try { exBlob = await optimizeImage(ef); } catch { exBlob = ef; }
+              const exRaw = await blobToBase64(exBlob);
+              const exB64 = exRaw.includes(",") ? exRaw.split(",")[1] : exRaw;
+              extras.push(exB64);
+            } catch (err) { console.warn("[floorplan] skip extra photo", ef.name, err); }
+          }
+          if (extras.length) payload.extra_images = extras;
+          console.log(`[floorplan] using ${extras.length} extra reference photos`);
+        }
         const { data } = await api.post("/ai/floorplan-import", payload, { timeout: 180000 });
         if (data.project_data && (data.rooms_count || 0) > 0) {
           setProjectData(() => ({ ...emptyProjectData(), ...data.project_data }));
-          toast.success(`Planimetria importata · ${data.rooms_count} stanze`);
+          // Toast con info su scala applicata + foto extra
+          let extraInfo = "";
+          if (data.scale_applied) {
+            const sa = data.scale_applied;
+            if (sa.by === "area_m2") extraInfo += ` · scalata a ${sa.target_m2}m² (×${sa.factor})`;
+            else if (sa.by === "bbox") extraInfo += ` · scalata su ingombro (×${sa.factor})`;
+          }
+          if (data.extra_photos_used) extraInfo += ` · ${data.extra_photos_used} foto ref`;
+          toast.success(`Planimetria importata · ${data.rooms_count} stanze${extraInfo}`);
           setFloorplanOpen(false);
           setTimeout(() => window.dispatchEvent(new CustomEvent("cad:fit-all")), 200);
         } else if (data.project_data && !data.rooms_count) {
@@ -2604,6 +2637,12 @@ function AIRenderModal({ aiOpen, setAiOpen, aiPrompt, setAiPrompt, aiLoading, ai
 }
 
 function FloorplanImportModal({ open, setOpen, file, setFile, loading, onImport }) {
+  const [knownArea, setKnownArea] = useState("");
+  const [knownWidth, setKnownWidth] = useState("");
+  const [knownDepth, setKnownDepth] = useState("");
+  const [refDoor, setRefDoor] = useState("80");
+  const [refTile, setRefTile] = useState("");
+  const [extraFiles, setExtraFiles] = useState([]);
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setOpen(false)} data-testid="floorplan-modal">
       <div className="bg-white w-full max-w-xl flex flex-col border border-zinc-300" onClick={(e) => e.stopPropagation()}>
@@ -2615,7 +2654,60 @@ function FloorplanImportModal({ open, setOpen, file, setFile, loading, onImport 
           <div className="text-sm text-zinc-600">Carica una planimetria del cliente (PDF, JPG, PNG). Per i PDF viene importata la <strong>prima pagina</strong>. L'AI Gemini analizzerà l'immagine ed estrarrà i muri principali per generare un progetto base 2D/3D modificabile.</div>
           <input type="file" accept="image/*,.pdf,application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="block w-full text-sm" data-testid="floorplan-file-input" />
           {file && <div className="text-xs mono text-zinc-500">File: {file.name} ({Math.round(file.size / 1024)} KB)</div>}
-          <Button onClick={onImport} disabled={!file || loading} className="rounded-sm w-full h-10 bg-zinc-900 hover:bg-zinc-800" data-testid="floorplan-import-btn">{loading ? "Elaborazione AI in corso…" : "Importa con AI"}</Button>
+
+          {/* Dimensioni note dell'utente — l'AI scalerà la pianta per matcharle */}
+          <div className="bg-amber-50 border border-amber-200 rounded p-3 space-y-2">
+            <div className="text-xs font-semibold text-amber-900 uppercase tracking-wide">📏 Dimensioni reali (opzionali, ma consigliato)</div>
+            <div className="text-[11px] text-amber-800">Inserisci la metratura nota o le misure d'ingombro: la pianta importata verrà riscalata per matchare ESATTAMENTE questi valori.</div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <Label className="text-[10px] text-amber-900">Metratura (m²)</Label>
+                <Input type="number" min={0} step="0.1" value={knownArea} onChange={(e) => setKnownArea(e.target.value)} placeholder="es. 85" className="h-8 text-xs mono" data-testid="floorplan-known-area" />
+              </div>
+              <div>
+                <Label className="text-[10px] text-amber-900">Larghezza (m)</Label>
+                <Input type="number" min={0} step="0.1" value={knownWidth} onChange={(e) => setKnownWidth(e.target.value)} placeholder="es. 10" className="h-8 text-xs mono" data-testid="floorplan-known-width" />
+              </div>
+              <div>
+                <Label className="text-[10px] text-amber-900">Profondità (m)</Label>
+                <Input type="number" min={0} step="0.1" value={knownDepth} onChange={(e) => setKnownDepth(e.target.value)} placeholder="es. 8.5" className="h-8 text-xs mono" data-testid="floorplan-known-depth" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-amber-200">
+              <div>
+                <Label className="text-[10px] text-amber-900">Larghezza porta std (cm)</Label>
+                <Input type="number" min={60} max={120} value={refDoor} onChange={(e) => setRefDoor(e.target.value)} placeholder="80" className="h-8 text-xs mono" data-testid="floorplan-ref-door" />
+              </div>
+              <div>
+                <Label className="text-[10px] text-amber-900">Piastrella pavimento (cm)</Label>
+                <Input type="number" min={10} max={120} value={refTile} onChange={(e) => setRefTile(e.target.value)} placeholder="es. 60" className="h-8 text-xs mono" data-testid="floorplan-ref-tile" />
+              </div>
+            </div>
+          </div>
+
+          {/* Foto extra per calibrare le proporzioni */}
+          <div className="bg-blue-50 border border-blue-200 rounded p-3 space-y-2">
+            <div className="text-xs font-semibold text-blue-900 uppercase tracking-wide">📸 Foto aggiuntive del locale (max 5, opzionali)</div>
+            <div className="text-[11px] text-blue-800">Carica 1-5 foto delle stanze. L'AI le incrocia con la pianta 2D per stimare meglio le proporzioni reali (conta porte, piastrelle, mobili).</div>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) => {
+                const arr = Array.from(e.target.files || []).slice(0, 5);
+                setExtraFiles(arr);
+              }}
+              className="block w-full text-xs"
+              data-testid="floorplan-extra-files-input"
+            />
+            {extraFiles.length > 0 && (
+              <div className="flex flex-wrap gap-1 text-[10px] mono text-blue-700">
+                {extraFiles.map((f, i) => <span key={i} className="px-1.5 py-0.5 bg-blue-100 rounded">📷 {f.name} ({Math.round(f.size / 1024)}KB)</span>)}
+              </div>
+            )}
+          </div>
+
+          <Button onClick={() => onImport({ knownArea, knownWidth, knownDepth, refDoor, refTile, extraFiles })} disabled={!file || loading} className="rounded-sm w-full h-10 bg-zinc-900 hover:bg-zinc-800" data-testid="floorplan-import-btn">{loading ? "Elaborazione AI in corso…" : "Importa con AI"}</Button>
           <div className="text-xs text-zinc-400">⚠️ Il progetto attuale verrà sostituito dai dati estratti dall'immagine. Salva prima se serve.</div>
         </div>
       </div>

@@ -63,6 +63,7 @@ const COLOR_MAP = {
 export default function AppLayout({ children }) {
   const { user, logout } = useAuth();
   const [azienda, setAzienda] = useState({ nome: "Inside Home", colore_primario: "teal", logo: null });
+  const [alertCount, setAlertCount] = useState(0);
   const nav = useNavigate();
   const location = useLocation();
   const isEditorRoute = location.pathname.startsWith("/editor/");
@@ -73,6 +74,15 @@ export default function AppLayout({ children }) {
   useEffect(() => {
     api.get("/dati-azienda").then(r => r.data && setAzienda(r.data)).catch(() => {});
   }, []);
+
+  // Polling alerts ogni 3 minuti (solo per ruoli che gestiscono cantieri)
+  useEffect(() => {
+    if (!user || !["admin", "venditore", "gestore"].includes(user.role)) return;
+    const fetchAlerts = () => api.get("/dashboard-alerts").then(r => setAlertCount(r.data?.totale_alert_critici || 0)).catch(() => {});
+    fetchAlerts();
+    const t = setInterval(fetchAlerts, 180000);
+    return () => clearInterval(t);
+  }, [user]);
 
   const colors = COLOR_MAP[azienda.colore_primario] || COLOR_MAP.teal;
   const role = user?.role || "user";
@@ -154,6 +164,9 @@ export default function AppLayout({ children }) {
                       >
                         <it.icon className="h-4 w-4 shrink-0" />
                         <span className="truncate">{it.label}</span>
+                        {it.to === "/dashboard" && alertCount > 0 && (
+                          <span className="ml-auto bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full mono" data-testid="sidebar-alert-badge">{alertCount > 99 ? "99+" : alertCount}</span>
+                        )}
                       </NavLink>
                     </li>
                   ))}

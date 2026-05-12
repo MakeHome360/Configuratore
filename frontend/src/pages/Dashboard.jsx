@@ -6,6 +6,7 @@ import { Page, PageHeader, StatCard, fmtEur, statoCommessaBadge, statoPreventivo
 import { Button } from "@/components/ui/button";
 import { FilePlus2, Files, Briefcase, TrendingUp } from "lucide-react";
 import DashboardVenditore from "@/pages/DashboardVenditore";
+import DashboardAlerts from "@/components/DashboardAlerts";
 
 const PKG_COLORS = { "pkg-basic": "#475569", "pkg-smart": "#3B82F6", "pkg-premium": "#0EA5E9", "pkg-elite": "#0A0A0A" };
 const PKG_NAMES = { "pkg-basic": "BASIC", "pkg-smart": "SMART", "pkg-premium": "PREMIUM", "pkg-elite": "ELITE" };
@@ -39,6 +40,7 @@ export default function Dashboard() {
         }
       />
       <Page>
+        <div className="mb-5"><DashboardAlerts /></div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <StatCard label="Preventivi Totali" value={stats.preventivi_totali || 0} icon={Files} />
           <StatCard label="Preventivi Approvati" value={stats.preventivi_approvati || 0} icon={TrendingUp} color="text-emerald-600" />

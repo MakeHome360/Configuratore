@@ -566,4 +566,113 @@ def build_commessa_workflow_router(db, get_current_user):
             "marginalita": marg,
         }
 
+    # ---------- 12. DASHBOARD ALERTS — notifiche live cross-cantieri ----------
+    @r.get("/dashboard-alerts")
+    async def dashboard_alerts(user=Depends(get_current_user)):
+        """Riepilogo intelligente per venditore/admin/gestore:
+        - Pagamenti in scadenza ≤7gg (incassi e uscite)
+        - Pagamenti scaduti (programmati con data passata)
+        - Documenti sub-appaltatore in scadenza ≤30gg / scaduti
+        - Checklist cantieri incomplete da >30gg
+        """
+        from datetime import datetime, timezone, timedelta
+        today = datetime.now(timezone.utc).date()
+        in7 = (today + timedelta(days=7)).isoformat()
+        in30 = (today + timedelta(days=30)).isoformat()
+        d30ago = (today - timedelta(days=30)).isoformat()
+        today_iso = today.isoformat()
+
+        # Filtra commesse per ruolo
+        com_filter = {}
+        if user.get("role") == "venditore":
+            com_filter = {"venditore_id": user.get("id")}
+        commesse = await db.commesse.find(com_filter, {"_id": 0}).to_list(2000)
+        com_ids = [c.get("id") for c in commesse]
+        com_by_id = {c.get("id"): c for c in commesse}
+
+        # Pagamenti programmati su queste commesse
+        mov = await db.commesse_cassa.find({
+            "commessa_id": {"$in": com_ids},
+            "stato_pagamento": "programmato",
+        }, {"_id": 0}).to_list(5000)
+
+        scadenze_imminenti = []
+        scadenze_scadute = []
+        for m in mov:
+            sc = m.get("data_scadenza") or m.get("data")
+            if not sc:
+                continue
+            entry = {
+                "id": m.get("id"),
+                "commessa_id": m.get("commessa_id"),
+                "commessa_numero": (com_by_id.get(m.get("commessa_id")) or {}).get("numero"),
+                "cliente_nome": ((com_by_id.get(m.get("commessa_id")) or {}).get("cliente") or {}).get("nome"),
+                "direzione": m.get("tipo"),
+                "beneficiario_nome": m.get("beneficiario_nome") or m.get("artigiano_nome"),
+                "importo": float(m.get("importo") or 0),
+                "data_scadenza": sc,
+                "categoria": m.get("categoria"),
+                "descrizione": m.get("descrizione"),
+                "giorni_rimasti": (datetime.fromisoformat(sc.replace("Z", "+00:00")).date() - today).days if "T" not in sc else (datetime.fromisoformat(sc[:10]).date() - today).days,
+            }
+            if sc < today_iso:
+                scadenze_scadute.append(entry)
+            elif sc <= in7:
+                scadenze_imminenti.append(entry)
+
+        # Documenti sub-appaltatore in scadenza/scaduti
+        sub_docs = await db.subapp_documenti.find({}, {"_id": 0}).to_list(5000)
+        docs_alert = []
+        sub_ids_with_docs = set()
+        for d in sub_docs:
+            ds = d.get("data_scadenza")
+            if not ds:
+                continue
+            sub_ids_with_docs.add(d.get("subappaltatore_id"))
+            if ds < today_iso:
+                docs_alert.append({**d, "stato_alert": "scaduto"})
+            elif ds <= in30:
+                docs_alert.append({**d, "stato_alert": "in_scadenza", "giorni_rimasti": (datetime.fromisoformat(ds[:10]).date() - today).days})
+
+        # Checklist incomplete da >30gg (commesse create da 30+ gg con cassa "incasso" presente ma documenti pratica edilizia mancanti)
+        checklist_alerts = []
+        for c in commesse:
+            ca = c.get("created_at") or ""
+            if not ca or ca[:10] > d30ago:
+                continue
+            if c.get("stato") in ("completata", "sospesa"):
+                continue
+            documenti_c = await db.commesse_documenti.find({"commessa_id": c.get("id")}, {"_id": 0}).to_list(200)
+            mat = c.get("materiali_scelta") or {}
+            cm = c.get("computo_metrico") or {}
+            mancanti = []
+            if not (c.get("contratto") or {}).get("firmato"):
+                mancanti.append("Contratto firmato")
+            if not any("cila" in (d.get("tipo") or d.get("name") or "").lower() or "scia" in (d.get("tipo") or d.get("name") or "").lower() or "permesso" in (d.get("tipo") or d.get("name") or "").lower() for d in documenti_c):
+                mancanti.append("Pratica edilizia (CILA/SCIA)")
+            if not (mat.get("items") or []):
+                mancanti.append("Scelta materiali")
+            if not (cm.get("items") or []):
+                mancanti.append("Computo metrico")
+            if mancanti:
+                checklist_alerts.append({
+                    "commessa_id": c.get("id"),
+                    "commessa_numero": c.get("numero"),
+                    "cliente_nome": (c.get("cliente") or {}).get("nome"),
+                    "giorni_aperta": (today - datetime.fromisoformat(ca[:10]).date()).days,
+                    "mancanti": mancanti,
+                })
+
+        # Riassunto per badge sidebar
+        tot_alerts = len(scadenze_imminenti) + len(scadenze_scadute) + len([d for d in docs_alert if d["stato_alert"] == "scaduto"]) + len(checklist_alerts)
+
+        return {
+            "scadenze_imminenti": sorted(scadenze_imminenti, key=lambda x: x["data_scadenza"]),
+            "scadenze_scadute": sorted(scadenze_scadute, key=lambda x: x["data_scadenza"]),
+            "documenti_sub_alert": sorted(docs_alert, key=lambda x: x.get("data_scadenza") or ""),
+            "checklist_alerts": checklist_alerts,
+            "totale_alert_critici": tot_alerts,
+            "generated_at": NOW(),
+        }
+
     return r

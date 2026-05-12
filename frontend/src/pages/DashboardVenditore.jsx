@@ -5,6 +5,7 @@ import { Page, PageHeader, StatCard, fmtEur, statoCommessaBadge } from "@/compon
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Wallet, TrendingUp, Briefcase, Files, Crown, Users2, FilePlus2 } from "lucide-react";
+import DashboardAlerts from "@/components/DashboardAlerts";
 
 const LEVEL_LABEL = { semplice: "Venditore", responsabile: "Responsabile Punto Vendita", area_manager: "Area Manager" };
 const STATO_BADGE = {
@@ -51,6 +52,7 @@ export default function DashboardVenditore() {
         }
       />
       <Page>
+        <div className="mb-5"><DashboardAlerts /></div>
         {/* KPI cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <StatCard label="Provvigioni Totali" value={fmtEur(s.provvigioni_totali)} icon={Wallet} color="text-emerald-600" sub={`Maturate: ${fmtEur(s.provvigioni_maturate)}`} />

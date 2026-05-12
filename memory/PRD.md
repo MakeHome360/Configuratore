@@ -1,5 +1,16 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 38 — Feb 2026 — Notifiche Live cross-cantieri)
+- ✅ **`GET /api/dashboard-alerts`**: endpoint aggregato che restituisce:
+  - `scadenze_scadute`: pagamenti programmati con data passata (border-left rosso).
+  - `scadenze_imminenti`: pagamenti entro 7 giorni (border-left ambra).
+  - `documenti_sub_alert`: documenti sub-appaltatori scaduti o in scadenza ≤30gg (border-left viola).
+  - `checklist_alerts`: cantieri aperti da >30gg con step critici mancanti (contratto firmato, pratica edilizia, materiali, computo) (border-left blu).
+  - `totale_alert_critici`: contatore aggregato per badge sidebar.
+  - Filtra per `venditore_id` se il ruolo è "venditore".
+- ✅ **`DashboardAlerts.jsx`** (nuovo componente): mostrato in cima a `Dashboard.jsx` (admin/gestore/utente) e `DashboardVenditore.jsx`. Sezioni collassabili, click su un alert → naviga al workflow della commessa o al dettaglio del sub-appaltatore. Stato "Tutto sotto controllo" verde quando 0 alert.
+- ✅ **Sidebar badge rosso pulsante** su "Dashboard" con conteggio alerts (polling ogni 3 minuti per admin/venditore/gestore). Testid: `sidebar-alert-badge`.
+
 ## Recent Updates (Round 37 — Feb 2026 — Big Fix: 12 user complaints risolti)
 ### Bug critici prezzi (P0)
 - ✅ **Configuratore Esigenze**: prezzi finali non matchavano i pacchetti. Il calcolo leggeva `prezzo_mq` (null) invece di `price_per_m2` ed aveva fallback errati (380/580/850/1300). Fix: ora legge `price_per_m2` con fallback corretti **380/490/790/1180**.

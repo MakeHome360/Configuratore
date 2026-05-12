@@ -228,17 +228,27 @@ function buildScene(project, catalog) {
 
         // Pannello porta: offset positivo lungo X locale di +hw*(-hingeSign) per andare dal cardine verso l'esterno
         const doorGeom = new THREE.BoxGeometry(d.width * CM, hh, 4 * CM);
-        const doorMat = new THREE.MeshStandardMaterial({ color: d.color ? new THREE.Color(d.color) : 0xb08968, roughness: 0.7 });
+        const doorColMap = { bianco: 0xFAFAFA, noce: 0x6B4423, rovere: 0xA87653, wenge: 0x2C1810, grigio: 0x94A3B8, antracite: 0x374151, nero: 0x0F0F0F };
+        const customColor = (d.doorColor === "ral" && d.doorColorRal) ? d.doorColorRal : null;
+        const doorColor = customColor ? new THREE.Color(customColor) : (d.doorColor ? doorColMap[d.doorColor] : (d.color ? new THREE.Color(d.color) : 0xb08968));
+        const doorMat = new THREE.MeshStandardMaterial({ color: doorColor, roughness: 0.7 });
         const doorMesh = new THREE.Mesh(doorGeom, doorMat);
         doorMesh.position.set(-hingeSign * hw, hh / 2, th / 2);
         doorMesh.castShadow = true;
         doorMesh.userData = { kind: "doors", id: d.id };
         hingeGroup.add(doorMesh);
 
-        const handleGeom = new THREE.CylinderGeometry(2 * CM, 2 * CM, 8 * CM, 8);
-        const handleMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af, metalness: 0.7, roughness: 0.3 });
+        // Maniglia: usa handleFinish (cromato/satinato/nero/ottone/oro-rosa/bianco)
+        const handleFinMap = { cromato: 0xC0C0C0, satinato: 0x9ca3af, nero: 0x1F1F1F, ottone: 0xC9A24A, "oro-rosa": 0xE0B0A0, bianco: 0xF8F8F8 };
+        const handleCol = handleFinMap[d.handleFinish] ?? 0x9ca3af;
+        // pomo (porta blindata) vs maniglia
+        const isPomo = d.handleModel === "pomo";
+        const handleGeom = isPomo
+          ? new THREE.SphereGeometry(3 * CM, 16, 16)
+          : new THREE.CylinderGeometry(2 * CM, 2 * CM, 10 * CM, 8);
+        const handleMat = new THREE.MeshStandardMaterial({ color: handleCol, metalness: 0.7, roughness: 0.3 });
         const handle = new THREE.Mesh(handleGeom, handleMat);
-        handle.rotation.z = Math.PI / 2;
+        if (!isPomo) handle.rotation.z = Math.PI / 2;
         handle.position.set(-hingeSign * (d.width * CM - 8 * CM), 100 * CM, th / 2 + 3 * CM);
         hingeGroup.add(handle);
 
@@ -426,24 +436,52 @@ function buildScene(project, catalog) {
     if (arr === "hvac") return "#14B8A6";
     return "#71717A";
   };
-  // helper: side offset (lato A=-1, B=+1) — sposta il punto 15cm verso il lato muro più vicino
+  // helper: side offset (lato A=-1 esterno, B=+1 interno) — sposta il punto ~18cm verso il lato muro più vicino.
+  // Considera SIA walls espliciti SIA segmenti perimetro stanza, orientando la normale verso il centro stanza (Lato B = interno).
   const sideOffset = (x, y, side) => {
     if (!side) return { x, y };
     const walls = project.walls || [];
+    const rooms = project.rooms || [];
     let best = null; let bestD = Infinity;
+    // Walls espliciti
     for (const w of walls) {
       const dx = w.x2 - w.x1, dy = w.y2 - w.y1;
       const len2 = dx * dx + dy * dy || 1;
       const t = Math.max(0, Math.min(1, ((x - w.x1) * dx + (y - w.y1) * dy) / len2));
       const px = w.x1 + t * dx, py = w.y1 + t * dy;
       const d = Math.hypot(x - px, y - py);
-      if (d < bestD) { bestD = d; best = { dx, dy, len: Math.sqrt(len2) }; }
+      if (d < bestD) {
+        bestD = d;
+        const len = Math.sqrt(len2);
+        best = { nx: -dy / len, ny: dx / len };
+      }
     }
-    if (!best || best.len === 0) return { x, y };
-    // normale (perpendicolare) al muro
-    const nx = -best.dy / best.len, ny = best.dx / best.len;
-    const k = 15 * side;
-    return { x: x + nx * k, y: y + ny * k };
+    // Segmenti perimetro stanze (importante per quick-room senza walls espliciti)
+    for (const r of rooms) {
+      const pts = r.points || [];
+      if (pts.length < 2) continue;
+      const cx = pts.reduce((a, p) => a + p.x, 0) / pts.length;
+      const cy = pts.reduce((a, p) => a + p.y, 0) / pts.length;
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const len2 = dx * dx + dy * dy || 1;
+        const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / len2));
+        const px = a.x + t * dx, py = a.y + t * dy;
+        const d = Math.hypot(x - px, y - py);
+        if (d < bestD) {
+          bestD = d;
+          const len = Math.sqrt(len2);
+          let nx = -dy / len, ny = dx / len;
+          const midx = (a.x + b.x) / 2, midy = (a.y + b.y) / 2;
+          if (nx * (cx - midx) + ny * (cy - midy) < 0) { nx = -nx; ny = -ny; }
+          best = { nx, ny };
+        }
+      }
+    }
+    if (!best) return { x, y };
+    const k = 18 * side;
+    return { x: x + best.nx * k, y: y + best.ny * k };
   };
 
   const renderMep = (arr, items) => {

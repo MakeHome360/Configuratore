@@ -755,4 +755,81 @@ def build_commessa_workflow_router(db, get_current_user):
             "generated_at": NOW(),
         }
 
+    # ---------- 13. DOCUMENTI TEMPLATE AZIENDA (contratti/capitolati vergini) ----------
+    DOC_TEMPLATE_TIPI = [
+        {"id": "contratto_cliente", "label": "Contratto cliente"},
+        {"id": "contratto_subappalto", "label": "Contratto subappalto"},
+        {"id": "capitolato", "label": "Capitolato tecnico"},
+        {"id": "privacy_gdpr", "label": "Privacy / GDPR"},
+        {"id": "checklist_sopralluogo", "label": "Checklist sopralluogo"},
+        {"id": "verbale_consegna", "label": "Verbale consegna lavori"},
+        {"id": "sal_template", "label": "Stato Avanzamento Lavori"},
+        {"id": "altro", "label": "Altro"},
+    ]
+
+    @r.get("/documenti-template/tipi")
+    async def doc_template_tipi(user=Depends(get_current_user)):
+        return DOC_TEMPLATE_TIPI
+
+    @r.get("/documenti-template")
+    async def doc_template_list(user=Depends(get_current_user)):
+        rows = await db.documenti_template.find({}, {"_id": 0}).sort("uploaded_at", -1).to_list(500)
+        return rows
+
+    @r.post("/documenti-template")
+    async def doc_template_upload(
+        file: UploadFile = File(...),
+        nome: str = Form(...),
+        tipo: str = Form("altro"),
+        descrizione: Optional[str] = Form(None),
+        user=Depends(get_current_user),
+    ):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin può caricare template aziendali")
+        content = await file.read()
+        if len(content) > 20 * 1024 * 1024:
+            raise HTTPException(413, "File troppo grande (max 20 MB)")
+        ext = (file.filename.rsplit(".", 1)[-1] if "." in file.filename else "bin").lower()
+        fid = UID()
+        safe_name = f"tpl-{fid}.{ext}"
+        path = os.path.join(UPLOADS_DIR, safe_name)
+        with open(path, "wb") as f:
+            f.write(content)
+        meta = {
+            "id": fid,
+            "nome": nome,
+            "tipo": tipo,
+            "descrizione": descrizione or "",
+            "filename_originale": file.filename,
+            "size": len(content),
+            "content_type": file.content_type or "application/octet-stream",
+            "url": f"/api/uploads/{safe_name}",
+            "uploaded_at": NOW(),
+            "uploaded_by": user.get("id"),
+            "uploaded_by_name": user.get("name") or user.get("email"),
+        }
+        await db.documenti_template.insert_one(dict(meta))
+        meta.pop("_id", None)
+        return meta
+
+    @r.delete("/documenti-template/{tid}")
+    async def doc_template_delete(tid: str, user=Depends(get_current_user)):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin può eliminare template")
+        doc = await db.documenti_template.find_one({"id": tid}, {"_id": 0})
+        if not doc:
+            raise HTTPException(404, "Template non trovato")
+        # rimuovi file fisico
+        try:
+            url = doc.get("url") or ""
+            fname = url.split("/")[-1]
+            if fname:
+                p = os.path.join(UPLOADS_DIR, fname)
+                if os.path.exists(p):
+                    os.remove(p)
+        except Exception:
+            pass
+        await db.documenti_template.delete_one({"id": tid})
+        return {"ok": True}
+
     return r

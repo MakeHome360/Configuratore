@@ -426,6 +426,36 @@ export default function Editor() {
       }
       const body = { image_base64: snap, style: aiStyle, project_id: project?.id };
       if (aiPrompt && aiPrompt.trim()) body.prompt = aiPrompt.trim();
+      // Costruisci summary strutturato del progetto per dare contesto preciso all'AI
+      try {
+        const d = project?.data || {};
+        const rooms = (d.rooms || []).filter(r => (r.phase || "fatto") !== "fatto" || true).map(r => {
+          const pts = r.points || [];
+          let a = 0;
+          for (let i = 0; i < pts.length; i++) {
+            const p1 = pts[i], p2 = pts[(i + 1) % pts.length];
+            a += (p1.x * p2.y - p2.x * p1.y);
+          }
+          const area_m2 = Math.abs(a / 2) / 10000;
+          const fm = (catalog || []).find(m => m.id === r.floorMaterial);
+          const wm = (catalog || []).find(m => m.id === r.wallMaterial);
+          return {
+            name: r.name || "Stanza",
+            area_m2: Math.round(area_m2 * 10) / 10,
+            floor: fm?.name || "pavimento standard",
+            walls_color: r.paintColor || wm?.name || ""
+          };
+        });
+        const total_m2 = rooms.reduce((s, r) => s + (r.area_m2 || 0), 0);
+        body.project_summary = {
+          rooms,
+          total_m2: Math.round(total_m2 * 10) / 10,
+          num_rooms: rooms.length,
+          num_doors: (d.doors || []).length,
+          num_windows: (d.windows || []).length,
+          num_walls: (d.walls || []).length,
+        };
+      } catch (e) { /* summary opzionale */ }
       const { data } = await api.post("/render/3d", body);
       const dataUrl = `data:${data.mime_type || "image/png"};base64,${data.image_base64}`;
       setAiResult(dataUrl);
@@ -1683,6 +1713,69 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
         <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Larghezza (cm)</Label><Input type="number" value={obj.width} onChange={(e) => updateObj({ width: parseInt(e.target.value) || 80 })} className="rounded-sm h-9 mt-1.5 mono" /></div>
         <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Altezza (cm)</Label><Input type="number" value={obj.height} onChange={(e) => updateObj({ height: parseInt(e.target.value) || 210 })} className="rounded-sm h-9 mt-1.5 mono" /></div>
         {!isDoor && (<div><Label className="text-xs uppercase tracking-widest text-zinc-500">Parapetto (cm)</Label><Input type="number" value={obj.sillHeight || 90} onChange={(e) => updateObj({ sillHeight: parseInt(e.target.value) || 90 })} className="rounded-sm h-9 mt-1.5 mono" /></div>)}
+        {/* COLORE + MANIGLIA PORTA (richiesta utente) */}
+        {isDoor && (
+          <div className="space-y-3 border-t border-zinc-200 pt-3">
+            <div>
+              <Label className="text-xs uppercase tracking-widest text-zinc-500">Colore battente</Label>
+              <div className="grid grid-cols-4 gap-1.5 mt-1.5" data-testid="door-color-grid">
+                {[
+                  { v: "bianco", l: "Bianco", c: "#FAFAFA" },
+                  { v: "noce", l: "Noce", c: "#6B4423" },
+                  { v: "rovere", l: "Rovere", c: "#A87653" },
+                  { v: "wenge", l: "Wengé", c: "#2C1810" },
+                  { v: "grigio", l: "Grigio", c: "#94A3B8" },
+                  { v: "antracite", l: "Antracite", c: "#374151" },
+                  { v: "nero", l: "Nero", c: "#0F0F0F" },
+                  { v: "ral", l: "RAL custom", c: "#DC2626" },
+                ].map((c) => (
+                  <button
+                    key={c.v}
+                    onClick={() => updateObj({ doorColor: c.v })}
+                    className={`relative h-9 rounded border-2 ${(obj.doorColor || "bianco") === c.v ? "border-zinc-900 ring-2 ring-zinc-300" : "border-zinc-200"}`}
+                    style={{ background: c.c }}
+                    title={c.l}
+                    data-testid={`door-color-${c.v}`}
+                  >
+                    <span className="absolute bottom-0 left-0 right-0 text-[8px] bg-white/80 text-zinc-700 truncate">{c.l}</span>
+                  </button>
+                ))}
+              </div>
+              {(obj.doorColor === "ral") && (
+                <Input value={obj.doorColorRal || ""} onChange={(e) => updateObj({ doorColorRal: e.target.value })} placeholder="Es. RAL 7016 / hex #2C2C2C" className="rounded-sm h-8 mt-1.5 text-xs mono" data-testid="door-ral-input" />
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs uppercase tracking-widest text-zinc-500">Modello maniglia</Label>
+                <Select value={obj.handleModel || "classica"} onValueChange={(v) => updateObj({ handleModel: v })}>
+                  <SelectTrigger className="rounded-sm h-9 mt-1.5" data-testid="door-handle-model"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="classica">Classica</SelectItem>
+                    <SelectItem value="moderna">Moderna</SelectItem>
+                    <SelectItem value="minimal">Minimal</SelectItem>
+                    <SelectItem value="retro">Retrò</SelectItem>
+                    <SelectItem value="pomo">Pomo (porta blindata)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs uppercase tracking-widest text-zinc-500">Finitura maniglia</Label>
+                <Select value={obj.handleFinish || "cromato"} onValueChange={(v) => updateObj({ handleFinish: v })}>
+                  <SelectTrigger className="rounded-sm h-9 mt-1.5" data-testid="door-handle-finish"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cromato">Cromato lucido</SelectItem>
+                    <SelectItem value="satinato">Cromato satinato</SelectItem>
+                    <SelectItem value="nero">Nero opaco</SelectItem>
+                    <SelectItem value="ottone">Ottone</SelectItem>
+                    <SelectItem value="oro-rosa">Oro rosa</SelectItem>
+                    <SelectItem value="bianco">Bianco</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        )}
         {/* Numero ante + colore telaio + accessori per finestre */}
         {!isDoor && (
           <>
@@ -1719,6 +1812,34 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between"><Label className="text-xs">Tapparella</Label><Switch checked={!!obj.tapparella} onCheckedChange={(v) => updateObj({ tapparella: v })} data-testid="win-tapparella" /></div>
                 <div className="flex items-center justify-between"><Label className="text-xs">Zanzariera</Label><Switch checked={!!obj.zanzariera} onCheckedChange={(v) => updateObj({ zanzariera: v })} data-testid="win-zanzariera" /></div>
+              </div>
+            </div>
+            {/* MANIGLIA FINESTRA (richiesta utente: scelta modello + finitura) */}
+            <div className="grid grid-cols-2 gap-2 border-t border-zinc-200 pt-2">
+              <div>
+                <Label className="text-xs uppercase tracking-widest text-zinc-500">Maniglia</Label>
+                <Select value={obj.handleModel || "cremonese"} onValueChange={(v) => updateObj({ handleModel: v })}>
+                  <SelectTrigger className="rounded-sm h-9 mt-1.5" data-testid="win-handle-model"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cremonese">Cremonese classica</SelectItem>
+                    <SelectItem value="design">Design moderno</SelectItem>
+                    <SelectItem value="minimal">Minimal</SelectItem>
+                    <SelectItem value="chiave">Con chiave/sicurezza</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs uppercase tracking-widest text-zinc-500">Finitura</Label>
+                <Select value={obj.handleFinish || "allineato"} onValueChange={(v) => updateObj({ handleFinish: v })}>
+                  <SelectTrigger className="rounded-sm h-9 mt-1.5" data-testid="win-handle-finish"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="allineato">Stesso colore telaio</SelectItem>
+                    <SelectItem value="cromato">Cromato lucido</SelectItem>
+                    <SelectItem value="satinato">Cromato satinato</SelectItem>
+                    <SelectItem value="nero">Nero opaco</SelectItem>
+                    <SelectItem value="ottone">Ottone</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </>
@@ -1791,27 +1912,27 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
         <div className="bg-violet-50 border-2 border-violet-400 p-3 space-y-2">
           <Label className="text-xs uppercase tracking-widest text-violet-900 font-bold">📍 Su quale lato del muro?</Label>
           <div className="text-[11px] text-violet-800 leading-tight">
-            Se hai un muro che divide 2 stanze, scegli da quale stanza far entrare questo elemento.
-            <br />L'elemento verrà spostato visivamente di ~18cm sul lato scelto.
+            Scegli da quale stanza esce l'elemento. L'elemento verrà spostato di ~18cm sul lato scelto.
+            <br /><strong>Lato A</strong> = fuori stanza · <strong>Sul muro</strong> = centrato · <strong>Lato B</strong> = dentro stanza.
           </div>
           <div className="grid grid-cols-3 gap-1">
             <button
               onClick={() => updateObj({ wall_side: -1 })}
               className={`text-[11px] mono py-2 border-2 font-semibold ${sideVal === -1 ? "bg-violet-700 text-white border-violet-700 ring-2 ring-violet-300" : "bg-white text-violet-900 border-violet-300 hover:bg-violet-100"}`}
               data-testid={`${kind}-wall-side-a`}
-            >◀ Lato A</button>
+            >◀ Lato A<br /><span className="text-[9px] opacity-80">(esterno)</span></button>
             <button
               onClick={() => updateObj({ wall_side: 0 })}
               className={`text-[11px] mono py-2 border-2 font-semibold ${sideVal === 0 ? "bg-zinc-700 text-white border-zinc-700" : "bg-white text-zinc-700 border-zinc-300 hover:bg-zinc-100"}`}
               data-testid={`${kind}-wall-side-center`}
-            >• Sul muro</button>
+            >• Sul muro<br /><span className="text-[9px] opacity-80">(centro)</span></button>
             <button
               onClick={() => updateObj({ wall_side: 1 })}
               className={`text-[11px] mono py-2 border-2 font-semibold ${sideVal === 1 ? "bg-violet-700 text-white border-violet-700 ring-2 ring-violet-300" : "bg-white text-violet-900 border-violet-300 hover:bg-violet-100"}`}
               data-testid={`${kind}-wall-side-b`}
-            >Lato B ▶</button>
+            >Lato B ▶<br /><span className="text-[9px] opacity-80">(interno)</span></button>
           </div>
-          <div className="text-[10px] text-violet-700 mono pt-1">💡 Una freccia colorata sul canvas indica il lato. Se vedi A e ti serve B (o viceversa), basta cliccare l'altro bottone.</div>
+          <div className="text-[10px] text-violet-700 mono pt-1">💡 Lato B punta sempre verso l'INTERNO della stanza più vicina (verso il centro del poligono). Se non si sposta, controlla di aver disegnato i muri perimetrali della stanza.</div>
         </div>
         {/* Punto acqua composito: scegli quali tubazioni includere (F+C+S, sotto-insiemi) */}
         {kind === "plumbing" && (obj.type === "punto-completo" || obj.type === "acqua-completo") && (

@@ -5,10 +5,14 @@ const GRID = 10;
 const INITIAL_VIEW = { x: -300, y: -200, w: 2200, h: 1600 };
 
 // Helper: trova la normale unitaria del muro più vicino al punto (x, y).
-// Ritorna { nx, ny } dove (nx, ny) è perpendicolare al muro più vicino.
-// Usato per gli indicatori "Lato muro" sugli elementi impianto.
-function nearestWallNormal(walls, x, y) {
+// Considera SIA i muri espliciti SIA i segmenti del perimetro stanza.
+// Per i segmenti stanza, orienta la normale verso l'INTERNO della stanza (centroide):
+//   side = +1 → verso interno (Lato B = dentro stanza, default per impianti dentro casa)
+//   side = -1 → verso esterno (Lato A = fuori stanza)
+// Ritorna { nx, ny } perpendicolare al muro più vicino.
+function nearestWallNormal(walls, x, y, rooms = []) {
   let best = null;
+  // Muri espliciti
   for (const w of walls || []) {
     const dx = w.x2 - w.x1, dy = w.y2 - w.y1;
     const len2 = dx * dx + dy * dy || 1;
@@ -21,22 +25,49 @@ function nearestWallNormal(walls, x, y) {
       best = { dist2, nx: -dy / len, ny: dx / len };
     }
   }
+  // Segmenti dei perimetri stanza (importante per quick-room senza wall objects)
+  for (const r of rooms || []) {
+    const pts = r.points || [];
+    if (pts.length < 2) continue;
+    // Centroide stanza (per orientare la normale verso l'interno)
+    const cx = pts.reduce((a, p) => a + p.x, 0) / pts.length;
+    const cy = pts.reduce((a, p) => a + p.y, 0) / pts.length;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len2 = dx * dx + dy * dy || 1;
+      let t = ((x - a.x) * dx + (y - a.y) * dy) / len2;
+      t = Math.max(0, Math.min(1, t));
+      const px = a.x + t * dx, py = a.y + t * dy;
+      const dist2 = (x - px) * (x - px) + (y - py) * (y - py);
+      if (!best || dist2 < best.dist2) {
+        const len = Math.sqrt(len2);
+        let nx = -dy / len, ny = dx / len;
+        // Orienta la normale VERSO l'interno della stanza (verso il centroide del poligono)
+        const midx = (a.x + b.x) / 2, midy = (a.y + b.y) / 2;
+        const tox = cx - midx, toy = cy - midy;
+        if (nx * tox + ny * toy < 0) { nx = -nx; ny = -ny; }
+        best = { dist2, nx, ny };
+      }
+    }
+  }
   return best ? { nx: best.nx, ny: best.ny } : { nx: 0, ny: 1 };
 }
 
-// Calcola la posizione DI RENDER (con offset 15cm sul lato del muro) per un elemento con wall_side != 0.
+// Calcola la posizione DI RENDER (con offset 18cm sul lato del muro) per un elemento con wall_side != 0.
 // L'elemento resta logicamente alle coordinate (x, y) salvate in DB, ma in canvas viene reso spostato sul lato A o B del muro.
-function sidePosition(walls, x, y, side) {
+function sidePosition(walls, x, y, side, rooms = []) {
   if (!side) return { x, y };
-  const { nx, ny } = nearestWallNormal(walls, x, y);
+  const { nx, ny } = nearestWallNormal(walls, x, y, rooms);
   const OFFSET = 18; // cm di spostamento visivo sul lato del muro
   return { x: x + side * nx * OFFSET, y: y + side * ny * OFFSET };
 }
 
 // Disegna una "linguetta" che indica il lato del muro su cui è installato un elemento.
-// side: -1 lato A, 0 nessuna, 1 lato B (uguale e contraria a -1).
-function WallSideIndicator({ walls, x, y, side, color = "#7C3AED", rotation = 0 }) {
-  const { nx, ny } = nearestWallNormal(walls, x, y);
+// side: -1 lato A (esterno stanza), 0 nessuna, 1 lato B (interno stanza).
+function WallSideIndicator({ walls, x, y, side, color = "#7C3AED", rotation = 0, rooms = [] }) {
+  const { nx, ny } = nearestWallNormal(walls, x, y, rooms);
   const L = 24;
   // Compensa la rotazione del parent <g rotate(...)> ricalcolando la freccia in coordinate locali
   const rad = (-rotation * Math.PI) / 180;
@@ -1545,7 +1576,7 @@ export default function Canvas2D({
         {/* electrical */}
         {L.electrical && electrical.map((e) => {
           const isSel = selected?.kind === "electrical" && selected.id === e.id;
-          const pos = sidePosition(walls, e.x, e.y, e.wall_side || 0);
+          const pos = sidePosition(walls, e.x, e.y, e.wall_side || 0, rooms);
           return (
             <g key={e.id} transform={`translate(${pos.x},${pos.y}) rotate(${e.rotation || 0})`}
               onMouseDown={(ev) => {
@@ -1559,7 +1590,7 @@ export default function Canvas2D({
               style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
               data-testid={`elec-${e.id}`}
             >
-              <WallSideIndicator walls={walls} x={e.x} y={e.y} side={e.wall_side || 0} color={isSel ? "#2563EB" : "#7C3AED"} rotation={e.rotation || 0} />
+              <WallSideIndicator walls={walls} rooms={rooms} x={e.x} y={e.y} side={e.wall_side || 0} color={isSel ? "#2563EB" : "#7C3AED"} rotation={e.rotation || 0} />
               {e.floor && (
                 <g pointerEvents="none">
                   <circle cx={0} cy={0} r={18} fill="none" stroke="#D97706" strokeWidth="1.5" strokeDasharray="3,2" />
@@ -1574,7 +1605,7 @@ export default function Canvas2D({
         {/* plumbing */}
         {L.plumbing && plumbing.map((p) => {
           const isSel = selected?.kind === "plumbing" && selected.id === p.id;
-          const pos = sidePosition(walls, p.x, p.y, p.wall_side || 0);
+          const pos = sidePosition(walls, p.x, p.y, p.wall_side || 0, rooms);
           return (
             <g key={p.id} transform={`translate(${pos.x},${pos.y})`}
               onMouseDown={(ev) => {
@@ -1588,7 +1619,7 @@ export default function Canvas2D({
               style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
               data-testid={`plumb-${p.id}`}
             >
-              <WallSideIndicator walls={walls} x={p.x} y={p.y} side={p.wall_side || 0} color={isSel ? "#2563EB" : "#0EA5E9"} />
+              <WallSideIndicator walls={walls} rooms={rooms} x={p.x} y={p.y} side={p.wall_side || 0} color={isSel ? "#2563EB" : "#0EA5E9"} />
               {p.floor && (
                 <g pointerEvents="none">
                   <circle cx={0} cy={0} r={18} fill="none" stroke="#D97706" strokeWidth="1.5" strokeDasharray="3,2" />
@@ -1603,7 +1634,7 @@ export default function Canvas2D({
         {/* gas */}
         {L.gas && gas.map((g) => {
           const isSel = selected?.kind === "gas" && selected.id === g.id;
-          const pos = sidePosition(walls, g.x, g.y, g.wall_side || 0);
+          const pos = sidePosition(walls, g.x, g.y, g.wall_side || 0, rooms);
           return (
             <g key={g.id} transform={`translate(${pos.x},${pos.y})`}
               onMouseDown={(ev) => {
@@ -1617,7 +1648,7 @@ export default function Canvas2D({
               style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
               data-testid={`gas-${g.id}`}
             >
-              <WallSideIndicator walls={walls} x={g.x} y={g.y} side={g.wall_side || 0} color={isSel ? "#2563EB" : "#EAB308"} />
+              <WallSideIndicator walls={walls} rooms={rooms} x={g.x} y={g.y} side={g.wall_side || 0} color={isSel ? "#2563EB" : "#EAB308"} />
               <GasSymbol g={g} isSel={isSel} />
             </g>
           );
@@ -1626,7 +1657,7 @@ export default function Canvas2D({
         {/* hvac */}
         {L.hvac && hvac.map((h) => {
           const isSel = selected?.kind === "hvac" && selected.id === h.id;
-          const pos = sidePosition(walls, h.x, h.y, h.wall_side || 0);
+          const pos = sidePosition(walls, h.x, h.y, h.wall_side || 0, rooms);
           return (
             <g key={h.id} transform={`translate(${pos.x},${pos.y}) rotate(${h.rotation || 0})`}
               onMouseDown={(ev) => {
@@ -1640,7 +1671,7 @@ export default function Canvas2D({
               style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
               data-testid={`hvac-${h.id}`}
             >
-              <WallSideIndicator walls={walls} x={h.x} y={h.y} side={h.wall_side || 0} color={isSel ? "#2563EB" : "#0F766E"} rotation={h.rotation || 0} />
+              <WallSideIndicator walls={walls} rooms={rooms} x={h.x} y={h.y} side={h.wall_side || 0} color={isSel ? "#2563EB" : "#0F766E"} rotation={h.rotation || 0} />
               <HvacSymbol h={h} isSel={isSel} />
             </g>
           );

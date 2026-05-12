@@ -43,6 +43,7 @@ import AdminUtenti from "@/pages/admin/AdminUtenti";
 import AdminClienti from "@/pages/admin/AdminClienti";
 import AdminDatiAzienda from "@/pages/admin/AdminDatiAzienda";
 import AdminImpostazioni from "@/pages/admin/AdminImpostazioni";
+import AdminDocumentiTemplate from "@/pages/admin/AdminDocumentiTemplate";
 import DashboardSubappaltatori from "@/pages/DashboardSubappaltatori";
 import SubappaltatoreDettaglio from "@/pages/SubappaltatoreDettaglio";
 import GestoreCantieri from "@/pages/GestoreCantieri";
@@ -126,6 +127,7 @@ function App() {
             <Route path="/adminclienti" element={P(AdminClienti)} />
             <Route path="/admindatiazienda" element={P(AdminDatiAzienda)} />
             <Route path="/adminimpostazioni" element={P(AdminImpostazioni)} />
+            <Route path="/admindocumentitemplate" element={P(AdminDocumentiTemplate)} />
             {/* Round 10: Cantieri / Subappaltatori / Portale Cliente */}
             <Route path="/dashboard-subappaltatori" element={P(DashboardSubappaltatori)} />
             <Route path="/subappaltatori/:id" element={P(SubappaltatoreDettaglio)} />

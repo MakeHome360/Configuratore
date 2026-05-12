@@ -1,5 +1,44 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 42 — Mag 2026 — Chiusura lista 10 punti utente)
+### 📁 Documenti Aziendali Template (NUOVO)
+- Backend: 4 endpoint `/api/documenti-template/*` (admin POST/DELETE, all-roles GET). File su `/app/backend/uploads/tpl-{uuid}.{ext}`, collection `documenti_template`. Tipi predefiniti: contratto_cliente, contratto_subappalto, capitolato, privacy_gdpr, checklist_sopralluogo, verbale_consegna, sal_template, altro.
+- Frontend: `AdminDocumentiTemplate.jsx` con upload (drag&drop file), raggruppamento per tipo, download, delete (admin only). Sidebar: nuova voce **Documenti Aziendali** (FileText icon) visibile ad admin/venditore/gestore. Per venditori/PM: solo lettura + download.
+- Use case: admin carica una volta i contratti/capitolati vergini, venditori e PM li scaricano per farli firmare al volo a cliente/sub.
+
+### 🎯 Wall_side positioning — FIX DEFINITIVO (ricorrente da 3 round)
+- **Causa root**: `nearestWallNormal` (2D) e `sideOffset` (3D) consideravano SOLO `walls` espliciti. Le **quick-room** (Cucina/Bagno/Camera) sono poligoni `rooms.points` senza wall objects → la funzione falliva e tornava normale di default `(0,1)` → l'elemento non si spostava o si spostava nella direzione sbagliata.
+- **Fix**: entrambe le funzioni ora iterano ANCHE i segmenti del perimetro stanza. Per ogni segmento stanza, la normale viene orientata **verso il centroide del poligono** = verso l'interno della stanza. Convenzione finale:
+  - **Lato A (-1)** = esterno stanza (fuori dal poligono)
+  - **Sul muro (0)** = centrato
+  - **Lato B (+1)** = interno stanza (verso il centro del poligono)
+- Pannello proprietà aggiornato con sotto-label "(esterno/centro/interno)" + tip "Lato B punta sempre verso l'INTERNO della stanza più vicina".
+- Riguarda elementi: electrical, plumbing, gas, hvac (sia 2D che 3D).
+
+### 🎨 Porte / Finestre — Colore + Maniglie
+- **Porta**: nuova sezione pannello proprietà con:
+  - 8 colori battente (Bianco/Noce/Rovere/Wengé/Grigio/Antracite/Nero/RAL custom con input hex)
+  - 5 modelli maniglia (Classica/Moderna/Minimal/Retrò/Pomo per blindate)
+  - 6 finiture maniglia (Cromato/Satinato/Nero opaco/Ottone/Oro rosa/Bianco)
+- **Finestra**: oltre al `frameColor` già esistente, aggiunti:
+  - 4 modelli maniglia (Cremonese classica/Design moderno/Minimal/Con chiave)
+  - 5 finiture (Stesso colore telaio/Cromato/Satinato/Nero opaco/Ottone)
+- **3D**: `Viewer3D.jsx` ora applica `doorColor` (con mappa 8 colori + fallback RAL hex) e `handleFinish` su maniglie (cromato/satinato/nero/ottone/oro-rosa/bianco). Pomo per porte blindate (sfera 6cm) vs maniglia (cilindro).
+- Tutti i nuovi campi salvano in `data-testid` standardizzati: `door-color-*`, `door-handle-model`, `door-handle-finish`, `win-handle-model`, `win-handle-finish`.
+
+### 🤖 Rendering AI — fedeltà alla pianta 2D
+- **Prompt riscritto**: 4 STRICT INSTRUCTIONS che dicono al modello di trattare la pianta 2D come **TECHNICAL DRAWING** da rispettare (non come "inspiration"). Preserve wall positions, room shapes, room counts, opening locations. NO add/remove rooms o muri.
+- **`project_summary` strutturato**: frontend ora invia oltre al PNG anche un riassunto JSON con elenco stanze (nome + area m² + materiale pavimento + colore pareti) + totali (m² totali, numero porte/finestre/muri). Il backend lo inserisce nel prompt come "FLOORPLAN STRUCTURE (use these EXACT rooms with EXACT proportions)" → l'AI ha contesto preciso.
+- **System message** rinforzato: "Treat the 2D image as a TECHNICAL DRAWING that must be respected in every wall position, room shape and opening location. Do not invent rooms or walls."
+
+### 📊 Errore caricamento Nuovo Preventivo
+- Toast generico `"Errore caricamento"` sostituito con messaggio dettagliato che mostra il vero error code (`response.data.detail` / `statusText` / `message`) + console.error per debug. Permette di capire al volo se è la rete, un endpoint giù, o un dato corrotto.
+
+### 📊 Resoconto costi commessa
+- **Verificato**: `routes_commessa_workflow.py:516,528` usa già `prezzo_acquisto` da `voci_backoffice` per il `costo_previsionale` e `costo_confermato`. Il backend è corretto. Se la commessa non mostra numeri:
+  - Apri tab **Computo Metrico** → se vuoto, clicca "Rigenera" (popola dal preventivo).
+  - Verifica che le voci del preventivo abbiano `voce_id` matchabili nel DB voci_backoffice.
+
 ## Recent Updates (Round 41 — Mag 2026 — Bug critici CAD + UX Workflow)
 ### 🔴 BUG CRITICO CAD risolto (P0): aggiungere muro faceva DIMINUIRE preventivo
 - **Causa**: `applyWallAddWithSplit` in `Canvas2D.jsx:1905` divideva la stanza in 2 nuove con ID nuovi MA non migrava `tiling`, `demolitions`, `controsoffitti` che riferivano il vecchio roomId → diventavano orfani e il pavimento spariva dal preventivo. L'utente vedeva totale calare da €8.449 a €4.743 dopo aver disegnato un muro divisorio.

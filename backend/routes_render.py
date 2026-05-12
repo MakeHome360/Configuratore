@@ -23,29 +23,57 @@ def build_render_router(db, get_current_user):
         prompt: Optional[str] = None
         style: Optional[str] = "isometric_dollhouse"  # isometric_dollhouse | interior_room | exterior
         project_id: Optional[str] = None
+        project_summary: Optional[dict] = None  # {rooms: [{name, area_m2, floor, walls_color}], total_m2, ...}
 
-    DEFAULT_PROMPTS = {
-        "isometric_dollhouse": (
-            "Convert this 2D architectural floorplan into a photorealistic isometric 3D dollhouse render, "
-            "as if cut at ceiling level showing all rooms from above-angle 30°. "
-            "Apply: warm wood floors (parquet) in living areas, ceramic tiles in kitchen and bath, "
-            "modern Italian-design furniture (sofa, dining table, beds with linens, kitchen cabinets, bathroom fixtures), "
-            "soft warm interior lighting from floor lamps and ceiling fixtures, "
-            "wood deck terrace, white interior walls with subtle shadows, beige exterior walls, "
-            "studio-quality lighting on white background, sharp focus, architectural visualization style, "
-            "no people, no text labels."
-        ),
-        "interior_room": (
-            "Convert this 2D floorplan room into a photorealistic interior 3D rendering at human eye level. "
-            "Modern Italian interior design, warm lighting, wood floor, white walls, designer furniture, "
-            "natural light from windows, photorealistic, 4k quality."
-        ),
-        "exterior": (
-            "Convert this 2D floorplan into a photorealistic exterior 3D rendering of the building. "
-            "Modern architecture, beige stucco walls, large windows, wood deck terrace, garden with grass, "
-            "afternoon sunlight, blue sky, photorealistic architectural visualization."
-        ),
-    }
+    def _build_floorplan_prompt(style: str, summary: dict, custom: Optional[str]) -> str:
+        rooms_desc = ""
+        if summary and isinstance(summary.get("rooms"), list):
+            lines = []
+            for r in summary["rooms"][:30]:  # limita a 30 stanze max per non saturare il prompt
+                nm = r.get("name") or "Room"
+                area = r.get("area_m2")
+                floor = r.get("floor") or "default floor"
+                walls = r.get("walls_color") or ""
+                bits = [f'"{nm}"']
+                if area: bits.append(f"~{area:.1f} m²")
+                bits.append(f"floor: {floor}")
+                if walls: bits.append(f"walls: {walls}")
+                lines.append("- " + " · ".join(bits))
+            if lines:
+                rooms_desc = "\n\nFLOORPLAN STRUCTURE (use these EXACT rooms with EXACT proportions):\n" + "\n".join(lines)
+        total = (summary or {}).get("total_m2")
+        total_line = f"\nTotal floor area: {total:.1f} m².\n" if total else ""
+
+        base_strict = (
+            "STRICT INSTRUCTIONS — your output MUST faithfully reproduce the 2D floorplan provided as reference image:\n"
+            "1. PRESERVE the exact wall positions, room shapes, room counts and proportions of the 2D plan.\n"
+            "2. PRESERVE the exact position of doors and windows on each wall.\n"
+            "3. DO NOT add or remove rooms. DO NOT add or remove walls. DO NOT change wall orientations.\n"
+            "4. Use the 2D image as the architectural ground-truth — it is NOT inspiration, it is a TECHNICAL DRAWING to follow precisely.\n"
+        )
+
+        style_block = {
+            "isometric_dollhouse": (
+                "Produce a PHOTOREALISTIC isometric 3D dollhouse render of the SAME floorplan from above-angle ~30°, "
+                "as if the ceiling were cut to reveal all rooms. White background, studio lighting. "
+                "Apply realistic finishes consistent with the room types: kitchen → ceramic tiles, bathroom → tiles + sanitary fixtures, "
+                "bedrooms → wood/parquet + bed, living → parquet + sofa + TV. Furniture must be Italian modern design, properly scaled. "
+                "No text labels, no people, no captions. Sharp focus, architectural visualization, 4K quality."
+            ),
+            "interior_room": (
+                "Produce a PHOTOREALISTIC interior 3D rendering at human eye level of the LARGEST room in the floorplan, "
+                "keeping its real wall positions, windows and door openings as shown in the 2D plan. "
+                "Modern Italian interior design, warm natural lighting, photorealistic 4K quality. No text labels."
+            ),
+            "exterior": (
+                "Produce a PHOTOREALISTIC 3D exterior rendering of the building described by the floorplan footprint. "
+                "Preserve the perimeter shape exactly. Modern architecture, beige walls, large windows, wood deck. "
+                "Afternoon sunlight, photorealistic. No text labels, no people."
+            ),
+        }.get(style, "")
+
+        custom_line = f"\nUSER EXTRA INSTRUCTIONS: {custom}\n" if custom else ""
+        return base_strict + total_line + rooms_desc + "\n\n" + style_block + custom_line
 
     @r.post("/render/3d")
     async def render_3d(body: RenderIn, user=Depends(get_current_user)):
@@ -54,7 +82,7 @@ def build_render_router(db, get_current_user):
         if not api_key:
             raise HTTPException(500, "EMERGENT_LLM_KEY non configurato sul server")
 
-        prompt = body.prompt or DEFAULT_PROMPTS.get(body.style, DEFAULT_PROMPTS["isometric_dollhouse"])
+        prompt = _build_floorplan_prompt(body.style or "isometric_dollhouse", body.project_summary or {}, body.prompt)
         # Pulisci eventuale prefisso data URI dall'input
         img_b64 = body.image_base64
         if img_b64.startswith("data:"):
@@ -63,7 +91,7 @@ def build_render_router(db, get_current_user):
         try:
             from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
             session_id = f"render-{uuid.uuid4().hex[:10]}"
-            chat = LlmChat(api_key=api_key, session_id=session_id, system_message="You are an expert architectural visualizer. Generate ONE photorealistic 3D rendering image based on the user's 2D floorplan reference.")
+            chat = LlmChat(api_key=api_key, session_id=session_id, system_message="You are an expert architectural visualizer. Your sole task is to produce ONE photorealistic 3D rendering that FAITHFULLY reproduces the provided 2D floorplan reference. Treat the 2D image as a TECHNICAL DRAWING that must be respected in every wall position, room shape and opening location. Do not invent rooms or walls that are not in the plan.")
             chat.with_model("gemini", "gemini-3.1-flash-image-preview").with_params(modalities=["image", "text"])
             msg = UserMessage(text=prompt, file_contents=[ImageContent(img_b64)])
             text, images = await chat.send_message_multimodal_response(msg)

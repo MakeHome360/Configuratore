@@ -108,7 +108,10 @@ export default function PreventivoPacchetto() {
             }
           } catch (e) { /* prefill not available */ }
         }
-      } catch { toast.error("Errore caricamento"); }
+      } catch (e) {
+        console.error("[PreventivoPacchetto load]", e);
+        toast.error("Errore caricamento: " + (e?.response?.data?.detail || e?.response?.statusText || e?.message || "verifica la connessione"));
+      }
       setLoading(false);
     })();
   }, [id, isNew]);

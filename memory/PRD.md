@@ -1,5 +1,25 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 45 — Mag 2026 — Import planimetria: AI indipendente + piastrelle W×L)
+### 🎯 Fix UX import planimetria (feedback utente)
+**1. AI non condizionata dalle dimensioni utente**
+- Prima: i campi `known_area_m2 / known_width_cm / known_height_cm` venivano inseriti nel **system prompt** come "Total floor area MUST be approximately X m²" → l'AI veniva guidata e tendeva a produrre già numeri vicini al target.
+- Adesso: queste dimensioni sono usate ESCLUSIVAMENTE per il **post-processing matematico** (rescale finale). L'AI lavora autonomamente, poi il backend applica il fattore di scala alla pianta restituita.
+- Risultato: AI libera + utente che corregge a posteriori. Test verificato: scenario AI-libera → `scale_applied: None`, scenario con area=70 → `scale_applied: {factor: 1.597}` applicato senza guidare l'AI nel prompt.
+
+**2. Porta standard non più obbligatoria**
+- Prima: `reference_door_cm` aveva default 80cm sempre inserito nel prompt.
+- Adesso: campo VUOTO di default, inserito nel prompt SOLO se l'utente lo specifica. Placeholder: "es. 80 (lascia vuoto se non sai)".
+
+**3. Piastrella con Larghezza × Lunghezza**
+- Prima: campo singolo (assumeva quadrata).
+- Adesso: 2 input separati `reference_tile_w_cm` × `reference_tile_l_cm` (es. 30×60 rettangolari, 20×120 listoni). Prompt si adatta: se w==l usa "square", altrimenti "WxL cm".
+
+**4. UI modal rinnovata**
+- Sezione 📏 **amber "Dimensioni reali"** (post-processing only) — tutti opzionali, con label esplicito "L'AI non viene influenzata".
+- Sezione 🔍 **violet "Riferimenti visivi nelle foto"** (anchor visivi nel prompt) — porta + piastrella W×L.
+- Sezione 📸 **blue "Foto aggiuntive"** invariata.
+
 ## Recent Updates (Round 44 — Mag 2026 — Import planimetria con dimensioni reali + foto multiple)
 ### 🎯 Calibrazione dimensionale planimetria (problema misure non realistiche)
 **Causa**: l'AI Gemini stimava le dimensioni in cm a sentimento dalle proporzioni dell'immagine. Per locali fotografati o digitalizzati in scala arbitraria le dimensioni risultanti non corrispondevano alla metratura reale del cliente.

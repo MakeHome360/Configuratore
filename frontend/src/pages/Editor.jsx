@@ -527,7 +527,8 @@ export default function Editor() {
         if (wM > 0) payload.known_width_cm = Math.round(wM * 100);
         if (hM > 0) payload.known_height_cm = Math.round(hM * 100);
         if (opts.refDoor && parseFloat(opts.refDoor) > 0) payload.reference_door_cm = parseFloat(opts.refDoor);
-        if (opts.refTile && parseFloat(opts.refTile) > 0) payload.reference_tile_cm = parseFloat(opts.refTile);
+        if (opts.refTileW && parseFloat(opts.refTileW) > 0) payload.reference_tile_w_cm = parseFloat(opts.refTileW);
+        if (opts.refTileL && parseFloat(opts.refTileL) > 0) payload.reference_tile_l_cm = parseFloat(opts.refTileL);
         // Foto extra: convertite a base64
         if (Array.isArray(opts.extraFiles) && opts.extraFiles.length) {
           const extras = [];
@@ -2640,8 +2641,9 @@ function FloorplanImportModal({ open, setOpen, file, setFile, loading, onImport 
   const [knownArea, setKnownArea] = useState("");
   const [knownWidth, setKnownWidth] = useState("");
   const [knownDepth, setKnownDepth] = useState("");
-  const [refDoor, setRefDoor] = useState("80");
-  const [refTile, setRefTile] = useState("");
+  const [refDoor, setRefDoor] = useState("");
+  const [refTileW, setRefTileW] = useState("");
+  const [refTileL, setRefTileL] = useState("");
   const [extraFiles, setExtraFiles] = useState([]);
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setOpen(false)} data-testid="floorplan-modal">
@@ -2655,33 +2657,44 @@ function FloorplanImportModal({ open, setOpen, file, setFile, loading, onImport 
           <input type="file" accept="image/*,.pdf,application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="block w-full text-sm" data-testid="floorplan-file-input" />
           {file && <div className="text-xs mono text-zinc-500">File: {file.name} ({Math.round(file.size / 1024)} KB)</div>}
 
-          {/* Dimensioni note dell'utente — l'AI scalerà la pianta per matcharle */}
+          {/* Dimensioni note dell'utente — usate SOLO per rescale finale, NON nel prompt AI */}
           <div className="bg-amber-50 border border-amber-200 rounded p-3 space-y-2">
-            <div className="text-xs font-semibold text-amber-900 uppercase tracking-wide">📏 Dimensioni reali (opzionali, ma consigliato)</div>
-            <div className="text-[11px] text-amber-800">Inserisci la metratura nota o le misure d'ingombro: la pianta importata verrà riscalata per matchare ESATTAMENTE questi valori.</div>
+            <div className="text-xs font-semibold text-amber-900 uppercase tracking-wide">📏 Dimensioni reali (tutte opzionali)</div>
+            <div className="text-[11px] text-amber-800">L'AI stima autonomamente le dimensioni. Se compili questi campi, la pianta importata verrà <strong>riscalata DOPO</strong> per matchare i tuoi valori (l'AI non viene influenzata).</div>
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <Label className="text-[10px] text-amber-900">Metratura (m²)</Label>
                 <Input type="number" min={0} step="0.1" value={knownArea} onChange={(e) => setKnownArea(e.target.value)} placeholder="es. 85" className="h-8 text-xs mono" data-testid="floorplan-known-area" />
               </div>
               <div>
-                <Label className="text-[10px] text-amber-900">Larghezza (m)</Label>
+                <Label className="text-[10px] text-amber-900">Larghezza tot (m)</Label>
                 <Input type="number" min={0} step="0.1" value={knownWidth} onChange={(e) => setKnownWidth(e.target.value)} placeholder="es. 10" className="h-8 text-xs mono" data-testid="floorplan-known-width" />
               </div>
               <div>
-                <Label className="text-[10px] text-amber-900">Profondità (m)</Label>
+                <Label className="text-[10px] text-amber-900">Profondità tot (m)</Label>
                 <Input type="number" min={0} step="0.1" value={knownDepth} onChange={(e) => setKnownDepth(e.target.value)} placeholder="es. 8.5" className="h-8 text-xs mono" data-testid="floorplan-known-depth" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-amber-200">
-              <div>
-                <Label className="text-[10px] text-amber-900">Larghezza porta std (cm)</Label>
-                <Input type="number" min={60} max={120} value={refDoor} onChange={(e) => setRefDoor(e.target.value)} placeholder="80" className="h-8 text-xs mono" data-testid="floorplan-ref-door" />
+            <div className="text-[10px] text-amber-700 italic pt-1 border-t border-amber-200">Priorità: se compili metratura, il resto è ignorato. Altrimenti vengono usate larghezza×profondità.</div>
+          </div>
+
+          {/* Riferimenti visivi — INSERITI nel prompt AI come anchor per leggere le foto */}
+          <div className="bg-violet-50 border border-violet-200 rounded p-3 space-y-2">
+            <div className="text-xs font-semibold text-violet-900 uppercase tracking-wide">🔍 Riferimenti visivi nelle foto (opzionali)</div>
+            <div className="text-[11px] text-violet-800">Solo se carichi foto del locale e vuoi che l'AI usi questi elementi come anchor di scala.</div>
+            <div>
+              <Label className="text-[10px] text-violet-900">Larghezza porta visibile (cm)</Label>
+              <Input type="number" min={60} max={120} value={refDoor} onChange={(e) => setRefDoor(e.target.value)} placeholder="es. 80 (lascia vuoto se non sai)" className="h-8 text-xs mono" data-testid="floorplan-ref-door" />
+            </div>
+            <div>
+              <Label className="text-[10px] text-violet-900">Piastrella pavimento (cm)</Label>
+              <div className="flex items-center gap-1">
+                <Input type="number" min={5} max={200} value={refTileW} onChange={(e) => setRefTileW(e.target.value)} placeholder="larghezza" className="h-8 text-xs mono" data-testid="floorplan-ref-tile-w" />
+                <span className="text-violet-700 text-sm">×</span>
+                <Input type="number" min={5} max={200} value={refTileL} onChange={(e) => setRefTileL(e.target.value)} placeholder="lunghezza" className="h-8 text-xs mono" data-testid="floorplan-ref-tile-l" />
+                <span className="text-violet-700 text-[10px]">cm</span>
               </div>
-              <div>
-                <Label className="text-[10px] text-amber-900">Piastrella pavimento (cm)</Label>
-                <Input type="number" min={10} max={120} value={refTile} onChange={(e) => setRefTile(e.target.value)} placeholder="es. 60" className="h-8 text-xs mono" data-testid="floorplan-ref-tile" />
-              </div>
+              <div className="text-[9px] text-violet-700 italic mt-1">Es. 60×60 quadrate · 30×60 rettangolari · 20×120 listoni</div>
             </div>
           </div>
 
@@ -2707,7 +2720,7 @@ function FloorplanImportModal({ open, setOpen, file, setFile, loading, onImport 
             )}
           </div>
 
-          <Button onClick={() => onImport({ knownArea, knownWidth, knownDepth, refDoor, refTile, extraFiles })} disabled={!file || loading} className="rounded-sm w-full h-10 bg-zinc-900 hover:bg-zinc-800" data-testid="floorplan-import-btn">{loading ? "Elaborazione AI in corso…" : "Importa con AI"}</Button>
+          <Button onClick={() => onImport({ knownArea, knownWidth, knownDepth, refDoor, refTileW, refTileL, extraFiles })} disabled={!file || loading} className="rounded-sm w-full h-10 bg-zinc-900 hover:bg-zinc-800" data-testid="floorplan-import-btn">{loading ? "Elaborazione AI in corso…" : "Importa con AI"}</Button>
           <div className="text-xs text-zinc-400">⚠️ Il progetto attuale verrà sostituito dai dati estratti dall'immagine. Salva prima se serve.</div>
         </div>
       </div>

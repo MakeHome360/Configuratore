@@ -801,38 +801,39 @@ async def ai_floorplan_import(body: dict, user: Dict[str, Any] = Depends(get_cur
     session_id = f"floorplan-{user['id']}-{uuid.uuid4().hex[:8]}"
 
     # Riferimenti dimensionali forniti dall'utente per calibrare
-    known_area_m2 = body.get("known_area_m2")  # m² totali noti
-    known_width_cm = body.get("known_width_cm")  # larghezza totale nota in cm
-    known_height_cm = body.get("known_height_cm")  # profondità totale nota in cm
-    reference_door_cm = body.get("reference_door_cm") or 80  # porta standard = 80 cm
-    reference_tile_cm = body.get("reference_tile_cm")  # piastrella di riferimento (se presente nelle foto)
-    extra_images_b64 = body.get("extra_images") or []  # lista di foto del locale (max 5)
+    # IMPORTANTE: known_area_m2 / known_width_cm / known_height_cm sono usati SOLO per il post-processing
+    # (rescale finale a misure reali), NON vengono inseriti nel prompt sistema così che l'AI
+    # lavori autonomamente e non sia influenzata dai valori dichiarati dall'utente.
+    known_area_m2 = body.get("known_area_m2")
+    known_width_cm = body.get("known_width_cm")
+    known_height_cm = body.get("known_height_cm")
+    # Reference visivi: vengono inseriti nel prompt SOLO come anchor visivi (porta std, piastrella WxL)
+    reference_door_cm = body.get("reference_door_cm")  # opzionale (NON default)
+    reference_tile_w_cm = body.get("reference_tile_w_cm")  # piastrella: lato corto
+    reference_tile_l_cm = body.get("reference_tile_l_cm")  # piastrella: lato lungo
+    extra_images_b64 = body.get("extra_images") or []
     if not isinstance(extra_images_b64, list):
         extra_images_b64 = []
-    # Pulisci data URL e limita a max 5 foto di riferimento per non saturare prompt
     cleaned_extras = []
     for ex in extra_images_b64[:5]:
         if not isinstance(ex, str) or not ex:
             continue
         if "," in ex:
             ex = ex.split(",", 1)[1]
-        if len(ex) > 50:  # sanity
+        if len(ex) > 50:
             cleaned_extras.append(ex)
 
-    # Costruisci sistema/prompt dinamico con i riferimenti
+    # Prompt sistema — include SOLO anchor VISIVI dalle foto (non le dimensioni dichiarate)
     refs_lines = []
-    if known_area_m2:
-        refs_lines.append(f"- Total floor area MUST be approximately {float(known_area_m2):.1f} m² (user-confirmed).")
-    if known_width_cm:
-        refs_lines.append(f"- Overall building width MUST be approximately {float(known_width_cm):.0f} cm.")
-    if known_height_cm:
-        refs_lines.append(f"- Overall building depth MUST be approximately {float(known_height_cm):.0f} cm.")
-    refs_lines.append(f"- Standard interior door width = {float(reference_door_cm):.0f} cm (use as scale anchor if visible).")
-    if reference_tile_cm:
-        refs_lines.append(f"- Floor tiles visible in photos are {float(reference_tile_cm):.0f}×{float(reference_tile_cm):.0f} cm (count them to derive room size).")
+    if reference_door_cm:
+        refs_lines.append(f"- Standard interior door width = {float(reference_door_cm):.0f} cm (use as visual scale anchor if visible in photos).")
+    if reference_tile_w_cm and reference_tile_l_cm:
+        refs_lines.append(f"- Floor tiles visible in photos are {float(reference_tile_w_cm):.0f}×{float(reference_tile_l_cm):.0f} cm (count them to derive room size).")
+    elif reference_tile_w_cm:
+        refs_lines.append(f"- Floor tiles visible in photos are square {float(reference_tile_w_cm):.0f} cm side (count them to derive room size).")
     if cleaned_extras:
         refs_lines.append(f"- {len(cleaned_extras)} ADDITIONAL PHOTOS of the actual rooms are attached. Use them to calibrate proportions: count visible doors/windows, count floor tiles, identify furniture (standard bed = 160×200cm, sofa = 200×90cm, toilet = 40×60cm, refrigerator = 60×60cm) and cross-check against the 2D plan.")
-    refs_block = ("\n\nDIMENSIONAL REFERENCES TO HONOR:\n" + "\n".join(refs_lines)) if refs_lines else ""
+    refs_block = ("\n\nVISUAL CALIBRATION ANCHORS (only what's directly observable):\n" + "\n".join(refs_lines)) if refs_lines else ""
 
     system_msg = (
         "You are a CAD assistant that converts floorplan images into structured JSON.\n"
@@ -854,9 +855,9 @@ async def ai_floorplan_import(body: dict, user: Dict[str, Any] = Depends(get_cur
         # Costruisci il prompt utente. Se ci sono foto extra, le includiamo nel multimodal payload.
         user_text = (
             "Analizza la PIANTA 2D (primo allegato) e ritorna il JSON strutturato delle stanze in cm. "
-            "Se sono presenti FOTO AGGIUNTIVE del locale, usale per CALIBRARE le proporzioni reali contando "
-            "porte standard (80cm), piastrelle, mobili. La metratura totale e le dimensioni note (se specificate "
-            "nel system message) DEVONO essere rispettate scalando opportunamente la pianta. "
+            "Stima autonomamente le dimensioni reali in centimetri basandoti sulle proporzioni visibili. "
+            "Se sono presenti FOTO AGGIUNTIVE del locale, usale per calibrare meglio le proporzioni reali "
+            "contando elementi visibili (porte, piastrelle, mobili). "
             "Non inventare stanze non visibili nella pianta 2D."
         )
         attachments = [ImageContent(img_b64)] + [ImageContent(x) for x in cleaned_extras]

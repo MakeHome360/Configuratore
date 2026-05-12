@@ -1161,11 +1161,16 @@ const FASE_COLORS = ["#0F766E", "#2563EB", "#9333EA", "#F59E0B", "#DC2626", "#0E
 function VociAcquistiTab({ wf, cid, reload }) {
   const c = wf.commessa || {};
   const [items, setItems] = useState(c.voci_acquisti || []);
+  const [voci, setVoci] = useState([]);
+  useEffect(() => {
+    api.get("/voci-backoffice").then(r => setVoci(r.data || [])).catch(() => {});
+  }, []);
   const tot = useMemo(() => items.reduce((s, v) => ({
     prev: s.prev + (parseFloat(v.preventivato) || 0),
     eff: s.eff + (parseFloat(v.effettivo) || 0),
     pag: s.pag + ((v.pagato && (parseFloat(v.effettivo) || 0)) || 0),
-  }), { prev: 0, eff: 0, pag: 0 }), [items]);
+    stima: s.stima + (parseFloat(v.stima_backoffice) || 0),
+  }), { prev: 0, eff: 0, pag: 0, stima: 0 }), [items]);
 
   const save = async () => {
     try {
@@ -1175,8 +1180,22 @@ function VociAcquistiTab({ wf, cid, reload }) {
     } catch (e) { toast.error("Errore: " + (e?.response?.data?.detail || e.message)); }
   };
 
-  const add = () => setItems([...items, { voce: "", subappaltatore: "", preventivato: 0, effettivo: 0, pagato: false, note: "" }]);
+  const add = () => setItems([...items, { voce: "", voce_id: "", subappaltatore: "", qty: 1, stima_backoffice: 0, preventivato: 0, effettivo: 0, pagato: false, note: "" }]);
   const upd = (i, k, v) => setItems(items.map((x, j) => j === i ? { ...x, [k]: v } : x));
+  const linkVoce = (i, voceId) => {
+    const voce = voci.find(v => v.id === voceId);
+    if (!voce) return upd(i, "voce_id", "");
+    const qty = parseFloat(items[i].qty) || 1;
+    const stima = (voce.prezzo_acquisto || 0) * qty;
+    setItems(items.map((x, j) => j === i ? { ...x, voce_id: voce.id, voce: voce.name, stima_backoffice: stima } : x));
+  };
+  const updQty = (i, q) => {
+    const qty = parseFloat(q) || 0;
+    const it = items[i];
+    const voce = voci.find(v => v.id === it.voce_id);
+    const stima = voce ? (voce.prezzo_acquisto || 0) * qty : (it.stima_backoffice || 0);
+    setItems(items.map((x, j) => j === i ? { ...x, qty, stima_backoffice: stima } : x));
+  };
 
   return (
     <div className="space-y-3">
@@ -1184,53 +1203,71 @@ function VociAcquistiTab({ wf, cid, reload }) {
         <div className="flex items-center justify-between p-4 border-b border-zinc-200">
           <div>
             <h3 className="font-semibold">Voci e Acquisti — riconciliazione preventivato vs effettivo</h3>
-            <p className="text-xs text-zinc-500">Confronto tra quanto previsto in preventivo e quanto effettivamente speso per ogni subappaltatore/fornitore.</p>
+            <p className="text-xs text-zinc-500">Per ogni voce collega il listino backoffice: <strong>Stima nostra</strong> = prezzo acquisto × qty (= quanto stimiamo di spendere). Confronta col preventivo del sub-appaltatore e l'effettivo.</p>
           </div>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={add} data-testid="va-add"><Plus className="h-4 w-4 mr-1" /> Voce</Button>
             <Button size="sm" onClick={save} style={{ background: "var(--brand)", color: "white" }} data-testid="va-save">Salva</Button>
           </div>
         </div>
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
-            <th className="px-2 py-2 text-left">Voce</th>
-            <th className="px-2 py-2 text-left">Sub-appaltatore / Fornitore</th>
-            <th className="px-2 py-2 text-right w-32">Preventivato</th>
-            <th className="px-2 py-2 text-right w-32">Effettivo</th>
-            <th className="px-2 py-2 text-right w-28">Δ</th>
-            <th className="px-2 py-2 text-center w-20">Pagato</th>
-            <th className="w-10"></th>
-          </tr></thead>
-          <tbody className="divide-y divide-zinc-100">
-            {items.map((v, i) => {
-              const delta = (parseFloat(v.effettivo) || 0) - (parseFloat(v.preventivato) || 0);
-              return (
-                <tr key={i}>
-                  <td className="px-2 py-1.5"><Input value={v.voce} onChange={(e) => upd(i, "voce", e.target.value)} placeholder="Es: Impianto idraulico" className="h-8 text-xs" data-testid={`va-voce-${i}`} /></td>
-                  <td className="px-2 py-1.5"><Input value={v.subappaltatore} onChange={(e) => upd(i, "subappaltatore", e.target.value)} placeholder="Nome sub/fornitore" className="h-8 text-xs" /></td>
-                  <td className="px-2 py-1.5"><Input type="number" value={v.preventivato} onChange={(e) => upd(i, "preventivato", parseFloat(e.target.value) || 0)} className="h-8 text-xs text-right mono" /></td>
-                  <td className="px-2 py-1.5"><Input type="number" value={v.effettivo} onChange={(e) => upd(i, "effettivo", parseFloat(e.target.value) || 0)} className="h-8 text-xs text-right mono" /></td>
-                  <td className={`px-2 py-1.5 text-right mono font-bold ${delta > 0 ? "text-rose-600" : delta < 0 ? "text-emerald-600" : "text-zinc-500"}`}>{delta > 0 ? "+" : ""}{fmtEur(delta)}</td>
-                  <td className="px-2 py-1.5 text-center"><input type="checkbox" checked={!!v.pagato} onChange={(e) => upd(i, "pagato", e.target.checked)} className="h-4 w-4" data-testid={`va-pagato-${i}`} /></td>
-                  <td className="px-2 py-1.5"><button onClick={() => setItems(items.filter((_, j) => j !== i))} className="text-rose-600 p-1"><Trash2 className="h-4 w-4" /></button></td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
+              <th className="px-2 py-2 text-left min-w-[200px]">Voce (catalogo)</th>
+              <th className="px-2 py-2 text-left min-w-[160px]">Sub-appaltatore / Fornitore</th>
+              <th className="px-2 py-2 text-right w-20">Qty</th>
+              <th className="px-2 py-2 text-right w-28">Stima nostra</th>
+              <th className="px-2 py-2 text-right w-28">Preventivato sub</th>
+              <th className="px-2 py-2 text-right w-24">Δ vs stima</th>
+              <th className="px-2 py-2 text-right w-28">Effettivo</th>
+              <th className="px-2 py-2 text-center w-16">Pagato</th>
+              <th className="w-10"></th>
+            </tr></thead>
+            <tbody className="divide-y divide-zinc-100">
+              {items.map((v, i) => {
+                const stima = parseFloat(v.stima_backoffice) || 0;
+                const prev = parseFloat(v.preventivato) || 0;
+                const eff = parseFloat(v.effettivo) || 0;
+                const deltaStima = prev - stima;
+                return (
+                  <tr key={i}>
+                    <td className="px-2 py-1.5">
+                      <Select value={v.voce_id || ""} onValueChange={(val) => linkVoce(i, val)}>
+                        <SelectTrigger className="h-8 text-xs" data-testid={`va-voce-link-${i}`}><SelectValue placeholder="Scegli dal listino…" /></SelectTrigger>
+                        <SelectContent>
+                          {voci.map(vv => (<SelectItem key={vv.id} value={vv.id}>{vv.name} <span className="text-zinc-500">· {(vv.prezzo_acquisto || 0).toFixed(2)}€/{vv.unit}</span></SelectItem>))}
+                        </SelectContent>
+                      </Select>
+                      {!v.voce_id && <Input value={v.voce} onChange={(e) => upd(i, "voce", e.target.value)} placeholder="o testo libero" className="h-7 text-[11px] mt-1" data-testid={`va-voce-${i}`} />}
+                    </td>
+                    <td className="px-2 py-1.5"><Input value={v.subappaltatore} onChange={(e) => upd(i, "subappaltatore", e.target.value)} placeholder="Nome sub/fornitore" className="h-8 text-xs" /></td>
+                    <td className="px-2 py-1.5"><Input type="number" min={0} step="0.1" value={v.qty ?? 1} onChange={(e) => updQty(i, e.target.value)} className="h-8 text-xs text-right mono" data-testid={`va-qty-${i}`} /></td>
+                    <td className="px-2 py-1.5 text-right mono text-blue-700 font-semibold" data-testid={`va-stima-${i}`}>{fmtEur(stima)}</td>
+                    <td className="px-2 py-1.5"><Input type="number" value={prev} onChange={(e) => upd(i, "preventivato", parseFloat(e.target.value) || 0)} className="h-8 text-xs text-right mono" /></td>
+                    <td className={`px-2 py-1.5 text-right mono text-xs ${deltaStima > 0 ? "text-rose-600" : deltaStima < 0 ? "text-emerald-600" : "text-zinc-400"}`} title="Sub vs nostra stima">{stima > 0 ? `${deltaStima > 0 ? "+" : ""}${fmtEur(deltaStima)}` : "—"}</td>
+                    <td className="px-2 py-1.5"><Input type="number" value={eff} onChange={(e) => upd(i, "effettivo", parseFloat(e.target.value) || 0)} className="h-8 text-xs text-right mono" /></td>
+                    <td className="px-2 py-1.5 text-center"><input type="checkbox" checked={!!v.pagato} onChange={(e) => upd(i, "pagato", e.target.checked)} className="h-4 w-4" data-testid={`va-pagato-${i}`} /></td>
+                    <td className="px-2 py-1.5"><button onClick={() => setItems(items.filter((_, j) => j !== i))} className="text-rose-600 p-1"><Trash2 className="h-4 w-4" /></button></td>
+                  </tr>
+                );
+              })}
+              {!items.length && <tr><td colSpan={9} className="px-3 py-12 text-center text-zinc-500">Nessuna voce. Clicca "Voce" per aggiungere la prima.</td></tr>}
+            </tbody>
+            {items.length > 0 && (
+              <tfoot className="bg-zinc-50 font-bold">
+                <tr>
+                  <td colSpan={3} className="px-2 py-2 text-right uppercase text-xs">Totali</td>
+                  <td className="px-2 py-2 text-right mono text-blue-700">{fmtEur(tot.stima)}</td>
+                  <td className="px-2 py-2 text-right mono">{fmtEur(tot.prev)}</td>
+                  <td className={`px-2 py-2 text-right mono ${tot.prev - tot.stima > 0 ? "text-rose-600" : "text-emerald-600"}`}>{tot.prev - tot.stima > 0 ? "+" : ""}{fmtEur(tot.prev - tot.stima)}</td>
+                  <td className="px-2 py-2 text-right mono">{fmtEur(tot.eff)}</td>
+                  <td className="px-2 py-2 text-right mono text-emerald-700">{fmtEur(tot.pag)}</td>
+                  <td></td>
                 </tr>
-              );
-            })}
-            {!items.length && <tr><td colSpan={7} className="px-3 py-12 text-center text-zinc-500">Nessuna voce. Clicca "Voce" per aggiungere la prima.</td></tr>}
-          </tbody>
-          {items.length > 0 && (
-            <tfoot className="bg-zinc-50 font-bold">
-              <tr>
-                <td colSpan={2} className="px-2 py-2 text-right uppercase text-xs">Totali</td>
-                <td className="px-2 py-2 text-right mono">{fmtEur(tot.prev)}</td>
-                <td className="px-2 py-2 text-right mono">{fmtEur(tot.eff)}</td>
-                <td className={`px-2 py-2 text-right mono ${tot.eff - tot.prev > 0 ? "text-rose-600" : "text-emerald-600"}`}>{tot.eff - tot.prev > 0 ? "+" : ""}{fmtEur(tot.eff - tot.prev)}</td>
-                <td className="px-2 py-2 text-right mono text-emerald-700">{fmtEur(tot.pag)}</td>
-                <td></td>
-              </tr>
-            </tfoot>
-          )}
-        </table>
+              </tfoot>
+            )}
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -1242,10 +1279,18 @@ function LavorazioniTab({ wf, cid, reload }) {
   const [tasks, setTasks] = useState(c.calendario || []);
   const [editTask, setEditTask] = useState(null);
   const today = new Date();
-  const monthsToShow = 4;
-  const daysPerMonth = 30;
-  const totalDays = monthsToShow * daysPerMonth;
-  const dayWidth = 18;
+  // Vista 1 mese con navigazione
+  const [viewMonth, setViewMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  const dayWidth = 38;
+
+  const monthStart = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
+  const monthEnd = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0);
+  const daysInMonth = monthEnd.getDate();
+  const monthLabel = viewMonth.toLocaleString("it-IT", { month: "long", year: "numeric" });
+
+  const prevMonth = () => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() - 1, 1));
+  const nextMonth = () => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 1));
+  const goToday = () => setViewMonth(new Date(today.getFullYear(), today.getMonth(), 1));
 
   const save = async (next) => {
     try {
@@ -1270,42 +1315,54 @@ function LavorazioniTab({ wf, cid, reload }) {
   };
   const delTask = (id) => save(tasks.filter((t) => t.id !== id));
 
-  const earliest = tasks.reduce((m, t) => { const d = new Date(t.data_inizio); return d < m ? d : m; }, new Date());
-  const baseDate = new Date(earliest); baseDate.setDate(baseDate.getDate() - 3);
+  // Filtra solo le lavorazioni che si sovrappongono al mese in vista
+  const tasksInView = tasks.filter((t) => {
+    const ds = new Date(t.data_inizio), de = new Date(t.data_fine);
+    return de >= monthStart && ds <= monthEnd;
+  });
 
   return (
     <div className="space-y-3">
       <div className="bg-white border border-zinc-200 rounded">
-        <div className="flex items-center justify-between p-4 border-b border-zinc-200">
+        <div className="flex items-center justify-between p-4 border-b border-zinc-200 flex-wrap gap-2">
           <div>
-            <h3 className="font-semibold">Lavorazioni del cantiere — calendario giornaliero</h3>
-            <p className="text-xs text-zinc-500">Pianifica chi fa cosa e quando, vista giornaliera dettagliata (alternativa alla vista Fasi Gantt).</p>
+            <h3 className="font-semibold">Lavorazioni del cantiere — calendario mensile</h3>
+            <p className="text-xs text-zinc-500">Pianifica chi fa cosa e quando. Naviga tra i mesi con le frecce.</p>
           </div>
-          <Button size="sm" onClick={addTask} data-testid="lav-add" style={{ background: "var(--brand)", color: "white" }}><Plus className="h-4 w-4 mr-1" /> Lavorazione</Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={prevMonth} data-testid="lav-prev-month">◀</Button>
+            <div className="text-sm font-semibold uppercase tracking-wide min-w-[150px] text-center" data-testid="lav-month-label">{monthLabel}</div>
+            <Button size="sm" variant="outline" onClick={nextMonth} data-testid="lav-next-month">▶</Button>
+            <Button size="sm" variant="outline" onClick={goToday} data-testid="lav-today">Oggi</Button>
+            <Button size="sm" onClick={addTask} data-testid="lav-add" style={{ background: "var(--brand)", color: "white" }}><Plus className="h-4 w-4 mr-1" /> Lavorazione</Button>
+          </div>
         </div>
         <div className="overflow-x-auto" style={{ maxWidth: "100%" }}>
-          <div style={{ minWidth: totalDays * dayWidth + 280 }}>
+          <div style={{ minWidth: daysInMonth * dayWidth + 280 }}>
             <div className="flex sticky top-0 bg-zinc-50 border-b border-zinc-200 text-[10px] mono">
               <div className="w-[280px] shrink-0 px-3 py-2 font-semibold text-zinc-700 border-r">Lavorazione</div>
               <div className="flex">
-                {Array.from({ length: totalDays }).map((_, d) => {
-                  const dt = new Date(baseDate); dt.setDate(dt.getDate() + d);
+                {Array.from({ length: daysInMonth }).map((_, d) => {
+                  const dt = new Date(monthStart); dt.setDate(dt.getDate() + d);
                   const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
                   const isToday = dt.toDateString() === today.toDateString();
-                  const showLabel = dt.getDate() === 1 || d === 0;
                   return (
-                    <div key={d} className={`shrink-0 ${isWeekend ? "bg-amber-50" : ""} ${isToday ? "bg-blue-100 ring-1 ring-blue-400" : ""} border-r border-zinc-100 text-center`} style={{ width: dayWidth, height: 36 }}>
-                      {showLabel && <div className="text-[9px] font-bold mt-1">{dt.toLocaleString("it-IT", { month: "short" })}</div>}
-                      <div className="mt-0.5">{dt.getDate()}</div>
+                    <div key={d} className={`shrink-0 ${isWeekend ? "bg-amber-50" : ""} ${isToday ? "bg-blue-100 ring-1 ring-blue-400" : ""} border-r border-zinc-100 text-center`} style={{ width: dayWidth, height: 44 }}>
+                      <div className="text-[9px] text-zinc-500 mt-1">{dt.toLocaleString("it-IT", { weekday: "short" }).slice(0, 3)}</div>
+                      <div className="text-[11px] font-semibold">{dt.getDate()}</div>
                     </div>
                   );
                 })}
               </div>
             </div>
-            {tasks.map((t) => {
+            {tasksInView.map((t) => {
               const ds = new Date(t.data_inizio), de = new Date(t.data_fine);
-              const startDay = Math.round((ds - baseDate) / 86400000);
-              const dur = Math.max(1, Math.round((de - ds) / 86400000) + 1);
+              // Clip al mese in vista
+              const clippedStart = ds < monthStart ? monthStart : ds;
+              const clippedEnd = de > monthEnd ? monthEnd : de;
+              const startDay = Math.round((clippedStart - monthStart) / 86400000);
+              const dur = Math.max(1, Math.round((clippedEnd - clippedStart) / 86400000) + 1);
+              const totalDur = Math.max(1, Math.round((de - ds) / 86400000) + 1);
               return (
                 <div key={t.id} className="flex border-b border-zinc-100 hover:bg-zinc-50 group" data-testid={`lav-row-${t.id}`}>
                   <div className="w-[280px] shrink-0 px-3 py-2 border-r text-sm flex items-center justify-between gap-2">
@@ -1318,17 +1375,17 @@ function LavorazioniTab({ wf, cid, reload }) {
                       <button onClick={() => delTask(t.id)} className="p-1 hover:bg-rose-100 rounded"><Trash2 className="h-3.5 w-3.5 text-rose-500" /></button>
                     </div>
                   </div>
-                  <div className="relative" style={{ width: totalDays * dayWidth, height: 40 }}>
-                    <div className="absolute top-2 rounded text-white text-[10px] px-2 py-1.5 truncate font-medium cursor-pointer hover:opacity-90 shadow-md"
+                  <div className="relative" style={{ width: daysInMonth * dayWidth, height: 44 }}>
+                    <div className="absolute top-2 rounded text-white text-[11px] px-2 py-1.5 truncate font-medium cursor-pointer hover:opacity-90 shadow-md"
                       style={{ left: startDay * dayWidth, width: dur * dayWidth - 2, background: t.color }}
                       onClick={() => setEditTask(t)} data-testid={`lav-bar-${t.id}`}>
-                      {t.name} <span className="opacity-75">({dur}g)</span>
+                      {t.name} <span className="opacity-75">({totalDur}g)</span>
                     </div>
                   </div>
                 </div>
               );
             })}
-            {!tasks.length && <div className="px-4 py-12 text-center text-zinc-500 text-sm">Nessuna lavorazione pianificata. Clicca "Lavorazione" per aggiungere la prima.</div>}
+            {!tasksInView.length && <div className="px-4 py-12 text-center text-zinc-500 text-sm">{tasks.length ? `Nessuna lavorazione in ${monthLabel}. Usa le frecce per cambiare mese.` : 'Nessuna lavorazione pianificata. Clicca "Lavorazione" per aggiungere la prima.'}</div>}
           </div>
         </div>
       </div>

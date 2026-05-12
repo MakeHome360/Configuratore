@@ -112,6 +112,7 @@ export default function Editor() {
   const [hvacKind, setHvacKind] = useState("split");
   const [stairsKind, setStairsKind] = useState("muratura");
   const [columnKind, setColumnKind] = useState("cemento");
+  const [columnSize, setColumnSize] = useState({ w: 30, d: 30, h: 270 });
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const [wallProspettoId, setWallProspettoId] = useState(null);
   const [tilingParams, setTilingParams] = useState({ size: "60x60", angle: 0, color: "#D4A574" });
@@ -809,11 +810,35 @@ export default function Editor() {
             ]} testid="stairs-kind" />
           )}
           {tool === "column" && (
-            <SubKindPicker label="Tipo pilastro" value={columnKind} onChange={setColumnKind} options={[
-              { v: "cemento", l: "Cemento armato" },
-              { v: "mattone", l: "Muratura mattone" },
-              { v: "cartongesso", l: "Cartongesso (rivest.)" },
-            ]} testid="column-kind" />
+            <div>
+              <SubKindPicker label="Tipo pilastro" value={columnKind} onChange={setColumnKind} options={[
+                { v: "cemento", l: "Cemento armato" },
+                { v: "mattone", l: "Muratura mattone" },
+                { v: "cartongesso", l: "Cartongesso (rivest.)" },
+              ]} testid="column-kind" />
+              <div className="mx-2 mt-2 px-2 space-y-2">
+                <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Dimensioni (cm)</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <Label className="text-[9px] text-zinc-500">L</Label>
+                    <Input type="number" min={10} value={columnSize.w} onChange={(e) => setColumnSize(s => ({ ...s, w: Math.max(10, parseInt(e.target.value) || 30) }))} className="rounded-sm h-8 mt-1 mono text-xs" data-testid="column-size-w" />
+                  </div>
+                  <div>
+                    <Label className="text-[9px] text-zinc-500">P</Label>
+                    <Input type="number" min={10} value={columnSize.d} onChange={(e) => setColumnSize(s => ({ ...s, d: Math.max(10, parseInt(e.target.value) || 30) }))} className="rounded-sm h-8 mt-1 mono text-xs" data-testid="column-size-d" />
+                  </div>
+                  <div>
+                    <Label className="text-[9px] text-zinc-500">H</Label>
+                    <Input type="number" min={50} value={columnSize.h} onChange={(e) => setColumnSize(s => ({ ...s, h: Math.max(50, parseInt(e.target.value) || 270) }))} className="rounded-sm h-8 mt-1 mono text-xs" data-testid="column-size-h" />
+                  </div>
+                </div>
+                <div className="flex gap-1">
+                  {[{w:30,d:30,h:270,l:"30×30"},{w:40,d:40,h:270,l:"40×40"},{w:50,d:50,h:270,l:"50×50"},{w:60,d:25,h:270,l:"60×25"}].map(p => (
+                    <button key={p.l} onClick={() => setColumnSize({ w: p.w, d: p.d, h: p.h })} className="text-[10px] px-1.5 py-0.5 border border-zinc-300 rounded hover:bg-zinc-100" data-testid={`column-preset-${p.l}`}>{p.l}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
           )}
           {tool === "tiling" && (
             <div className="mx-2 mt-2 space-y-2 px-2">
@@ -941,7 +966,7 @@ export default function Editor() {
                 selected={selected} setSelected={setSelected}
                 selectedMaterial={selectedMaterial} catalog={catalog}
                 doorParams={doorParams} windowParams={windowParams}
-                electricalKind={electricalKind} plumbingKind={plumbingKind} hvacKind={hvacKind} tilingParams={tilingParams} stairsKind={stairsKind} columnKind={columnKind}
+                electricalKind={electricalKind} plumbingKind={plumbingKind} hvacKind={hvacKind} tilingParams={tilingParams} stairsKind={stairsKind} columnKind={columnKind} columnSize={columnSize}
                 viewMode={editMode}
               />
               </div>

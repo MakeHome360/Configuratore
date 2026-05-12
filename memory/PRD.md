@@ -1,5 +1,33 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 41 — Mag 2026 — Bug critici CAD + UX Workflow)
+### 🔴 BUG CRITICO CAD risolto (P0): aggiungere muro faceva DIMINUIRE preventivo
+- **Causa**: `applyWallAddWithSplit` in `Canvas2D.jsx:1905` divideva la stanza in 2 nuove con ID nuovi MA non migrava `tiling`, `demolitions`, `controsoffitti` che riferivano il vecchio roomId → diventavano orfani e il pavimento spariva dal preventivo. L'utente vedeva totale calare da €8.449 a €4.743 dopo aver disegnato un muro divisorio.
+- **Fix**: riscritta `applyWallAddWithSplit` per:
+  - Migrare `tiling` con `roomId === splitRoomId`: assegna alla nuova stanza che contiene `startPoint`, oppure duplica su entrambe se non c'è punto di riferimento.
+  - Migrare `demolitions` (pavimento/rivestimento): usa centroide del `polygon` o coordinata `(x,y)` per scegliere la stanza giusta; demolizioni totali vengono duplicate.
+  - Migrare `controsoffitti`: stessa logica.
+  - Mantenere tutte le altre proprietà (electrical, plumbing, paint, progetto overrides) via spread di `baseProps`.
+
+### 🟡 UX Workflow Commessa
+- ✅ **Tab Lavorazioni / Calendario**: riscritta da vista 4 mesi (120 giorni · 18px/giorno) a **vista mensile** con:
+  - Header con ◀ Mese AAAA ▶ + bottone **Oggi**.
+  - Larghezza giorno aumentata a 38px (più leggibile).
+  - Etichette "Lun/Mar/…" + numero giorno.
+  - Bar lavorazioni clippate al mese visibile (durata totale mostrata tra parentesi).
+  - testid: `lav-prev-month`, `lav-next-month`, `lav-month-label`, `lav-today`.
+- ✅ **Tab Voci e Acquisti**: ora ogni riga si **collega al listino backoffice**:
+  - Select voce_backoffice (al posto di input testo libero, ma testo libero rimane come fallback).
+  - Nuova colonna **Qty** + nuova colonna **Stima nostra** = `voce.prezzo_acquisto × qty` (in blu).
+  - Nuova colonna **Δ vs stima** = preventivato_sub − stima (rosso se sub sopra stima, verde se sotto).
+  - Tfoot con totali Stima · Preventivato · Δ.
+  - testid: `va-voce-link-{i}`, `va-qty-{i}`, `va-stima-{i}`.
+
+### 🟡 CAD — Pilastri/Colonne con dimensioni custom
+- ✅ Editor.jsx — nuovo state `columnSize = {w, d, h}` con 3 input (L/P/H in cm) + 4 preset rapidi (30×30, 40×40, 50×50, 60×25) sotto il selettore tipo pilastro.
+- ✅ Canvas2D.jsx — placement usa `columnSize` invece di valori hardcoded `{30,30}`. Banner aggiornato a `pilastro · cemento · 30×30×270cm · click per posizionare`.
+- ✅ Il pannello proprietà del pilastro selezionato continua a permettere l'edit post-creazione.
+
 ## Recent Updates (Round 40 — Mag 2026 — Fix marginalità Pacchetti & Voci)
 - 🐛 **BUG CRITICO P0 risolto**: la card "Pacchetti & Voci" mostrava marginalità sbagliate (BASIC 4.2%, PREMIUM -17.1%, ELITE 34.6%). Il calcolo costi usava `prezzo_rivendita` (= prezzo di vendita al cliente) invece di `prezzo_acquisto` (= costo netto al fornitore). Identico errore del foglio Numbers di confronto del cliente.
 - ✅ **Fix in `/app/frontend/src/pages/admin/AdminPacchetti.jsx`** (linee 54-61, 87-98, 250):

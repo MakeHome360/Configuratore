@@ -369,7 +369,7 @@ function TilingPattern({ t, room }) {
 export default function Canvas2D({
   project, setProject, tool, setTool, selected, setSelected,
   selectedMaterial, catalog,
-  doorParams, windowParams, electricalKind, plumbingKind, gasKind, hvacKind, tilingParams, stairsKind, columnKind,
+  doorParams, windowParams, electricalKind, plumbingKind, gasKind, hvacKind, tilingParams, stairsKind, columnKind, columnSize,
   layers, viewMode, autoFit,
 }) {
   const svgRef = useRef(null);
@@ -844,13 +844,12 @@ export default function Canvas2D({
       return;
     }
     if (tool === "column") {
-      // Pilastri/colonne — kind dal toolbar (cemento/mattone/cartongesso), dimensioni default 30x30
+      // Pilastri/colonne — kind e dimensioni dalla toolbar (l'utente può modificare L/P/H prima del click)
       const kind = columnKind || "cemento";
-      const def = { cemento: { w: 30, d: 30 }, mattone: { w: 30, d: 30 }, cartongesso: { w: 25, d: 25 } };
-      const sz = def[kind] || def.cemento;
+      const sz = columnSize || { w: 30, d: 30, h: prj.roomHeight || 270 };
       setProject((prj) => ({
         ...prj,
-        columns: [...(prj.columns || []), { id: uid(), kind, x: p.x, y: p.y, rotation: 0, width: sz.w, depth: sz.d, height: prj.roomHeight || 270, phase: VM }],
+        columns: [...(prj.columns || []), { id: uid(), kind, x: p.x, y: p.y, rotation: 0, width: sz.w, depth: sz.d, height: sz.h || prj.roomHeight || 270, phase: VM }],
       }));
       return;
     }
@@ -1864,7 +1863,7 @@ export default function Canvas2D({
       {tool === "demolish-rivestimento" && <div className="absolute top-3 left-3 bg-orange-500 text-white px-3 py-1.5 text-xs mono">demoliz. rivestimento · click sul muro · poi regola sx/dx/h-da-terra/altezza nel pannello</div>}
       {tool === "package-area" && <div className="absolute top-3 left-3 bg-emerald-700 text-white px-3 py-1.5 text-xs mono">area pacchetto · click vertici, doppio click chiude · ricalcola mq automatico</div>}
       {tool === "stairs" && <div className="absolute top-3 left-3 bg-amber-700 text-white px-3 py-1.5 text-xs mono">scala · {stairsKind || "muratura"} · click per posizionare</div>}
-      {tool === "column" && <div className="absolute top-3 left-3 bg-stone-700 text-white px-3 py-1.5 text-xs mono">pilastro · {columnKind || "cemento"} · click per posizionare</div>}
+      {tool === "column" && <div className="absolute top-3 left-3 bg-stone-700 text-white px-3 py-1.5 text-xs mono">pilastro · {columnKind || "cemento"} · {(columnSize?.w || 30)}×{(columnSize?.d || 30)}×{(columnSize?.h || 270)}cm · click per posizionare</div>}
       {tool === "controsoffitto" && <div className="absolute top-3 left-3 bg-teal-700 text-white px-3 py-1.5 text-xs mono">controsoffitto · click su stanza per attivare/disattivare</div>}
       {tool === "controsoffitto-area" && <div className="absolute top-3 left-3 bg-sky-700 text-white px-3 py-1.5 text-xs mono">controsoffitto area · click vertici, doppio click chiude</div>}
       {tool === "electrical" && <div className="absolute top-3 left-3 bg-purple-700 text-white px-3 py-1.5 text-xs mono">elettrico · {electricalKind || "presa"}</div>}
@@ -1901,6 +1900,7 @@ function projectPointOnSegment(p, a, b) {
 /**
  * applyWallAddWithSplit: aggiunge il muro al progetto e, se attraversa una stanza esistente
  * entrando ed uscendo dai bordi, divide la stanza in 2 nuove stanze (preservando le proprietà).
+ * Migra anche tiling, demolitions, controsoffitti, paint del decoro che riferivano la stanza originale.
  */
 function applyWallAddWithSplit(prj, newWall) {
   const rooms = prj.rooms || [];
@@ -1921,7 +1921,90 @@ function applyWallAddWithSplit(prj, newWall) {
   const room1 = { ...baseProps, id: uid(), name: `${original.name} A`, points: split[0] };
   const room2 = { ...baseProps, id: uid(), name: `${original.name} B`, points: split[1] };
   const otherRooms = rooms.filter((r) => r.id !== splitRoomId);
-  return { ...prj, rooms: [...otherRooms, room1, room2], walls: [...(prj.walls || []), newWall] };
+
+  // Centroide di ogni nuova stanza per decidere a chi assegnare elementi puntuali (tiling startPoint, demolitions parziali)
+  const centroid = (pts) => {
+    if (!pts || !pts.length) return { x: 0, y: 0 };
+    const sx = pts.reduce((a, p) => a + p.x, 0) / pts.length;
+    const sy = pts.reduce((a, p) => a + p.y, 0) / pts.length;
+    return { x: sx, y: sy };
+  };
+  const c1 = centroid(split[0]);
+  const c2 = centroid(split[1]);
+  const pickRoomByPoint = (pt) => {
+    if (!pt) return [room1.id, room2.id]; // duplica su entrambe se non c'è un punto di riferimento
+    const in1 = pointInPolygon(pt, split[0]);
+    const in2 = pointInPolygon(pt, split[1]);
+    if (in1 && !in2) return [room1.id];
+    if (in2 && !in1) return [room2.id];
+    // fallback: distanza dal centroide
+    const d1 = Math.hypot(pt.x - c1.x, pt.y - c1.y);
+    const d2 = Math.hypot(pt.x - c2.x, pt.y - c2.y);
+    return d1 <= d2 ? [room1.id] : [room2.id];
+  };
+
+  // --- Migra TILING ---
+  const tilingMigrated = [];
+  (prj.tiling || []).forEach((t) => {
+    if (t.roomId !== splitRoomId) { tilingMigrated.push(t); return; }
+    const targetIds = pickRoomByPoint(t.startPoint);
+    if (targetIds.length === 1) {
+      tilingMigrated.push({ ...t, id: uid(), roomId: targetIds[0] });
+    } else {
+      // duplica su entrambe (mantiene la posa identica)
+      tilingMigrated.push({ ...t, id: uid(), roomId: room1.id });
+      tilingMigrated.push({ ...t, id: uid(), roomId: room2.id });
+    }
+  });
+
+  // --- Migra DEMOLITIONS (pavimento/rivestimento) ---
+  const demoMigrated = [];
+  (prj.demolitions || []).forEach((d) => {
+    if (d.roomId !== splitRoomId) { demoMigrated.push(d); return; }
+    // Demolizione parziale con polygon o punto: usa centroide del polygon o (x,y)
+    let ref = null;
+    if (d.polygon && d.polygon.length) ref = centroid(d.polygon);
+    else if (typeof d.x === "number" && typeof d.y === "number") ref = { x: d.x, y: d.y };
+    if (ref) {
+      const targetIds = pickRoomByPoint(ref);
+      if (targetIds.length === 1) {
+        demoMigrated.push({ ...d, id: uid(), roomId: targetIds[0] });
+      } else {
+        demoMigrated.push({ ...d, id: uid(), roomId: room1.id });
+        demoMigrated.push({ ...d, id: uid(), roomId: room2.id });
+      }
+    } else {
+      // Demolizione totale stanza: duplica su entrambe
+      demoMigrated.push({ ...d, id: uid(), roomId: room1.id });
+      demoMigrated.push({ ...d, id: uid(), roomId: room2.id });
+    }
+  });
+
+  // --- Migra CONTROSOFFITTI ---
+  const ctrlMigrated = [];
+  (prj.controsoffitti || []).forEach((c) => {
+    if (c.roomId !== splitRoomId) { ctrlMigrated.push(c); return; }
+    let ref = null;
+    if (c.polygon && c.polygon.length) ref = centroid(c.polygon);
+    else if (typeof c.x === "number" && typeof c.y === "number") ref = { x: c.x, y: c.y };
+    if (ref) {
+      const targetIds = pickRoomByPoint(ref);
+      if (targetIds.length === 1) ctrlMigrated.push({ ...c, id: uid(), roomId: targetIds[0] });
+      else { ctrlMigrated.push({ ...c, id: uid(), roomId: room1.id }); ctrlMigrated.push({ ...c, id: uid(), roomId: room2.id }); }
+    } else {
+      ctrlMigrated.push({ ...c, id: uid(), roomId: room1.id });
+      ctrlMigrated.push({ ...c, id: uid(), roomId: room2.id });
+    }
+  });
+
+  return {
+    ...prj,
+    rooms: [...otherRooms, room1, room2],
+    walls: [...(prj.walls || []), newWall],
+    tiling: tilingMigrated,
+    demolitions: demoMigrated,
+    controsoffitti: ctrlMigrated,
+  };
 }
 
 function defaultItemSize(m) {

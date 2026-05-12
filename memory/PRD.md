@@ -1,5 +1,33 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 37 — Feb 2026 — Big Fix: 12 user complaints risolti)
+### Bug critici prezzi (P0)
+- ✅ **Configuratore Esigenze**: prezzi finali non matchavano i pacchetti. Il calcolo leggeva `prezzo_mq` (null) invece di `price_per_m2` ed aveva fallback errati (380/580/850/1300). Fix: ora legge `price_per_m2` con fallback corretti **380/490/790/1180**.
+- ✅ **Pacchetto base**: contava extra anche senza modifiche. La `unit_price` iniziale era il `prezzo_rivendita` pieno invece della soglia `unit_price_pkg` → per voci `modificabile_dal_venditore` veniva sempre incluso `(prezzo_rivendita - unit_price_pkg) * incl` come extra. Fix: default a `unit_price_pkg`.
+- ✅ **Computo metrico non si generava**: il backend cercava `voci_dettaglio[]` o `computo[]` ma i preventivi reali hanno `items[]`. Fix: ora legge `items[]` (formato PreventivoIn standard) con fallback ai legacy.
+
+### Workflow Cantieri unificato (P1)
+- ✅ **De-duplicazione "Documenti"**: `DettaglioCommessa` redirige automaticamente a `/commesse/{id}/workflow`. Niente più tab gemelle.
+- ✅ **9 tab nel Workflow** (era 8): Contratto · **Checklist venditore (NEW)** · Documenti · Materiali · Computo · Artigiani/Sub · Fasi cantiere · Cassa & Pagamenti · Resoconto.
+- ✅ **Computo metrico in 3 viste**:
+  - **Con prezzi** (interna): voce, qty, U.M., prezzo unit., totale + tfoot totale.
+  - **Senza prezzi (per artigiani)**: stampabile in PDF per richiesta preventivo.
+  - **Assegnazione voci**: barra avanzamento %, filtri Tutte/Assegnate/Da assegnare, bottone "Assegna" per riga con modal (artigiano/interno/autorizzato, scelta da preventivi caricati o nome libero, note). Le assegnazioni vengono **preservate** se rigenero il computo.
+- ✅ **Cassa con scadenze pagamenti**:
+  - 5 KPI: Incassato · Da incassare · Uscite pagate · Da pagare · Saldo cassa.
+  - 3 viste: **Riepilogo per beneficiario** (pagato/da pagare/scaduto/prossima scadenza per ogni sub/fornitore), **Scadenze pagamenti** (ordinate per data con badge SCADUTO), **Storico movimenti**.
+  - Nuovo form: stato_pagamento (pagato/programmato), data_scadenza, beneficiario_tipo (cliente/subappaltatore/fornitore/interno), categoria (acconto/avanzamento/saldo/materiali/extra).
+  - Marginalità ricalcolata: solo movimenti `pagato` contano; `da_incassare_scadenze`/`da_pagare_scadenze` esposti.
+- ✅ **Checklist Venditore anti-dimenticanza**: 12 step (dati cliente, contratto firmato, acconto, pratica edilizia, progetto CAD, materiali firmati, computo generato, preventivi artigiani, fasi pianificate, foto rilievo, GDPR, data inizio). Barra avanzamento % step critici. Badge "Critico" rosso per step obbligatori mancanti.
+- ✅ **Materiali tab più chiara**: tooltip su colonne ("Da listino interno", "Descrizione/modello scelto", "U.M.", "Prezzo unit. al cliente"), placeholder esempi ("Piastrella Marazzi 60x60..."), label "Confermato/firmato dal cliente (blocca cambi senza extra)".
+- ✅ **Gantt Fasi ingrandito**: COL_W 28-60px (era 20-40), ROW_H 44px (era 32), LABEL_W 240px, weekend evidenziati in ambra, header date più grandi (12px), titolo + esecutore + giorni durata visibili in ogni barra.
+
+### Sub-appaltatori — Documenti + Affidamento (P1)
+- ✅ **Sezione Documenti sub-appaltatore** in `SubappaltatoreDettaglio`: 9 tipi richiesti (DURC, visura camerale, carta d'identità, assicurazione RC, INPS/INAIL — **5 obbligatori**; SOA, ISO 9001, misure/strumenti, altro — opzionali). Upload PDF/JPG/PNG con data emissione/scadenza, badge MANCANTE/SCADUTO/OK.
+- ✅ **Badge "Pronto per ricevere affidamenti"** (verde) / **"Documenti incompleti — NON può ricevere affidamenti"** (rosso) in alto a destra.
+- ✅ **VINCOLO 3 in `POST /subappaltatori/assegna`**: oltre a (preventivo accettato + contratto subappalto firmato), ora richiede TUTTI i documenti obbligatori validi e non scaduti. Solo l'**admin** può comunque effettuare l'affidamento (già esistente).
+- ✅ Endpoint nuovi: `GET /subappaltatori/tipi-documenti`, `GET /{id}/documenti`, `POST /{id}/documenti`, `DELETE /{id}/documenti/{doc_id}`, `GET /{id}/ready-check`.
+
 ## Recent Updates (Round 36 — Feb 2026 — Drag&drop impianti in 3D + UX Toaster)
 - ✅ **3D — Inserimento diretto impianti via click** (P1 richiesta utente):
   - Quando l'utente attiva un tool MEP (Elettrico / Idraulico / HVAC / Gas) e poi clicca su un muro nel 3D, viene piazzato un nuovo punto sulla parete colpita.

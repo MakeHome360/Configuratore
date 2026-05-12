@@ -118,6 +118,21 @@ def build_commessa_workflow_router(db, get_current_user):
             or prev.get("computo")
             or []
         )
+        # Preserva le assegnazioni esistenti (matching su voce_id) per non perdere
+        # il lavoro fatto dall'utente quando rigenera il computo.
+        existing_cm = (c.get("computo_metrico") or {}).get("items") or []
+        prev_assigns = {}  # voce_id (catalog) -> assignment data
+        for ex in existing_cm:
+            key = ex.get("voce_id")
+            if key and ex.get("stato_assegnazione") and ex.get("stato_assegnazione") != "da_assegnare":
+                prev_assigns[key] = {
+                    "stato_assegnazione": ex.get("stato_assegnazione"),
+                    "artigiano_id": ex.get("artigiano_id"),
+                    "artigiano_nome": ex.get("artigiano_nome"),
+                    "note_assegnazione": ex.get("note_assegnazione"),
+                    "assigned_at": ex.get("assigned_at"),
+                    "assigned_by": ex.get("assigned_by"),
+                }
         items = []
         for v in voci_prev:
             qty = float(v.get("qty") or v.get("quantita") or v.get("qty_richiesta") or 0)
@@ -130,19 +145,23 @@ def build_commessa_workflow_router(db, get_current_user):
             totale = float(v.get("total") or v.get("totale") or 0)
             if totale == 0 and qty > 0 and prezzo_unit > 0:
                 totale = round(qty * prezzo_unit, 2)
+            cat_voce_id = v.get("voce_id") or v.get("id")
+            kept = prev_assigns.get(cat_voce_id) or {}
             items.append({
                 "id": UID(),
-                "voce_id": v.get("voce_id") or v.get("id"),
+                "voce_id": cat_voce_id,
                 "name": v.get("name") or v.get("descrizione") or "—",
                 "qty": qty,
                 "unit": v.get("unit") or "pz",
                 "prezzo_unit": prezzo_unit,
                 "totale": totale,
                 "category": v.get("category") or "",
-                "stato_assegnazione": "da_assegnare",  # da_assegnare | artigiano | interno | autorizzato
-                "artigiano_id": None,
-                "artigiano_nome": None,
-                "note_assegnazione": None,
+                "stato_assegnazione": kept.get("stato_assegnazione") or "da_assegnare",
+                "artigiano_id": kept.get("artigiano_id"),
+                "artigiano_nome": kept.get("artigiano_nome"),
+                "note_assegnazione": kept.get("note_assegnazione"),
+                "assigned_at": kept.get("assigned_at"),
+                "assigned_by": kept.get("assigned_by"),
             })
         computo = {"items": items, "totale": prev.get("totale_iva_incl") or prev.get("totale") or 0,
                    "generated_at": NOW(), "generated_by": user.get("id")}

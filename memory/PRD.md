@@ -1,5 +1,14 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 36 — Feb 2026 — Drag&drop impianti in 3D + UX Toaster)
+- ✅ **3D — Inserimento diretto impianti via click** (P1 richiesta utente):
+  - Quando l'utente attiva un tool MEP (Elettrico / Idraulico / HVAC / Gas) e poi clicca su un muro nel 3D, viene piazzato un nuovo punto sulla parete colpita.
+  - Calcolo automatico: `x,y` proiettati sul segmento del muro, `wall_side` (-1/+1) dal segno del prodotto scalare con la normale del muro, `height_cm` dalla Y del click (clamp [5, roomHeight-5]).
+  - Toast conferma `✓ Presa aggiunta in 3D · h=XXcm` + banner viola pinned in alto-sinistra del 3D `🎯 Modalità inserimento <tool>...` con `data-testid='3d-placement-hint'`.
+- ✅ **3D — Drag punti MEP esistenti**: estesi i `Picker3D` draggable kinds a `electrical/plumbing/hvac/gas`. Drag libero su XZ, commit aggiorna `x,y` nello state. Era già supportato per items/walls/rooms/doors/windows/columns; ora completo per tutti i MEP.
+- 🐛 **FIX UX HIGH**: Sonner Toaster era `position='top-right'` → si sovrapponeva al bottone Salva del header (top-right). Sposta cliccato a `position='bottom-right'`. Risolve il "Salva no-op silenzioso" segnalato dal testing agent.
+- 🔧 **Unificazione `uid()`** per i nuovi punti MEP (era `Math.random().toString(36).slice(2,10)`).
+
 ## Recent Updates (Round 35 — Feb 2026 — Wall Prospetto Editor + MEP in 3D)
 - ✅ **WallProspettoEditor** (richiesta utente più volte: "il muro devo poterlo ruotare di 180 gradi… così posso aggiungere ciò che voglio"):
   - Modal a schermo intero che apre il prospetto di UN SINGOLO muro selezionato.

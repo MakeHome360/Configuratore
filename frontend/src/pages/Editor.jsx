@@ -964,7 +964,7 @@ export default function Editor() {
                   placement={(["electrical","plumbing","gas","hvac"].includes(tool)) ? { tool, kind: tool === "electrical" ? electricalKind : tool === "plumbing" ? plumbingKind : tool === "hvac" ? hvacKind : "gas" } : null}
                   onPlace={(payload) => {
                     const { tool: pt, kind, x, y, wall_side, height_cm } = payload;
-                    const newPt = { id: Math.random().toString(36).slice(2, 10), x, y, wall_side, height_cm, phase: editMode };
+                    const newPt = { id: uid(), x, y, wall_side, height_cm, phase: editMode };
                     if (pt === "electrical") {
                       newPt.type = kind || "presa";
                       setProjectData(d => ({ ...d, electrical: [...(d.electrical || []), newPt] }));

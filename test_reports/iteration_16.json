@@ -1,0 +1,33 @@
+{
+  "summary": "Round 37 — comprehensive testing of 12 user-reported bug fixes. ALL P0 backend endpoints (10/10) and P1 frontend flows (5/5) passed. Backend: packages prices return exact 380/490/790/1180 for BASIC/SMART/PREMIUM/ELITE; POST /workflow/computo generates items from preventivo.items[] with all required fields and stato_assegnazione='da_assegnare'; PATCH /computo/{voce_id}/assegna correctly sets stato/artigiano_nome/assigned_at; cassa POST with multi-payment fields (data_scadenza, stato_pagamento='programmato', beneficiario_tipo, categoria) persists correctly; PATCH /cassa/{mid} can mark as 'pagato'; GET /workflow returns cassa array with new entry; subappaltatori/tipi-documenti returns exactly 9 types (5 obbligatori: durc, visura_camerale, carta_identita, assicurazione_rc, iscrizione_inps_inail); /subappaltatori/sub-898b28d4/documenti and /ready-check both correctly report ok_per_assegnazione:false with all 5 mandatory mancanti; POST /subappaltatori/assegna properly blocks with 400 'documenti del sub-appaltatore mancanti' (VINCOLO 3). Frontend: DettaglioCommessa redirects to /commesse/{id}/workflow; 9 workflow tabs all present (tab-contratto, tab-checklist NEW, tab-documenti, tab-materiali, tab-computo, tab-artigiani, tab-fasi, tab-cassa, tab-resoconto); ChecklistVenditore has progress text + 6 critico badges; Computo 3 views (cm-view-prices/noprices/assign) all present with 4 cm-assign-<id> buttons and cm-assign-stato modal opens; Cassa shows all 5 KPIs (Incassato, Da incassare, Uscite pagate, Da pagare, Saldo cassa) and cassa-view-scadenze button visible; SubappaltatoreDettaglio shows all 9 doc rows with 5 MANCANTE badges + red 'Documenti incompleti — NON può ricevere affidamenti' badge (data-testid='sub-ready-badge') + working sub-doc-add dialog with sub-doc-tipo/sub-doc-nome/sub-doc-file inputs.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_round37_fixes.py",
+    "/app/test_reports/pytest/round37_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes_commessa_workflow.py line 114-150: gen_computo now reads preventivo['items'] with fallback to legacy 'voci_dettaglio'/'computo' — clean. Items get stato_assegnazione='da_assegnare' on regeneration which will OVERWRITE existing assignments — consider preserving existing assignments by id when regenerating to avoid accidental data loss.",
+    "routes_commessa_workflow.py line 430-440: marginalita correctly counts only stato_pagamento=='pagato' for incassato/uscito. da_incassare_scadenze and da_pagare_scadenze use 'not _paid'. Logic is correct.",
+    "routes_round10.py line 282: ok_per_assegnazione=all(c['valido'] for c in completezza if c['obbligatorio']) — correct AND-logic across 5 obbligatori docs.",
+    "routes_round10.py line 309-318: ready-check correctly distinguishes mancante vs scaduto via motivo field.",
+    "routes_round10.py line 113-156: POST /subappaltatori/assegna chains 3 VINCOLI (preventivo accettato → contratto subappalto firmato → documenti sub validi). Error messages are descriptive and italian-localized. Good UX.",
+    "CommessaWorkflow.jsx not directly viewed but tabs/data-testids all working — code is modular with proper component sectioning.",
+    "Files >700 lines: routes_round10.py (743 lines) and server.py (>1260 lines) exceed the 700-LOC threshold. Consider splitting server.py into modules (auth, packages, projects, etc.)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_round37_fixes.py (NEW)"
+  ],
+  "success_rate": {"backend": "100% (10/10 endpoints)", "frontend": "100% (5/5 flows)"},
+  "test_credentials": "admin@admin.it / admin (admin role) — Cookie-based JWT auth working",
+  "seed_data_creation": "Created 1 cassa movimento for commessa 6ca5efe8 (uscita €1000 to Test subappaltatore, programmato then marked pagato in test). Also called POST /workflow/computo which idempotently rebuilds computo_metrico, and PATCH /computo/{voce_id}/assegna which marked first voce as 'artigiano' (Test SRL). These mutations persist — if tests are re-run, computo will be regenerated (existing 'artigiano' assignment will be reset to 'da_assegnare', see code review note above).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Round 37 fixes are FULLY verified end-to-end. Use /app/backend/tests/test_round37_fixes.py for regression. Frontend test commessa: 6ca5efe8-be70-4cc2-b603-6bc0a812d8c1. Test sub (empty docs): sub-898b28d4. All 9 workflow tabs use predictable data-testid='tab-<name>' selectors. Computo assign modal selector: data-testid='cm-assign-stato'. Cassa scadenze view: data-testid='cassa-view-scadenze'. Sub ready badge: data-testid='sub-ready-badge'.",
+  "rca of the issue": "N/A — no bugs found in Round 37 hotfixes. All 12 user-reported issues addressed correctly by main agent."
+}

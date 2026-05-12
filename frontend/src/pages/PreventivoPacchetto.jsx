@@ -130,7 +130,7 @@ export default function PreventivoPacchetto() {
         return {
           id: it.id, voce_id: it.voce_id || it.id, name: it.name, category: it.category, unit: it.unit,
           qty_mode: it.qty_mode, qty_ratio: it.qty_ratio, qty_value: it.qty_value,
-          unit_price: existing && existing.unit_price != null ? existing.unit_price : (it.prezzo_rivendita || 0),
+          unit_price: existing && existing.unit_price != null ? existing.unit_price : (it.unit_price_pkg != null ? it.unit_price_pkg : (it.prezzo_rivendita || 0)),
           included_qty: parseFloat(included.toFixed(2)),
           qty_richiesta: existing ? existing.qty_richiesta : parseFloat(included.toFixed(2)),
           modificabile_dal_venditore: it.modificabile_dal_venditore !== false, // default true se non specificato

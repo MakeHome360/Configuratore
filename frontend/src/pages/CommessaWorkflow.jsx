@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileSignature, Files, ListChecks, Calculator, Hammer, CalendarRange, Wallet, FileBarChart2, Plus, Trash2, ShieldCheck, AlertTriangle, Sparkles, CheckCircle2, Clock } from "lucide-react";
+import { FileSignature, Files, ListChecks, Calculator, Hammer, CalendarRange, Wallet, FileBarChart2, Plus, Trash2, ShieldCheck, AlertTriangle, Sparkles, CheckCircle2, Clock, ClipboardCheck } from "lucide-react";
 import { toast } from "sonner";
 
 const STATO_ART_BADGE = {
@@ -54,30 +54,33 @@ export default function CommessaWorkflow() {
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="rounded-sm flex-wrap h-auto">
             <TabsTrigger value="contratto" data-testid="tab-contratto"><FileSignature className="h-4 w-4 mr-1.5" /> 1. Contratto</TabsTrigger>
-            <TabsTrigger value="documenti" data-testid="tab-documenti"><Files className="h-4 w-4 mr-1.5" /> 2. Documenti</TabsTrigger>
-            <TabsTrigger value="materiali" data-testid="tab-materiali"><ListChecks className="h-4 w-4 mr-1.5" /> 3. Materiali</TabsTrigger>
-            <TabsTrigger value="computo" data-testid="tab-computo"><Calculator className="h-4 w-4 mr-1.5" /> 4. Computo</TabsTrigger>
-            <TabsTrigger value="artigiani" data-testid="tab-artigiani"><Hammer className="h-4 w-4 mr-1.5" /> 5. Artigiani</TabsTrigger>
-            <TabsTrigger value="fasi" data-testid="tab-fasi"><CalendarRange className="h-4 w-4 mr-1.5" /> 6. Fasi cantiere</TabsTrigger>
-            <TabsTrigger value="cassa" data-testid="tab-cassa"><Wallet className="h-4 w-4 mr-1.5" /> 7. Cassa</TabsTrigger>
-            <TabsTrigger value="resoconto" data-testid="tab-resoconto"><FileBarChart2 className="h-4 w-4 mr-1.5" /> 8. Resoconto</TabsTrigger>
+            <TabsTrigger value="checklist" data-testid="tab-checklist"><ClipboardCheck className="h-4 w-4 mr-1.5" /> 2. Checklist venditore</TabsTrigger>
+            <TabsTrigger value="documenti" data-testid="tab-documenti"><Files className="h-4 w-4 mr-1.5" /> 3. Documenti</TabsTrigger>
+            <TabsTrigger value="materiali" data-testid="tab-materiali"><ListChecks className="h-4 w-4 mr-1.5" /> 4. Materiali</TabsTrigger>
+            <TabsTrigger value="computo" data-testid="tab-computo"><Calculator className="h-4 w-4 mr-1.5" /> 5. Computo</TabsTrigger>
+            <TabsTrigger value="artigiani" data-testid="tab-artigiani"><Hammer className="h-4 w-4 mr-1.5" /> 6. Artigiani / Sub</TabsTrigger>
+            <TabsTrigger value="fasi" data-testid="tab-fasi"><CalendarRange className="h-4 w-4 mr-1.5" /> 7. Fasi cantiere</TabsTrigger>
+            <TabsTrigger value="cassa" data-testid="tab-cassa"><Wallet className="h-4 w-4 mr-1.5" /> 8. Cassa & Pagamenti</TabsTrigger>
+            <TabsTrigger value="resoconto" data-testid="tab-resoconto"><FileBarChart2 className="h-4 w-4 mr-1.5" /> 9. Resoconto</TabsTrigger>
           </TabsList>
 
           {/* 1. CONTRATTO */}
           <TabsContent value="contratto" className="mt-4"><Contratto wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 2. DOCUMENTI */}
+          {/* 2. CHECKLIST VENDITORE */}
+          <TabsContent value="checklist" className="mt-4"><ChecklistVenditore wf={wf} cid={cid} reload={reload} /></TabsContent>
+          {/* 3. DOCUMENTI */}
           <TabsContent value="documenti" className="mt-4"><Documenti wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 3. MATERIALI */}
+          {/* 4. MATERIALI */}
           <TabsContent value="materiali" className="mt-4"><Materiali wf={wf} cid={cid} reload={reload} voci={voci} /></TabsContent>
-          {/* 4. COMPUTO */}
+          {/* 5. COMPUTO */}
           <TabsContent value="computo" className="mt-4"><ComputoTab wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 5. ARTIGIANI */}
+          {/* 6. ARTIGIANI */}
           <TabsContent value="artigiani" className="mt-4"><Artigiani wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 6. FASI */}
+          {/* 7. FASI */}
           <TabsContent value="fasi" className="mt-4"><Fasi wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 7. CASSA */}
+          {/* 8. CASSA */}
           <TabsContent value="cassa" className="mt-4"><Cassa wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 8. RESOCONTO */}
+          {/* 9. RESOCONTO */}
           <TabsContent value="resoconto" className="mt-4"><Resoconto cid={cid} marg={marg} wf={wf} /></TabsContent>
         </Tabs>
       </Page>
@@ -130,6 +133,81 @@ function Contratto({ wf, cid, reload }) {
     </div>
   );
 }
+
+// ---- 2. CHECKLIST VENDITORE — anti-dimenticanza ----
+function ChecklistVenditore({ wf, cid, reload }) {
+  const cm = wf.commessa || {};
+  const docs = wf.documenti || [];
+  const contratto = wf.contratto || {};
+  const materiali = wf.materiali || [];
+  const computoOk = !!((wf.computo_metrico || {}).items || []).length;
+  const fasi = wf.fasi || [];
+  const artPrev = wf.artigiani_preventivi || [];
+  const cassaItems = wf.cassa || [];
+  const cliente = cm.cliente || {};
+
+  // Build dynamic checklist
+  const items = [
+    { id: "ct-cliente", label: "Dati cliente completi (nome, telefono, email, indirizzo)", done: !!(cliente.nome && cliente.email && cliente.telefono), critico: true },
+    { id: "ct-contratto", label: "Contratto caricato e firmato dal cliente", done: !!contratto.firmato, critico: true },
+    { id: "ct-acconto", label: "Acconto iniziale registrato (cassa)", done: cassaItems.some(m => m.tipo === "incasso"), critico: true },
+    { id: "ct-doc-pratica", label: "Documenti pratica edilizia (CILA/SCIA/permesso) caricati", done: docs.some(d => /cila|scia|permesso|pratica|edilizia/i.test(d.tipo || d.name || "")), critico: false },
+    { id: "ct-progetto", label: "Progetto / planimetria CAD caricata", done: docs.some(d => /progetto|planimetria|cad|dwg/i.test(d.tipo || d.name || "")) || !!cm.project_id, critico: false },
+    { id: "ct-materiali", label: "Scelta materiali principali (pavimenti, sanitari, ecc.)", done: materiali.length > 0, critico: true },
+    { id: "ct-computo", label: "Computo metrico generato dal preventivo accettato", done: computoOk, critico: true },
+    { id: "ct-preventivi-art", label: "Preventivi artigiani caricati e analizzati", done: artPrev.length > 0, critico: false },
+    { id: "ct-fasi", label: "Fasi cantiere pianificate (Gantt)", done: fasi.length > 0, critico: false },
+    { id: "ct-foto-rilievo", label: "Foto / rilievo pre-cantiere caricato", done: docs.some(d => /foto|rilievo/i.test(d.tipo || d.name || "")), critico: false },
+    { id: "ct-privacy", label: "Modulo privacy/GDPR firmato dal cliente", done: docs.some(d => /privacy|gdpr/i.test(d.tipo || d.name || "")), critico: true },
+    { id: "ct-data-inizio", label: "Data inizio lavori concordata con il cliente", done: !!cm.data_inizio_prevista || fasi.some(f => f.data_inizio), critico: true },
+  ];
+  const totCrit = items.filter(i => i.critico).length;
+  const okCrit = items.filter(i => i.critico && i.done).length;
+  const pct = Math.round(okCrit / Math.max(1, totCrit) * 100);
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-white border border-zinc-200 rounded p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="font-semibold">Checklist venditore — anti-dimenticanza</h3>
+            <p className="text-xs text-zinc-500">Verifica tutti gli step prima di considerare la pratica chiusa.</p>
+          </div>
+          <div className="text-right">
+            <div className={`text-3xl font-bold mono ${pct === 100 ? "text-emerald-700" : pct > 60 ? "text-amber-700" : "text-rose-700"}`}>{pct}%</div>
+            <div className="text-[10px] uppercase text-zinc-500">{okCrit}/{totCrit} step critici</div>
+          </div>
+        </div>
+        <div className="h-2 bg-zinc-200 rounded overflow-hidden mb-4">
+          <div className={`h-full ${pct === 100 ? "bg-emerald-500" : pct > 60 ? "bg-amber-500" : "bg-rose-500"} transition-all`} style={{ width: `${pct}%` }} />
+        </div>
+        <div className="space-y-1.5">
+          {items.map(it => (
+            <div key={it.id} className={`flex items-center gap-3 p-2.5 rounded border ${it.done ? "bg-emerald-50 border-emerald-200" : it.critico ? "bg-rose-50/40 border-rose-200" : "bg-zinc-50 border-zinc-200"}`} data-testid={`check-${it.id}`}>
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${it.done ? "bg-emerald-500 text-white" : "bg-white border-2 border-zinc-300"}`}>
+                {it.done && <CheckCircle2 size={14} />}
+              </div>
+              <div className="flex-1 text-sm">{it.label}</div>
+              {it.critico && !it.done && <span className="text-[10px] px-1.5 py-0.5 bg-rose-200 text-rose-800 rounded uppercase font-bold">Critico</span>}
+              {it.done && <span className="text-[10px] text-emerald-700 mono">OK</span>}
+            </div>
+          ))}
+        </div>
+        {pct < 100 && (
+          <div className="mt-4 bg-amber-50 border border-amber-200 p-3 rounded text-xs text-amber-900">
+            <AlertTriangle className="inline h-4 w-4 mr-1" /> Mancano alcuni step. Completa prima i punti <b>critici</b> per non avere problemi durante il cantiere.
+          </div>
+        )}
+        {pct === 100 && (
+          <div className="mt-4 bg-emerald-50 border border-emerald-200 p-3 rounded text-xs text-emerald-900">
+            <CheckCircle2 className="inline h-4 w-4 mr-1" /> Checklist completata! Tutti gli step critici sono OK.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 // ---- 2. DOCUMENTI ----
 function Documenti({ wf, cid, reload }) {
@@ -198,13 +276,22 @@ function Materiali({ wf, cid, reload, voci }) {
   const totale = useMemo(() => items.reduce((s, x) => s + (parseFloat(x.qty || 0) * parseFloat(x.prezzo || 0)), 0), [items]);
   return (
     <div className="bg-white border border-zinc-200 rounded p-5 space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold">Scelta materiali (firma cliente)</h3>
-        <Button size="sm" onClick={() => setItems([...items, { voce_id: "", name: "", qty: 1, unit: "pz", prezzo: 0, note: "" }])} data-testid="mat-add"><Plus className="h-4 w-4 mr-1" /> Riga</Button>
+      <div className="flex items-start justify-between">
+        <div>
+          <h3 className="font-semibold">Scelta materiali del cliente</h3>
+          <p className="text-xs text-zinc-500 mt-1">Elenca i materiali specifici scelti dal cliente (es. piastrelle, sanitari, rubinetterie). Quando salvi con la firma, il cliente non potrà più chiedere modifiche senza extra.</p>
+        </div>
+        <Button size="sm" onClick={() => setItems([...items, { voce_id: "", name: "", qty: 1, unit: "pz", prezzo: 0, note: "" }])} data-testid="mat-add"><Plus className="h-4 w-4 mr-1" /> Aggiungi materiale</Button>
       </div>
       <table className="w-full text-sm">
         <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
-          <th className="px-2 py-2 text-left">Voce backoffice</th><th className="px-2 py-2 text-left">Nome</th><th className="px-2 py-2 text-right">Qty</th><th className="px-2 py-2 text-left">Unità</th><th className="px-2 py-2 text-right">Prezzo</th><th className="px-2 py-2 text-right">Tot</th><th></th>
+          <th className="px-2 py-2 text-left w-56" title="Seleziona dal listino backoffice per usare i prezzi già configurati">Da listino interno</th>
+          <th className="px-2 py-2 text-left" title="Modello/colore esatto scelto dal cliente">Descrizione / modello scelto</th>
+          <th className="px-2 py-2 text-right w-20" title="Quantità">Qty</th>
+          <th className="px-2 py-2 text-left w-20" title="Unità di misura (m², pz, ml)">U.M.</th>
+          <th className="px-2 py-2 text-right w-28" title="Prezzo al cliente per unità">Prezzo unit. (€)</th>
+          <th className="px-2 py-2 text-right w-28">Totale</th>
+          <th className="w-10"></th>
         </tr></thead>
         <tbody className="divide-y divide-zinc-100">
           {items.map((it, i) => {
@@ -213,61 +300,220 @@ function Materiali({ wf, cid, reload, voci }) {
               <tr key={i}>
                 <td className="px-2 py-1">
                   <Select value={it.voce_id || ""} onValueChange={v => { const voce = voci.find(x => x.id === v); upd("voce_id", v); if (voce) { upd("name", voce.name); upd("unit", voce.unit || "pz"); upd("prezzo", parseFloat(voce.prezzo_acquisto || 0) * parseFloat(voce.ricarico || 1.8)); } }}>
-                    <SelectTrigger className="h-8 text-xs" data-testid={`mat-voce-${i}`}><SelectValue placeholder="Scegli..." /></SelectTrigger>
+                    <SelectTrigger className="h-8 text-xs" data-testid={`mat-voce-${i}`}><SelectValue placeholder="— oppure scrivi a mano —" /></SelectTrigger>
                     <SelectContent className="max-h-72">{voci.map(v => <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>)}</SelectContent>
                   </Select>
                 </td>
-                <td className="px-2 py-1"><Input value={it.name} onChange={e => upd("name", e.target.value)} className="h-8 text-xs" /></td>
+                <td className="px-2 py-1"><Input value={it.name} onChange={e => upd("name", e.target.value)} placeholder="Es: Piastrella Marazzi 60x60 grigio chiaro" className="h-8 text-xs" /></td>
                 <td className="px-2 py-1"><Input type="number" value={it.qty} onChange={e => upd("qty", e.target.value)} className="h-8 text-xs text-right mono w-20" /></td>
-                <td className="px-2 py-1"><Input value={it.unit} onChange={e => upd("unit", e.target.value)} className="h-8 text-xs w-16" /></td>
-                <td className="px-2 py-1"><Input type="number" value={it.prezzo} onChange={e => upd("prezzo", e.target.value)} className="h-8 text-xs text-right mono w-24" /></td>
-                <td className="px-2 py-1 text-right mono">{fmtEur((it.qty || 0) * (it.prezzo || 0))}</td>
-                <td><button onClick={() => setItems(items.filter((_, j) => j !== i))} className="text-rose-600 p-1"><Trash2 className="h-4 w-4" /></button></td>
+                <td className="px-2 py-1"><Input value={it.unit} onChange={e => upd("unit", e.target.value)} placeholder="m²" className="h-8 text-xs w-16" /></td>
+                <td className="px-2 py-1"><Input type="number" step="0.01" value={it.prezzo} onChange={e => upd("prezzo", e.target.value)} className="h-8 text-xs text-right mono w-24" /></td>
+                <td className="px-2 py-1 text-right mono font-semibold">{fmtEur((it.qty || 0) * (it.prezzo || 0))}</td>
+                <td><button onClick={() => setItems(items.filter((_, j) => j !== i))} className="text-rose-600 p-1" data-testid={`mat-del-${i}`}><Trash2 className="h-4 w-4" /></button></td>
               </tr>
             );
           })}
-          {!items.length && <tr><td colSpan={7} className="px-3 py-12 text-center text-zinc-500">Aggiungi le voci materiali da fare scegliere/firmare al cliente.</td></tr>}
+          {!items.length && <tr><td colSpan={7} className="px-3 py-12 text-center text-zinc-500">Nessun materiale ancora aggiunto. Clicca "Aggiungi materiale" per il primo.</td></tr>}
         </tbody>
-        {items.length > 0 && <tfoot><tr className="bg-zinc-50"><td colSpan={5} className="px-2 py-2 text-right font-bold uppercase text-xs">Totale</td><td className="px-2 py-2 text-right font-bold mono">{fmtEur(totale)}</td><td></td></tr></tfoot>}
+        {items.length > 0 && <tfoot><tr className="bg-zinc-50"><td colSpan={5} className="px-2 py-2 text-right font-bold uppercase text-xs">Totale materiali</td><td className="px-2 py-2 text-right font-bold mono">{fmtEur(totale)}</td><td></td></tr></tfoot>}
       </table>
-      <div className="flex items-center gap-3">
-        <label className="flex items-center gap-2"><input type="checkbox" checked={firmato} onChange={e => setFirmato(e.target.checked)} data-testid="mat-firmato" /> <span className="text-sm">Firmato dal cliente</span></label>
-        <Button onClick={async () => { await api.post(`/commesse/${cid}/workflow/materiali`, { items, firmato_cliente: firmato, firma_data: firmato ? new Date().toISOString() : null }); toast.success("Materiali salvati"); reload(); }} style={{ background: "var(--brand)", color: "white" }} data-testid="mat-save">Salva scelta</Button>
+      <div className="flex items-center gap-3 pt-2 border-t border-zinc-200">
+        <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={firmato} onChange={e => setFirmato(e.target.checked)} data-testid="mat-firmato" /> <span className="text-sm">Confermato/firmato dal cliente (blocca cambi senza extra)</span></label>
+        <div className="ml-auto"><Button onClick={async () => { await api.post(`/commesse/${cid}/workflow/materiali`, { items, firmato_cliente: firmato, firma_data: firmato ? new Date().toISOString() : null }); toast.success("Materiali salvati"); reload(); }} style={{ background: "var(--brand)", color: "white" }} data-testid="mat-save">Salva scelta materiali</Button></div>
       </div>
     </div>
   );
 }
 
-// ---- 4. COMPUTO METRICO ----
+// ---- 4. COMPUTO METRICO (3 viste: con prezzi · senza prezzi · da assegnare) ----
 function ComputoTab({ wf, cid, reload }) {
   const cm = wf.computo_metrico || { items: [] };
+  const items = cm.items || [];
+  const artPrev = wf.artigiani_preventivi || [];
+  const [view, setView] = useState("prices"); // prices | no_prices | assign
+  const [filter, setFilter] = useState("all"); // all | assigned | unassigned (solo in vista assign)
+  const [assignOpen, setAssignOpen] = useState(null);
+  const [assignForm, setAssignForm] = useState({ stato_assegnazione: "artigiano", artigiano_nome: "", artigiano_id: "", note_assegnazione: "" });
+
+  // Statistiche assegnazione
+  const stats = useMemo(() => {
+    const ass = items.filter(i => i.stato_assegnazione && i.stato_assegnazione !== "da_assegnare");
+    const noA = items.filter(i => !i.stato_assegnazione || i.stato_assegnazione === "da_assegnare");
+    const totEur = items.reduce((s, i) => s + (i.totale || i.qty * i.prezzo_unit || 0), 0);
+    const assEur = ass.reduce((s, i) => s + (i.totale || i.qty * i.prezzo_unit || 0), 0);
+    return { totale: items.length, assegnate: ass.length, da_assegnare: noA.length, totEur, assEur, pct: totEur ? (assEur / totEur * 100) : 0 };
+  }, [items]);
+
+  const displayed = useMemo(() => {
+    if (view !== "assign") return items;
+    if (filter === "assigned") return items.filter(i => i.stato_assegnazione && i.stato_assegnazione !== "da_assegnare");
+    if (filter === "unassigned") return items.filter(i => !i.stato_assegnazione || i.stato_assegnazione === "da_assegnare");
+    return items;
+  }, [items, view, filter]);
+
+  const openAssign = (it) => {
+    setAssignForm({
+      stato_assegnazione: it.stato_assegnazione && it.stato_assegnazione !== "da_assegnare" ? it.stato_assegnazione : "artigiano",
+      artigiano_nome: it.artigiano_nome || "",
+      artigiano_id: it.artigiano_id || "",
+      note_assegnazione: it.note_assegnazione || "",
+    });
+    setAssignOpen(it);
+  };
+
+  const saveAssign = async () => {
+    if (assignForm.stato_assegnazione === "artigiano" && !assignForm.artigiano_nome) {
+      toast.error("Inserisci il nome dell'artigiano o seleziona 'Operai interni'");
+      return;
+    }
+    try {
+      await api.patch(`/commesse/${cid}/workflow/computo/${assignOpen.id}/assegna`, assignForm);
+      toast.success("Voce assegnata");
+      setAssignOpen(null);
+      reload();
+    } catch (e) { toast.error(e?.response?.data?.detail || "Errore"); }
+  };
+
+  const printAndExport = () => window.print();
+
   return (
-    <div className="bg-white border border-zinc-200 rounded">
-      <div className="flex items-center justify-between p-4 border-b border-zinc-200">
-        <div>
-          <h3 className="font-semibold">Computo metrico</h3>
-          <p className="text-xs text-zinc-500">Generato dal preventivo. Ogni voce deve essere assegnata a un artigiano o a operai interni.</p>
+    <div className="space-y-3">
+      <div className="bg-white border border-zinc-200 rounded">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-zinc-200">
+          <div>
+            <h3 className="font-semibold">Computo metrico</h3>
+            <p className="text-xs text-zinc-500">Generato dal preventivo accettato. Scegli la vista che ti serve.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={printAndExport} data-testid="cm-print">Stampa / PDF</Button>
+            <Button size="sm" onClick={async () => { await api.post(`/commesse/${cid}/workflow/computo`); toast.success("Computo rigenerato dal preventivo"); reload(); }} data-testid="cm-gen"><Sparkles className="h-4 w-4 mr-1" /> Rigenera dal preventivo</Button>
+          </div>
         </div>
-        <Button onClick={async () => { await api.post(`/commesse/${cid}/workflow/computo`); toast.success("Computo rigenerato dal preventivo"); reload(); }} data-testid="cm-gen"><Sparkles className="h-4 w-4 mr-1" /> Rigenera dal preventivo</Button>
+        {/* Tabs vista */}
+        <div className="flex flex-wrap gap-1.5 px-4 py-2.5 border-b border-zinc-200 bg-zinc-50">
+          <button onClick={() => setView("prices")} className={`px-3 py-1.5 text-xs rounded-sm border ${view === "prices" ? "bg-zinc-900 text-white border-zinc-900" : "bg-white border-zinc-300"}`} data-testid="cm-view-prices">Con prezzi</button>
+          <button onClick={() => setView("no_prices")} className={`px-3 py-1.5 text-xs rounded-sm border ${view === "no_prices" ? "bg-zinc-900 text-white border-zinc-900" : "bg-white border-zinc-300"}`} data-testid="cm-view-noprices">Senza prezzi (per artigiani)</button>
+          <button onClick={() => setView("assign")} className={`px-3 py-1.5 text-xs rounded-sm border ${view === "assign" ? "bg-zinc-900 text-white border-zinc-900" : "bg-white border-zinc-300"}`} data-testid="cm-view-assign">Assegnazione voci</button>
+          {view === "assign" && (
+            <div className="ml-auto flex items-center gap-1 text-xs">
+              <span className="text-zinc-500">Mostra:</span>
+              <button onClick={() => setFilter("all")} className={`px-2 py-0.5 rounded-sm border ${filter === "all" ? "bg-zinc-900 text-white" : "bg-white"}`}>Tutte ({stats.totale})</button>
+              <button onClick={() => setFilter("assigned")} className={`px-2 py-0.5 rounded-sm border ${filter === "assigned" ? "bg-emerald-700 text-white" : "bg-white"}`}>Assegnate ({stats.assegnate})</button>
+              <button onClick={() => setFilter("unassigned")} className={`px-2 py-0.5 rounded-sm border ${filter === "unassigned" ? "bg-rose-700 text-white" : "bg-white"}`} data-testid="cm-filter-unassigned">Da assegnare ({stats.da_assegnare})</button>
+            </div>
+          )}
+        </div>
+        {/* Barra avanzamento assegnazione */}
+        {view === "assign" && (
+          <div className="px-4 py-3 border-b border-zinc-200 bg-zinc-50/50">
+            <div className="flex justify-between text-xs text-zinc-600 mb-1.5">
+              <span>Avanzamento assegnazione: <b>{fmtNum(stats.pct, 1)}%</b> · {fmtEur(stats.assEur)} / {fmtEur(stats.totEur)}</span>
+              <span className="text-rose-700 font-medium">{stats.da_assegnare} voci ancora da assegnare</span>
+            </div>
+            <div className="h-2 bg-zinc-200 rounded overflow-hidden">
+              <div className="h-full bg-emerald-500 transition-all" style={{ width: `${Math.min(100, stats.pct)}%` }} />
+            </div>
+          </div>
+        )}
+        <table className="w-full text-sm">
+          <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
+            <th className="px-3 py-2 text-left">Categoria</th>
+            <th className="px-3 py-2 text-left">Voce</th>
+            <th className="px-3 py-2 text-right">Qty</th>
+            <th className="px-3 py-2 text-left">U.M.</th>
+            {view === "prices" && <th className="px-3 py-2 text-right">Prezzo unit.</th>}
+            {view === "prices" && <th className="px-3 py-2 text-right">Totale</th>}
+            {view === "assign" && <th className="px-3 py-2 text-left">Assegnata a</th>}
+            {view === "assign" && <th className="px-3 py-2 text-right">Azione</th>}
+          </tr></thead>
+          <tbody className="divide-y divide-zinc-100">
+            {displayed.map(it => {
+              const ass = it.stato_assegnazione && it.stato_assegnazione !== "da_assegnare";
+              return (
+                <tr key={it.id} className={view === "assign" && !ass ? "bg-rose-50/40" : ""}>
+                  <td className="px-3 py-2 text-xs text-zinc-500">{it.category || "—"}</td>
+                  <td className="px-3 py-2">{it.name}</td>
+                  <td className="px-3 py-2 text-right mono">{fmtNum(it.qty, 2)}</td>
+                  <td className="px-3 py-2 text-xs">{it.unit}</td>
+                  {view === "prices" && <td className="px-3 py-2 text-right mono">{fmtEur(it.prezzo_unit)}</td>}
+                  {view === "prices" && <td className="px-3 py-2 text-right font-semibold mono">{fmtEur(it.totale || (it.qty * it.prezzo_unit))}</td>}
+                  {view === "assign" && (
+                    <td className="px-3 py-2 text-xs">
+                      {ass ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${it.stato_assegnazione === "interno" ? "bg-violet-100 text-violet-700" : it.stato_assegnazione === "autorizzato" ? "bg-blue-100 text-blue-700" : "bg-emerald-100 text-emerald-700"}`}>{it.stato_assegnazione}</span>
+                          {it.artigiano_nome && <span className="text-zinc-700">→ {it.artigiano_nome}</span>}
+                        </span>
+                      ) : <span className="text-rose-600 font-medium">DA ASSEGNARE</span>}
+                    </td>
+                  )}
+                  {view === "assign" && (
+                    <td className="px-3 py-2 text-right">
+                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openAssign(it)} data-testid={`cm-assign-${it.id}`}>{ass ? "Modifica" : "Assegna"}</Button>
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+            {!displayed.length && <tr><td colSpan={view === "prices" ? 6 : (view === "assign" ? 7 : 4)} className="px-3 py-12 text-center text-zinc-500">{view === "assign" && filter === "unassigned" ? "Tutte le voci sono assegnate 🎉" : "Nessuna voce. Clicca 'Rigenera dal preventivo'."}</td></tr>}
+          </tbody>
+          {view === "prices" && items.length > 0 && (
+            <tfoot className="bg-zinc-50 font-bold">
+              <tr><td colSpan={5} className="px-3 py-2 text-right">TOTALE</td><td className="px-3 py-2 text-right mono">{fmtEur(stats.totEur)}</td></tr>
+            </tfoot>
+          )}
+        </table>
+        {view === "no_prices" && items.length > 0 && (
+          <div className="p-3 bg-amber-50 border-t border-amber-200 text-xs text-amber-800">
+            Versione senza prezzi: stampa o salva in PDF per consegnarla agli artigiani in fase di richiesta preventivo.
+          </div>
+        )}
       </div>
-      <table className="w-full text-sm">
-        <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
-          <th className="px-3 py-2 text-left">Voce</th><th className="px-3 py-2 text-right">Qty</th><th className="px-3 py-2 text-left">Unità</th><th className="px-3 py-2 text-right">Prezzo</th><th className="px-3 py-2 text-right">Totale</th><th className="px-3 py-2 text-center">Stato</th>
-        </tr></thead>
-        <tbody className="divide-y divide-zinc-100">
-          {(cm.items || []).map(it => (
-            <tr key={it.id}>
-              <td className="px-3 py-2">{it.name}</td>
-              <td className="px-3 py-2 text-right mono">{fmtNum(it.qty, 2)}</td>
-              <td className="px-3 py-2 text-xs">{it.unit}</td>
-              <td className="px-3 py-2 text-right mono">{fmtEur(it.prezzo_unit)}</td>
-              <td className="px-3 py-2 text-right font-semibold mono">{fmtEur(it.totale || (it.qty * it.prezzo_unit))}</td>
-              <td className="px-3 py-2 text-center"><span className="text-[11px] px-2 py-0.5 bg-zinc-100 rounded">{it.stato_assegnazione}</span></td>
-            </tr>
-          ))}
-          {!(cm.items || []).length && <tr><td colSpan={6} className="px-3 py-12 text-center text-zinc-500">Computo non generato. Clicca "Rigenera" qui sopra.</td></tr>}
-        </tbody>
-      </table>
+
+      {/* Modal assegnazione */}
+      <Dialog open={!!assignOpen} onOpenChange={(o) => !o && setAssignOpen(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Assegna voce: {assignOpen?.name}</DialogTitle></DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="bg-zinc-50 p-2 rounded text-xs">
+              {fmtNum(assignOpen?.qty || 0, 2)} {assignOpen?.unit} · {fmtEur((assignOpen?.qty || 0) * (assignOpen?.prezzo_unit || 0))}
+            </div>
+            <div><Label className="text-xs">Eseguita da</Label>
+              <Select value={assignForm.stato_assegnazione} onValueChange={v => setAssignForm({ ...assignForm, stato_assegnazione: v })}>
+                <SelectTrigger data-testid="cm-assign-stato"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="artigiano">Artigiano / sub-appaltatore</SelectItem>
+                  <SelectItem value="interno">Operai interni</SelectItem>
+                  <SelectItem value="autorizzato">Già autorizzata (preventivo OK)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {assignForm.stato_assegnazione === "artigiano" && (
+              <>
+                <div>
+                  <Label className="text-xs">Scegli da preventivi caricati</Label>
+                  <Select value={assignForm.artigiano_id} onValueChange={v => {
+                    const p = artPrev.find(x => x.id === v);
+                    setAssignForm({ ...assignForm, artigiano_id: v, artigiano_nome: p?.artigiano_nome || assignForm.artigiano_nome });
+                  }}>
+                    <SelectTrigger data-testid="cm-assign-art"><SelectValue placeholder="— oppure scrivi il nome sotto —" /></SelectTrigger>
+                    <SelectContent>
+                      {artPrev.map(p => <SelectItem key={p.id} value={p.id}>{p.artigiano_nome} · {fmtEur(p.importo_offerto)} · {p.stato}</SelectItem>)}
+                      {!artPrev.length && <div className="p-2 text-xs text-zinc-500">Nessun preventivo artigiano caricato</div>}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div><Label className="text-xs">Nome artigiano / squadra</Label><Input value={assignForm.artigiano_nome} onChange={e => setAssignForm({ ...assignForm, artigiano_nome: e.target.value })} data-testid="cm-assign-name" /></div>
+              </>
+            )}
+            <div><Label className="text-xs">Note</Label><Input value={assignForm.note_assegnazione} onChange={e => setAssignForm({ ...assignForm, note_assegnazione: e.target.value })} placeholder="Eventuali note sull'esecuzione" /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignOpen(null)}>Annulla</Button>
+            <Button onClick={saveAssign} style={{ background: "var(--brand)", color: "white" }} data-testid="cm-assign-save">Salva assegnazione</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -389,57 +635,71 @@ function Fasi({ wf, cid, reload }) {
     const minD = new Date(Math.min(...fasiDate.map(f => f._start.getTime())));
     const maxD = new Date(Math.max(...fasiDate.map(f => f._end.getTime())));
     const totDays = Math.max(1, Math.round((maxD - minD) / 86400000) + 1);
-    const COL_W = Math.max(20, Math.min(40, 1100 / totDays));
+    // Larghezza colonna giorno aumentata (più leggibile). Min 28 / Max 60 px.
+    const COL_W = Math.max(28, Math.min(60, 1600 / totDays));
     return { fasiDate, minD, maxD, totDays, COL_W, width: COL_W * totDays };
   }, [fasi]);
 
   const STATO_COL = { da_iniziare: "#A1A1AA", in_corso: "#3B82F6", completata: "#10B981", sospesa: "#F59E0B" };
+  const LABEL_W = 240; // colonna sx larga per nomi fase
+  const ROW_H = 44;   // riga alta per leggibilità
 
   return (
     <div className="space-y-3">
       <div className="bg-white border border-zinc-200 rounded">
         <div className="flex items-center justify-between p-4 border-b border-zinc-200">
-          <h3 className="font-semibold">Fasi cantiere <span className="ml-2 text-xs text-zinc-500">Pianifica chi fa cosa e quando</span></h3>
+          <h3 className="font-semibold">Fasi cantiere <span className="ml-2 text-xs text-zinc-500">Pianifica chi fa cosa e quando · Gantt visivo grande</span></h3>
           <Button size="sm" onClick={() => setOpen(true)} data-testid="fase-add"><Plus className="h-4 w-4 mr-1" /> Nuova fase</Button>
         </div>
         {/* GANTT */}
         {gantt && (
-          <div className="p-4 border-b border-zinc-200 overflow-x-auto" data-testid="gantt-svg-wrap">
-            <div className="text-xs text-zinc-500 mb-2 mono">Gantt — dal {gantt.minD.toLocaleDateString("it-IT")} al {gantt.maxD.toLocaleDateString("it-IT")} ({gantt.totDays} giorni)</div>
-            <svg width={gantt.width + 200} height={fasi.length * 32 + 40} style={{ minWidth: gantt.width + 200 }}>
-              {/* date header */}
+          <div className="p-4 border-b border-zinc-200 overflow-x-auto bg-zinc-50/40" data-testid="gantt-svg-wrap">
+            <div className="text-xs text-zinc-600 mb-3 mono flex items-center gap-3">
+              <span>📅 <b>Calendario Gantt</b> — dal {gantt.minD.toLocaleDateString("it-IT")} al {gantt.maxD.toLocaleDateString("it-IT")} ({gantt.totDays} giorni · {fasi.length} fasi)</span>
+            </div>
+            <svg width={gantt.width + LABEL_W} height={fasi.length * ROW_H + 50} style={{ minWidth: gantt.width + LABEL_W, background: "white", borderRadius: 4 }}>
+              {/* Header date */}
               {Array.from({ length: gantt.totDays }).map((_, i) => {
                 const d = new Date(gantt.minD); d.setDate(d.getDate() + i);
-                const x = 200 + i * gantt.COL_W;
+                const x = LABEL_W + i * gantt.COL_W;
                 const isMonday = d.getDay() === 1;
+                const isWeekend = d.getDay() === 0 || d.getDay() === 6;
                 return <g key={i}>
-                  <line x1={x} y1={20} x2={x} y2={fasi.length * 32 + 40} stroke={isMonday ? "#A1A1AA" : "#E4E4E7"} strokeWidth={isMonday ? 1 : 0.5} />
-                  {isMonday && <text x={x + 2} y={14} fontSize="10" fontFamily="JetBrains Mono" fill="#525252">{d.getDate()}/{d.getMonth() + 1}</text>}
+                  {isWeekend && <rect x={x} y={30} width={gantt.COL_W} height={fasi.length * ROW_H} fill="#FEF3C7" fillOpacity="0.3" />}
+                  <line x1={x} y1={30} x2={x} y2={fasi.length * ROW_H + 40} stroke={isMonday ? "#71717A" : "#E4E4E7"} strokeWidth={isMonday ? 1.5 : 0.5} />
+                  {(isMonday || gantt.COL_W >= 35) && <text x={x + 3} y={18} fontSize="12" fontFamily="JetBrains Mono" fill="#27272A" fontWeight={isMonday ? "700" : "400"}>{d.getDate()}/{d.getMonth() + 1}</text>}
                 </g>;
               })}
-              {/* fasi rows */}
+              {/* Fasi rows */}
               {fasi.map((f, i) => {
-                const y = 30 + i * 32;
-                const txtRow = <text x={4} y={y + 16} fontSize="11" fill="#0A0A0A" fontWeight="600" style={{ pointerEvents: "none" }}>{f.titolo.slice(0, 24)}</text>;
+                const y = 36 + i * ROW_H;
+                const rowBg = i % 2 === 0 ? "#FAFAFA" : "#FFFFFF";
+                const txtRow = <text x={8} y={y + 22} fontSize="13" fill="#0A0A0A" fontWeight="600" style={{ pointerEvents: "none" }}>{(f.titolo || "").slice(0, 32)}</text>;
+                const subTxt = <text x={8} y={y + 36} fontSize="10" fill="#71717A" style={{ pointerEvents: "none" }}>{f.eseguito_da === "interno" ? "🏠 Operai interni" : `🔨 ${f.artigiano_nome || "Artigiano"}`}</text>;
                 if (!f.data_inizio || !f.data_fine) {
                   return <g key={f.id}>
+                    <rect x={0} y={y} width={gantt.width + LABEL_W} height={ROW_H - 4} fill={rowBg} />
                     {txtRow}
-                    <text x={210} y={y + 18} fontSize="10" fill="#A1A1AA" fontStyle="italic">— senza date —</text>
+                    {subTxt}
+                    <text x={LABEL_W + 10} y={y + 28} fontSize="11" fill="#A1A1AA" fontStyle="italic">— assegna date (inizio/fine) per vederla nel calendario —</text>
                   </g>;
                 }
                 const startDays = Math.round((new Date(f.data_inizio) - gantt.minD) / 86400000);
                 const lenDays = Math.max(1, Math.round((new Date(f.data_fine) - new Date(f.data_inizio)) / 86400000) + 1);
-                const x = 200 + startDays * gantt.COL_W;
-                const w = lenDays * gantt.COL_W - 2;
+                const x = LABEL_W + startDays * gantt.COL_W;
+                const w = lenDays * gantt.COL_W - 4;
                 return <g key={f.id} data-testid={`gantt-bar-${f.id}`}>
+                  <rect x={0} y={y} width={gantt.width + LABEL_W} height={ROW_H - 4} fill={rowBg} />
                   {txtRow}
-                  <rect x={x} y={y + 4} width={w} height={22} rx={3} fill={STATO_COL[f.stato] || "#A1A1AA"} fillOpacity="0.85" stroke={STATO_COL[f.stato] || "#A1A1AA"} strokeWidth={1.5} />
-                  <text x={x + 6} y={y + 19} fontSize="11" fill="white" fontWeight="600" style={{ pointerEvents: "none" }}>{f.eseguito_da === "interno" ? "🏠" : "🔨"} {f.artigiano_nome || (f.eseguito_da === "interno" ? "Interni" : "")}</text>
+                  {subTxt}
+                  <rect x={x} y={y + 6} width={w} height={30} rx={4} fill={STATO_COL[f.stato] || "#A1A1AA"} fillOpacity="0.9" stroke={STATO_COL[f.stato] || "#A1A1AA"} strokeWidth={1.5} />
+                  <text x={x + 10} y={y + 26} fontSize="12" fill="white" fontWeight="600" style={{ pointerEvents: "none" }}>{lenDays}gg</text>
                 </g>;
               })}
             </svg>
-            <div className="flex items-center gap-3 mt-2 text-[10px] uppercase tracking-widest text-zinc-500">
-              {Object.entries(STATO_COL).map(([k, c]) => <span key={k} className="flex items-center gap-1"><span className="w-3 h-3 inline-block" style={{ background: c }} /> {k}</span>)}
+            <div className="flex items-center gap-4 mt-3 text-[11px] uppercase tracking-widest text-zinc-600">
+              {Object.entries(STATO_COL).map(([k, c]) => <span key={k} className="flex items-center gap-1.5"><span className="w-3 h-3 inline-block rounded-sm" style={{ background: c }} /> {k.replace("_", " ")}</span>)}
+              <span className="ml-4 flex items-center gap-1.5"><span className="w-3 h-3 inline-block bg-amber-100" /> weekend</span>
             </div>
           </div>
         )}
@@ -506,51 +766,185 @@ function Fasi({ wf, cid, reload }) {
 function Cassa({ wf, cid, reload }) {
   const mov = wf.cassa || [];
   const marg = wf.marginalita || {};
+  const artigiani = wf.artigiani_preventivi || [];
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ tipo: "incasso", importo: 0, data: new Date().toISOString().slice(0, 10), descrizione: "", metodo: "bonifico" });
+  const [view, setView] = useState("entrambi"); // entrambi | scadenze | movimenti
+  const [form, setForm] = useState({
+    tipo: "incasso", direzione: "incasso", importo: 0,
+    data: new Date().toISOString().slice(0, 10),
+    data_scadenza: "", stato_pagamento: "pagato",
+    descrizione: "", metodo: "bonifico",
+    beneficiario_tipo: "cliente", beneficiario_id: "", beneficiario_nome: "",
+    categoria: "acconto",
+  });
+
+  // Aggregati per beneficiario (per vedere "quanto pagato e quanto manca")
+  const aggregati = useMemo(() => {
+    const map = {};
+    (mov || []).forEach(m => {
+      const key = `${m.beneficiario_tipo || (m.tipo === "incasso" ? "cliente" : "fornitore")}::${m.beneficiario_nome || m.artigiano_nome || (m.tipo === "incasso" ? "Cliente" : "—")}`;
+      if (!map[key]) map[key] = { key, tipo: m.beneficiario_tipo || (m.tipo === "incasso" ? "cliente" : "fornitore"), nome: m.beneficiario_nome || m.artigiano_nome || (m.tipo === "incasso" ? "Cliente" : "—"), pagato: 0, da_pagare: 0, scaduto: 0, prossima_scadenza: null };
+      const imp = Math.abs(parseFloat(m.importo) || 0);
+      if (m.stato_pagamento === "pagato" || (!m.stato_pagamento && m.data)) map[key].pagato += imp;
+      else {
+        map[key].da_pagare += imp;
+        const sc = m.data_scadenza || m.data;
+        if (sc && new Date(sc) < new Date() && m.stato_pagamento !== "pagato") map[key].scaduto += imp;
+        if (sc && (!map[key].prossima_scadenza || new Date(sc) < new Date(map[key].prossima_scadenza))) map[key].prossima_scadenza = sc;
+      }
+    });
+    return Object.values(map).sort((a, b) => (a.tipo === b.tipo ? a.nome.localeCompare(b.nome) : (a.tipo === "cliente" ? -1 : 1)));
+  }, [mov]);
+
+  const upcoming = useMemo(() => (mov || [])
+    .filter(m => m.stato_pagamento !== "pagato" && (m.data_scadenza || m.data))
+    .sort((a, b) => new Date(a.data_scadenza || a.data) - new Date(b.data_scadenza || b.data)), [mov]);
+
+  const markPaid = async (m) => {
+    try {
+      await api.patch(`/commesse/${cid}/workflow/cassa/${m.id}`, { stato_pagamento: "pagato", data: m.data || new Date().toISOString().slice(0, 10) });
+      reload();
+      toast.success("Pagamento registrato");
+    } catch (e) { toast.error("Errore: " + (e.response?.data?.detail || e.message)); }
+  };
+
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <StatCard label="Incassato" value={fmtEur(marg.incassato)} icon={Wallet} color="text-emerald-600" />
-        <StatCard label="Uscite" value={fmtEur(marg.uscito)} icon={Wallet} color="text-rose-600" />
-        <StatCard label="Saldo cassa" value={fmtEur(marg.saldo_cassa)} icon={Wallet} color={marg.saldo_cassa < 0 ? "text-rose-600" : "text-emerald-600"} sub={`Saldo cliente da incassare: ${fmtEur(marg.saldo_residuo_cliente)}`} />
+        <StatCard label="Da incassare" value={fmtEur(marg.saldo_residuo_cliente)} icon={Clock} color="text-amber-600" />
+        <StatCard label="Uscite pagate" value={fmtEur(marg.uscito)} icon={Wallet} color="text-rose-600" />
+        <StatCard label="Da pagare" value={fmtEur(aggregati.filter(a => a.tipo !== "cliente").reduce((s, a) => s + a.da_pagare, 0))} icon={Clock} color="text-rose-600" />
+        <StatCard label="Saldo cassa" value={fmtEur(marg.saldo_cassa)} icon={Wallet} color={marg.saldo_cassa < 0 ? "text-rose-600" : "text-emerald-600"} />
       </div>
-      <div className="bg-white border border-zinc-200 rounded">
-        <div className="flex items-center justify-between p-4 border-b border-zinc-200">
-          <h3 className="font-semibold">Movimenti</h3>
-          <Button size="sm" onClick={() => setOpen(true)} data-testid="cassa-add"><Plus className="h-4 w-4 mr-1" /> Movimento</Button>
+
+      {/* Switch vista */}
+      <div className="flex flex-wrap items-center gap-1.5 bg-zinc-50 border border-zinc-200 rounded p-2">
+        <button onClick={() => setView("entrambi")} className={`px-3 py-1 text-xs rounded-sm border ${view === "entrambi" ? "bg-zinc-900 text-white border-zinc-900" : "bg-white border-zinc-300"}`}>Riepilogo per beneficiario</button>
+        <button onClick={() => setView("scadenze")} className={`px-3 py-1 text-xs rounded-sm border ${view === "scadenze" ? "bg-zinc-900 text-white border-zinc-900" : "bg-white border-zinc-300"}`} data-testid="cassa-view-scadenze">Scadenze pagamenti ({upcoming.length})</button>
+        <button onClick={() => setView("movimenti")} className={`px-3 py-1 text-xs rounded-sm border ${view === "movimenti" ? "bg-zinc-900 text-white border-zinc-900" : "bg-white border-zinc-300"}`}>Storico movimenti</button>
+        <Button size="sm" className="ml-auto" onClick={() => setOpen(true)} data-testid="cassa-add"><Plus className="h-4 w-4 mr-1" /> Nuovo movimento/scadenza</Button>
+      </div>
+
+      {view === "entrambi" && (
+        <div className="bg-white border border-zinc-200 rounded">
+          <div className="p-3 border-b border-zinc-200 text-xs text-zinc-500">Vista per beneficiario · sai a colpo d'occhio quanto hai già dato e quanto manca per ognuno</div>
+          <table className="w-full text-sm">
+            <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
+              <th className="px-3 py-2 text-left">Beneficiario</th><th className="px-3 py-2 text-left">Tipo</th><th className="px-3 py-2 text-right">Pagato</th><th className="px-3 py-2 text-right">Da pagare</th><th className="px-3 py-2 text-right">Scaduto</th><th className="px-3 py-2 text-left">Prossima scadenza</th>
+            </tr></thead>
+            <tbody className="divide-y divide-zinc-100">
+              {aggregati.map(a => (
+                <tr key={a.key} className={a.scaduto > 0 ? "bg-rose-50/40" : ""}>
+                  <td className="px-3 py-2 font-medium">{a.nome}</td>
+                  <td className="px-3 py-2 text-xs uppercase">{a.tipo}</td>
+                  <td className="px-3 py-2 text-right mono text-emerald-700 font-semibold">{fmtEur(a.pagato)}</td>
+                  <td className="px-3 py-2 text-right mono text-amber-700 font-semibold">{fmtEur(a.da_pagare)}</td>
+                  <td className={`px-3 py-2 text-right mono ${a.scaduto > 0 ? "text-rose-700 font-bold" : "text-zinc-400"}`}>{a.scaduto > 0 ? fmtEur(a.scaduto) : "—"}</td>
+                  <td className="px-3 py-2 text-xs mono">{a.prossima_scadenza ? new Date(a.prossima_scadenza).toLocaleDateString("it-IT") : "—"}</td>
+                </tr>
+              ))}
+              {!aggregati.length && <tr><td colSpan={6} className="px-3 py-12 text-center text-zinc-500">Nessun movimento o scadenza registrata.</td></tr>}
+            </tbody>
+          </table>
         </div>
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
-            <th className="px-3 py-2 text-left">Data</th><th className="px-3 py-2 text-left">Tipo</th><th className="px-3 py-2 text-left">Descrizione</th><th className="px-3 py-2 text-left">Metodo</th><th className="px-3 py-2 text-right">Importo</th><th></th>
-          </tr></thead>
-          <tbody className="divide-y divide-zinc-100">
-            {mov.map(m => (
-              <tr key={m.id} className={m.tipo === "incasso" ? "bg-emerald-50/30" : "bg-rose-50/30"}>
-                <td className="px-3 py-2 mono text-xs">{m.data}</td>
-                <td className="px-3 py-2 text-xs uppercase font-bold">{m.tipo}</td>
-                <td className="px-3 py-2">{m.descrizione}{m.artigiano_nome && <span className="ml-2 text-[11px] text-zinc-500">→ {m.artigiano_nome}</span>}</td>
-                <td className="px-3 py-2 text-xs">{m.metodo}</td>
-                <td className={`px-3 py-2 text-right mono font-semibold ${m.tipo === "incasso" ? "text-emerald-700" : "text-rose-700"}`}>{m.tipo === "incasso" ? "+" : "-"}{fmtEur(m.importo)}</td>
-                <td className="px-3 py-2 text-right"><button className="text-rose-600 p-1" onClick={async () => { await api.delete(`/commesse/${cid}/workflow/cassa/${m.id}`); reload(); }}><Trash2 className="h-4 w-4" /></button></td>
-              </tr>
-            ))}
-            {!mov.length && <tr><td colSpan={6} className="px-3 py-12 text-center text-zinc-500">Nessun movimento.</td></tr>}
-          </tbody>
-        </table>
-      </div>
+      )}
+
+      {view === "scadenze" && (
+        <div className="bg-white border border-zinc-200 rounded">
+          <div className="p-3 border-b border-zinc-200 text-xs text-zinc-500">Tutte le scadenze ancora aperte ordinate per data</div>
+          <table className="w-full text-sm">
+            <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
+              <th className="px-3 py-2 text-left">Scadenza</th><th className="px-3 py-2 text-left">Direzione</th><th className="px-3 py-2 text-left">Beneficiario</th><th className="px-3 py-2 text-left">Descrizione</th><th className="px-3 py-2 text-right">Importo</th><th className="px-3 py-2 text-center">Stato</th><th></th>
+            </tr></thead>
+            <tbody className="divide-y divide-zinc-100">
+              {upcoming.map(m => {
+                const sc = m.data_scadenza || m.data;
+                const scaduto = sc && new Date(sc) < new Date();
+                return (
+                  <tr key={m.id} className={scaduto ? "bg-rose-50/40" : ""}>
+                    <td className={`px-3 py-2 mono text-xs ${scaduto ? "text-rose-700 font-bold" : ""}`}>{sc ? new Date(sc).toLocaleDateString("it-IT") : "—"}</td>
+                    <td className="px-3 py-2 text-xs uppercase font-bold">{m.tipo}</td>
+                    <td className="px-3 py-2">{m.beneficiario_nome || m.artigiano_nome || "—"}</td>
+                    <td className="px-3 py-2">{m.descrizione}<span className="ml-2 text-[10px] text-zinc-500 uppercase">{m.categoria}</span></td>
+                    <td className={`px-3 py-2 text-right mono font-semibold ${m.tipo === "incasso" ? "text-emerald-700" : "text-rose-700"}`}>{m.tipo === "incasso" ? "+" : "-"}{fmtEur(m.importo)}</td>
+                    <td className="px-3 py-2 text-center"><span className={`text-[11px] px-2 py-0.5 rounded ${scaduto ? "bg-rose-200 text-rose-800" : "bg-amber-100 text-amber-800"}`}>{scaduto ? "SCADUTO" : "PROGRAMMATO"}</span></td>
+                    <td className="px-3 py-2 text-right">
+                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => markPaid(m)} data-testid={`cassa-mark-paid-${m.id}`}><CheckCircle2 className="h-3.5 w-3.5 mr-1" />Segna pagato</Button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {!upcoming.length && <tr><td colSpan={7} className="px-3 py-12 text-center text-zinc-500">Nessuna scadenza pendente 🎉</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {view === "movimenti" && (
+        <div className="bg-white border border-zinc-200 rounded">
+          <table className="w-full text-sm">
+            <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
+              <th className="px-3 py-2 text-left">Data</th><th className="px-3 py-2 text-left">Tipo</th><th className="px-3 py-2 text-left">Beneficiario</th><th className="px-3 py-2 text-left">Descrizione</th><th className="px-3 py-2 text-left">Metodo</th><th className="px-3 py-2 text-right">Importo</th><th className="px-3 py-2 text-center">Stato</th><th></th>
+            </tr></thead>
+            <tbody className="divide-y divide-zinc-100">
+              {mov.map(m => (
+                <tr key={m.id} className={m.tipo === "incasso" ? "bg-emerald-50/30" : "bg-rose-50/30"}>
+                  <td className="px-3 py-2 mono text-xs">{m.data}</td>
+                  <td className="px-3 py-2 text-xs uppercase font-bold">{m.tipo}</td>
+                  <td className="px-3 py-2">{m.beneficiario_nome || m.artigiano_nome || (m.tipo === "incasso" ? "Cliente" : "—")}</td>
+                  <td className="px-3 py-2">{m.descrizione}<span className="ml-2 text-[10px] text-zinc-500 uppercase">{m.categoria}</span></td>
+                  <td className="px-3 py-2 text-xs">{m.metodo}</td>
+                  <td className={`px-3 py-2 text-right mono font-semibold ${m.tipo === "incasso" ? "text-emerald-700" : "text-rose-700"}`}>{m.tipo === "incasso" ? "+" : "-"}{fmtEur(m.importo)}</td>
+                  <td className="px-3 py-2 text-center"><span className={`text-[11px] px-2 py-0.5 rounded ${m.stato_pagamento === "pagato" || !m.stato_pagamento ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{m.stato_pagamento || "pagato"}</span></td>
+                  <td className="px-3 py-2 text-right"><button className="text-rose-600 p-1" onClick={async () => { await api.delete(`/commesse/${cid}/workflow/cassa/${m.id}`); reload(); }}><Trash2 className="h-4 w-4" /></button></td>
+                </tr>
+              ))}
+              {!mov.length && <tr><td colSpan={8} className="px-3 py-12 text-center text-zinc-500">Nessun movimento.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Nuovo movimento di cassa</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label className="text-xs">Tipo</Label>
-                <Select value={form.tipo} onValueChange={v => setForm({ ...form, tipo: v })}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle>Nuovo movimento o scadenza di pagamento</DialogTitle></DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="grid grid-cols-3 gap-3">
+              <div><Label className="text-xs">Direzione</Label>
+                <Select value={form.tipo} onValueChange={v => setForm({ ...form, tipo: v, beneficiario_tipo: v === "incasso" ? "cliente" : "fornitore" })}>
                   <SelectTrigger data-testid="cassa-tipo"><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="incasso">Incasso (cliente)</SelectItem><SelectItem value="uscita">Uscita (artigiano/fornitore)</SelectItem></SelectContent>
+                  <SelectContent><SelectItem value="incasso">Incasso (da cliente)</SelectItem><SelectItem value="uscita">Uscita (a sub/fornitore)</SelectItem></SelectContent>
                 </Select>
               </div>
-              <div><Label className="text-xs">Data</Label><Input type="date" value={form.data} onChange={e => setForm({ ...form, data: e.target.value })} data-testid="cassa-data" /></div>
+              <div><Label className="text-xs">Stato</Label>
+                <Select value={form.stato_pagamento} onValueChange={v => setForm({ ...form, stato_pagamento: v })}>
+                  <SelectTrigger data-testid="cassa-stato"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="pagato">Già pagato/incassato</SelectItem><SelectItem value="programmato">Scadenza futura (non ancora pagato)</SelectItem></SelectContent>
+                </Select>
+              </div>
+              <div><Label className="text-xs">Categoria</Label>
+                <Select value={form.categoria} onValueChange={v => setForm({ ...form, categoria: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="acconto">Acconto</SelectItem>
+                    <SelectItem value="avanzamento">Avanzamento SAL</SelectItem>
+                    <SelectItem value="saldo">Saldo finale</SelectItem>
+                    <SelectItem value="materiali">Materiali</SelectItem>
+                    <SelectItem value="extra">Extra / variante</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">{form.stato_pagamento === "pagato" ? "Data pagamento" : "Data effettiva (se pagata)"}</Label>
+                <Input type="date" value={form.data} onChange={e => setForm({ ...form, data: e.target.value })} data-testid="cassa-data" />
+              </div>
+              <div>
+                <Label className="text-xs">Data scadenza (se programmata)</Label>
+                <Input type="date" value={form.data_scadenza} onChange={e => setForm({ ...form, data_scadenza: e.target.value })} data-testid="cassa-scadenza" />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label className="text-xs">Importo (€)</Label><Input type="number" value={form.importo} onChange={e => setForm({ ...form, importo: parseFloat(e.target.value) || 0 })} data-testid="cassa-importo" /></div>
@@ -561,11 +955,38 @@ function Cassa({ wf, cid, reload }) {
                 </Select>
               </div>
             </div>
-            <div><Label className="text-xs">Descrizione</Label><Input value={form.descrizione} onChange={e => setForm({ ...form, descrizione: e.target.value })} data-testid="cassa-desc" /></div>
+            {form.tipo === "uscita" && (
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label className="text-xs">Tipo beneficiario</Label>
+                  <Select value={form.beneficiario_tipo} onValueChange={v => setForm({ ...form, beneficiario_tipo: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="subappaltatore">Sub-appaltatore / artigiano</SelectItem>
+                      <SelectItem value="fornitore">Fornitore materiali</SelectItem>
+                      <SelectItem value="interno">Operai interni / spese</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div><Label className="text-xs">Nome beneficiario</Label>
+                  <Input list="art-list" value={form.beneficiario_nome} onChange={e => setForm({ ...form, beneficiario_nome: e.target.value })} placeholder="Cerca o digita nuovo..." data-testid="cassa-benef" />
+                  <datalist id="art-list">{artigiani.map(a => <option key={a.id} value={a.artigiano_nome} />)}</datalist>
+                </div>
+              </div>
+            )}
+            <div><Label className="text-xs">Descrizione</Label><Input value={form.descrizione} onChange={e => setForm({ ...form, descrizione: e.target.value })} placeholder="Es: Acconto 30% inizio lavori muratura" data-testid="cassa-desc" /></div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Annulla</Button>
-            <Button onClick={async () => { await api.post(`/commesse/${cid}/workflow/cassa`, form); setOpen(false); setForm({ tipo: "incasso", importo: 0, data: new Date().toISOString().slice(0, 10), descrizione: "", metodo: "bonifico" }); reload(); }} style={{ background: "var(--brand)", color: "white" }} data-testid="cassa-save">Salva</Button>
+            <Button onClick={async () => {
+              if (!form.importo) { toast.error("Inserisci l'importo"); return; }
+              try {
+                await api.post(`/commesse/${cid}/workflow/cassa`, form);
+                setOpen(false);
+                setForm({ tipo: "incasso", direzione: "incasso", importo: 0, data: new Date().toISOString().slice(0, 10), data_scadenza: "", stato_pagamento: "pagato", descrizione: "", metodo: "bonifico", beneficiario_tipo: "cliente", beneficiario_id: "", beneficiario_nome: "", categoria: "acconto" });
+                reload();
+                toast.success(form.stato_pagamento === "pagato" ? "Movimento registrato" : "Scadenza salvata");
+              } catch (e) { toast.error("Errore: " + (e.response?.data?.detail || e.message)); }
+            }} style={{ background: "var(--brand)", color: "white" }} data-testid="cassa-save">Salva</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

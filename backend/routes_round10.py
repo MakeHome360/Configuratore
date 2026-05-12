@@ -133,6 +133,24 @@ def build_round10_router(db, get_current_user, jwt_create_access):
         }, {"_id": 0})
         if not contratto:
             raise HTTPException(400, "Impossibile assegnare: manca il CONTRATTO DI SUBAPPALTO firmato per questo subappaltatore. Carica il documento (tipo=contratto_subappalto, subappaltatore_id) e fai firmare il sub via OTP prima di assegnare.")
+        # VINCOLO 3: il sub-appaltatore deve avere TUTTI i documenti obbligatori (DURC, visura, ecc.) caricati e non scaduti.
+        oggi = datetime.now(timezone.utc).date().isoformat()
+        sub_docs = await db.subapp_documenti.find({"subappaltatore_id": body.subappaltatore_id}, {"_id": 0}).to_list(500)
+        by_tipo = {}
+        for d in sub_docs:
+            t = d.get("tipo")
+            if t not in by_tipo or d.get("created_at", "") > by_tipo[t].get("created_at", ""):
+                by_tipo[t] = d
+        DOC_OBBLIGATORI = ["durc", "visura_camerale", "carta_identita", "assicurazione_rc", "iscrizione_inps_inail"]
+        mancanti = []
+        for t in DOC_OBBLIGATORI:
+            d = by_tipo.get(t)
+            if not d:
+                mancanti.append(t + " (mancante)")
+            elif d.get("data_scadenza") and d.get("data_scadenza") < oggi:
+                mancanti.append(t + " (scaduto)")
+        if mancanti:
+            raise HTTPException(400, f"Impossibile assegnare: documenti del sub-appaltatore mancanti o scaduti → {', '.join(mancanti)}. Vai al dettaglio del sub-appaltatore per caricarli.")
         doc = {
             "id": f"ass-{uuid.uuid4().hex[:10]}",
             **body.model_dump(),
@@ -204,6 +222,101 @@ def build_round10_router(db, get_current_user, jwt_create_access):
             }},
         )
         return {"ok": True, "convalidato_da": user["id"], "convalidato_il": now_iso()}
+
+    # ============================================================
+    # DOCUMENTI SUBAPPALTATORE (DURC, visura, certificazioni, misure, ecc.)
+    # ============================================================
+    # Documenti richiesti per poter assegnare lavori ad un sub-appaltatore.
+    # `obbligatorio=True` = senza questo doc, l'admin NON può assegnare commesse.
+    DOC_TIPI_SUB = [
+        {"key": "durc", "label": "DURC (Documento Unico Regolarità Contributiva)", "obbligatorio": True},
+        {"key": "visura_camerale", "label": "Visura camerale", "obbligatorio": True},
+        {"key": "carta_identita", "label": "Carta d'identità legale rappresentante", "obbligatorio": True},
+        {"key": "assicurazione_rc", "label": "Polizza assicurativa RC professionale", "obbligatorio": True},
+        {"key": "iscrizione_inps_inail", "label": "Iscrizione INPS/INAIL", "obbligatorio": True},
+        {"key": "certificazione_soa", "label": "Certificazione SOA (se applicabile)", "obbligatorio": False},
+        {"key": "iso_9001", "label": "ISO 9001 / certificazioni qualità", "obbligatorio": False},
+        {"key": "misure_strumenti", "label": "Misure / strumenti calibrati (per categoria)", "obbligatorio": False},
+        {"key": "altro", "label": "Altro documento", "obbligatorio": False},
+    ]
+
+    @r.get("/subappaltatori/tipi-documenti")
+    async def list_tipi_doc_sub(user=Depends(get_current_user)):
+        return DOC_TIPI_SUB
+
+    class DocSubIn(BaseModel):
+        tipo: str  # uno dei key di DOC_TIPI_SUB
+        nome: str
+        file_url: str  # URL ottenuto dopo upload
+        data_emissione: Optional[str] = None
+        data_scadenza: Optional[str] = None
+        note: Optional[str] = None
+
+    @r.get("/subappaltatori/{sub_id}/documenti")
+    async def list_doc_sub(sub_id: str, user=Depends(get_current_user)):
+        if user.get("role") not in ("admin", "gestore", "venditore") and user.get("subappaltatore_id") != sub_id:
+            raise HTTPException(403, "Non autorizzato")
+        docs = await db.subapp_documenti.find({"subappaltatore_id": sub_id}, {"_id": 0}).sort("created_at", -1).to_list(500)
+        # Aggrega per tipo (mostra solo l'ultimo per tipo)
+        by_tipo = {}
+        for d in docs:
+            t = d.get("tipo")
+            if t not in by_tipo or d.get("created_at", "") > by_tipo[t].get("created_at", ""):
+                by_tipo[t] = d
+        # Stato completezza
+        oggi = datetime.now(timezone.utc).date().isoformat()
+        completezza = []
+        for tipo_def in DOC_TIPI_SUB:
+            t = tipo_def["key"]
+            doc = by_tipo.get(t)
+            scaduto = bool(doc and doc.get("data_scadenza") and doc.get("data_scadenza") < oggi)
+            completezza.append({
+                "tipo": t,
+                "label": tipo_def["label"],
+                "obbligatorio": tipo_def["obbligatorio"],
+                "presente": bool(doc),
+                "scaduto": scaduto,
+                "valido": bool(doc) and not scaduto,
+                "doc": doc,
+            })
+        ok_per_assegnazione = all(c["valido"] for c in completezza if c["obbligatorio"])
+        return {"documenti": docs, "completezza": completezza, "ok_per_assegnazione": ok_per_assegnazione}
+
+    @r.post("/subappaltatori/{sub_id}/documenti")
+    async def crea_doc_sub(sub_id: str, body: DocSubIn, user=Depends(get_current_user)):
+        if user.get("role") not in ("admin", "gestore"):
+            raise HTTPException(403, "Solo admin/gestore possono caricare documenti sub")
+        if body.tipo not in [t["key"] for t in DOC_TIPI_SUB]:
+            raise HTTPException(400, "Tipo documento non valido")
+        d = {
+            "id": f"docsub-{uuid.uuid4().hex[:10]}",
+            "subappaltatore_id": sub_id,
+            **body.model_dump(),
+            "uploaded_by": user["id"],
+            "created_at": now_iso(),
+        }
+        await db.subapp_documenti.insert_one(d)
+        d.pop("_id", None)
+        return d
+
+    @r.delete("/subappaltatori/{sub_id}/documenti/{doc_id}")
+    async def delete_doc_sub(sub_id: str, doc_id: str, user=Depends(get_current_user)):
+        if user.get("role") not in ("admin", "gestore"):
+            raise HTTPException(403, "Non autorizzato")
+        await db.subapp_documenti.delete_one({"id": doc_id, "subappaltatore_id": sub_id})
+        return {"ok": True}
+
+    @r.get("/subappaltatori/{sub_id}/ready-check")
+    async def ready_check_sub(sub_id: str, user=Depends(get_current_user)):
+        """Check rapido se un sub-appaltatore ha tutti i documenti obbligatori caricati e validi.
+        Usato dal frontend prima di proporre l'affidamento di un lavoro."""
+        res = await list_doc_sub(sub_id, user)
+        mancanti = [c for c in res["completezza"] if c["obbligatorio"] and not c["valido"]]
+        return {
+            "ok_per_assegnazione": res["ok_per_assegnazione"],
+            "mancanti": [{"tipo": c["tipo"], "label": c["label"], "motivo": "scaduto" if c["presente"] and c["scaduto"] else "mancante"} for c in mancanti],
+        }
+
 
     # ============================================================
     # PORTALE CLIENTE — Invito con utenza temporanea + login + SAL

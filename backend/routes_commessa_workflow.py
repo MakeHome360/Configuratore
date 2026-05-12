@@ -110,23 +110,74 @@ def build_commessa_workflow_router(db, get_current_user):
         if not prev:
             raise HTTPException(404, "Preventivo non trovato")
         # Normalizza voci preventivo in computo metrico
-        voci_prev = prev.get("voci_dettaglio") or prev.get("computo") or []
+        # Le voci possono essere in: 'items' (formato standard PreventivoIn) o
+        # nei legacy 'voci_dettaglio' / 'computo'. Usiamo il primo non-vuoto.
+        voci_prev = (
+            prev.get("items")
+            or prev.get("voci_dettaglio")
+            or prev.get("computo")
+            or []
+        )
         items = []
         for v in voci_prev:
+            qty = float(v.get("qty") or v.get("quantita") or v.get("qty_richiesta") or 0)
+            prezzo_unit = float(
+                v.get("unit_price")
+                or v.get("prezzo_rivendita")
+                or v.get("prezzo")
+                or 0
+            )
+            totale = float(v.get("total") or v.get("totale") or 0)
+            if totale == 0 and qty > 0 and prezzo_unit > 0:
+                totale = round(qty * prezzo_unit, 2)
             items.append({
                 "id": UID(),
                 "voce_id": v.get("voce_id") or v.get("id"),
                 "name": v.get("name") or v.get("descrizione") or "—",
-                "qty": float(v.get("qty") or v.get("quantita") or 0),
+                "qty": qty,
                 "unit": v.get("unit") or "pz",
-                "prezzo_unit": float(v.get("prezzo_rivendita") or v.get("unit_price") or v.get("prezzo") or 0),
-                "totale": float(v.get("total") or v.get("totale") or 0),
+                "prezzo_unit": prezzo_unit,
+                "totale": totale,
+                "category": v.get("category") or "",
                 "stato_assegnazione": "da_assegnare",  # da_assegnare | artigiano | interno | autorizzato
+                "artigiano_id": None,
+                "artigiano_nome": None,
+                "note_assegnazione": None,
             })
         computo = {"items": items, "totale": prev.get("totale_iva_incl") or prev.get("totale") or 0,
                    "generated_at": NOW(), "generated_by": user.get("id")}
         await db.commesse.update_one({"id": cid}, {"$set": {"computo_metrico": computo}})
         return computo
+
+    # ---------- 4b. ASSEGNAZIONE VOCI COMPUTO METRICO ----------
+    class AssegnaVoceIn(BaseModel):
+        stato_assegnazione: str  # "artigiano" | "interno" | "autorizzato"
+        artigiano_nome: Optional[str] = None
+        artigiano_id: Optional[str] = None
+        note_assegnazione: Optional[str] = None
+
+    @r.patch("/commesse/{cid}/workflow/computo/{voce_id}/assegna")
+    async def assegna_voce_computo(cid: str, voce_id: str, payload: AssegnaVoceIn, user=Depends(get_current_user)):
+        com = await db.commesse.find_one({"id": cid})
+        if not com:
+            raise HTTPException(404, "Commessa non trovata")
+        if payload.stato_assegnazione not in ("artigiano", "interno", "autorizzato", "da_assegnare"):
+            raise HTTPException(400, "stato_assegnazione non valido")
+        cm = com.get("computo_metrico") or {"items": []}
+        items = cm.get("items") or []
+        idx = next((i for i, it in enumerate(items) if it.get("id") == voce_id), -1)
+        if idx < 0:
+            raise HTTPException(404, "Voce computo non trovata")
+        items[idx]["stato_assegnazione"] = payload.stato_assegnazione
+        items[idx]["artigiano_nome"] = payload.artigiano_nome
+        items[idx]["artigiano_id"] = payload.artigiano_id
+        items[idx]["note_assegnazione"] = payload.note_assegnazione
+        items[idx]["assigned_at"] = NOW()
+        items[idx]["assigned_by"] = user.get("id")
+        cm["items"] = items
+        await db.commesse.update_one({"id": cid}, {"$set": {"computo_metrico": cm}})
+        return {"ok": True, "item": items[idx]}
+
 
     # ---------- 5. PREVENTIVI ARTIGIANI (+ AI analisi + autorizzazione) ----------
     class PrevArtigianoIn(BaseModel):
@@ -309,6 +360,13 @@ def build_commessa_workflow_router(db, get_current_user):
         artigiano_id: Optional[str] = None
         artigiano_nome: Optional[str] = None
         metodo: Optional[str] = None  # "bonifico" | "contanti" | "assegno"
+        # Pagamenti multipli / scadenze
+        data_scadenza: Optional[str] = None  # ISO date — quando è prevista la scadenza
+        stato_pagamento: Optional[str] = "pagato"  # "pagato" | "programmato"
+        beneficiario_tipo: Optional[str] = None  # "cliente" | "subappaltatore" | "fornitore" | "interno"
+        beneficiario_id: Optional[str] = None
+        beneficiario_nome: Optional[str] = None
+        categoria: Optional[str] = None  # "acconto" | "avanzamento" | "saldo" | "materiali" | "extra"
 
     @r.post("/commesse/{cid}/workflow/cassa")
     async def add_movimento(cid: str, body: MovCassaIn, user=Depends(get_current_user)):
@@ -317,6 +375,22 @@ def build_commessa_workflow_router(db, get_current_user):
         await db.commesse_cassa.insert_one(m)
         m.pop("_id", None)
         return m
+
+    class MovCassaPatch(BaseModel):
+        stato_pagamento: Optional[str] = None
+        data: Optional[str] = None
+        data_scadenza: Optional[str] = None
+        metodo: Optional[str] = None
+        importo: Optional[float] = None
+        descrizione: Optional[str] = None
+
+    @r.patch("/commesse/{cid}/workflow/cassa/{mid}")
+    async def patch_movimento(cid: str, mid: str, body: MovCassaPatch, user=Depends(get_current_user)):
+        upd = {k: v for k, v in body.dict().items() if v is not None}
+        upd["updated_at"] = NOW()
+        await db.commesse_cassa.update_one({"id": mid, "commessa_id": cid}, {"$set": upd})
+        m = await db.commesse_cassa.find_one({"id": mid, "commessa_id": cid}, {"_id": 0})
+        return m or {"ok": True}
 
     @r.get("/commesse/{cid}/workflow/cassa")
     async def list_movimenti(cid: str, user=Depends(get_current_user)):
@@ -353,10 +427,14 @@ def build_commessa_workflow_router(db, get_current_user):
                         v = voci_map.get(it.get("voce_id") or "")
                         if v:
                             costo_confermato += float(v.get("prezzo_acquisto") or 0) * float(it.get("qty") or 0)
-        # Cassa effettiva
+        # Cassa effettiva — conta solo movimenti pagati (stato_pagamento != "programmato")
         movimenti = await db.commesse_cassa.find({"commessa_id": cid}, {"_id": 0}).to_list(5000)
-        incassato = sum(float(m.get("importo") or 0) for m in movimenti if m.get("tipo") == "incasso")
-        uscito = sum(float(m.get("importo") or 0) for m in movimenti if m.get("tipo") == "uscita")
+        def _paid(m): return (m.get("stato_pagamento") or "pagato") == "pagato"
+        incassato = sum(float(m.get("importo") or 0) for m in movimenti if m.get("tipo") == "incasso" and _paid(m))
+        uscito = sum(float(m.get("importo") or 0) for m in movimenti if m.get("tipo") == "uscita" and _paid(m))
+        # Da incassare / da pagare (programmate)
+        da_incassare_scadenze = sum(float(m.get("importo") or 0) for m in movimenti if m.get("tipo") == "incasso" and not _paid(m))
+        da_pagare_scadenze = sum(float(m.get("importo") or 0) for m in movimenti if m.get("tipo") == "uscita" and not _paid(m))
         margine_previsionale = ricavo_preventivato - costo_previsionale
         margine_attuale = ricavo_preventivato - max(costo_confermato, costo_previsionale)
         margine_cassa = incassato - uscito  # solo a titolo informativo
@@ -372,6 +450,8 @@ def build_commessa_workflow_router(db, get_current_user):
             "margine_pct_attuale": round(margine_attuale / ricavo_preventivato * 100, 2) if ricavo_preventivato > 0 else 0,
             "saldo_cassa": round(margine_cassa, 2),
             "saldo_residuo_cliente": round(ricavo_preventivato - incassato, 2),
+            "da_incassare_scadenze": round(da_incassare_scadenze, 2),
+            "da_pagare_scadenze": round(da_pagare_scadenze, 2),
         }
 
     # ---------- 9. RESOCONTO FINALE ----------

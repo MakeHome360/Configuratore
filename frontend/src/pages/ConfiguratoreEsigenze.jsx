@@ -130,8 +130,8 @@ function computePackages(esigenze, dati, packagesDb, voci) {
   const tierDb = findDb(tier.id);
   const lowerDb = findDb(lower.id);
   const mq = dati.mq || 80;
-  const priceTier = tierDb?.prezzo_mq || (tier.id === "pkg-basic" ? 380 : tier.id === "pkg-smart" ? 580 : tier.id === "pkg-premium" ? 850 : 1300);
-  const priceLower = lowerDb?.prezzo_mq || (lower.id === "pkg-basic" ? 380 : lower.id === "pkg-smart" ? 580 : lower.id === "pkg-premium" ? 850 : 1300);
+  const priceTier = tierDb?.price_per_m2 || tierDb?.prezzo_mq || (tier.id === "pkg-basic" ? 380 : tier.id === "pkg-smart" ? 490 : tier.id === "pkg-premium" ? 790 : 1180);
+  const priceLower = lowerDb?.price_per_m2 || lowerDb?.prezzo_mq || (lower.id === "pkg-basic" ? 380 : lower.id === "pkg-smart" ? 490 : lower.id === "pkg-premium" ? 790 : 1180);
   // REAL extras: differenza voci tra pacchetto consigliato e alternativo, filtrate per esigenze cliente
   const realisticExtras = computeRealisticExtras(tierDb, lowerDb, esigenze, mq, voci);
   const extras = realisticExtras.extras;

@@ -44,6 +44,9 @@ import AdminClienti from "@/pages/admin/AdminClienti";
 import AdminDatiAzienda from "@/pages/admin/AdminDatiAzienda";
 import AdminImpostazioni from "@/pages/admin/AdminImpostazioni";
 import AdminDocumentiTemplate from "@/pages/admin/AdminDocumentiTemplate";
+import AdminBlog from "@/pages/admin/AdminBlog";
+import Blog from "@/pages/Blog";
+import BlogPost from "@/pages/BlogPost";
 import DashboardSubappaltatori from "@/pages/DashboardSubappaltatori";
 import SubappaltatoreDettaglio from "@/pages/SubappaltatoreDettaglio";
 import GestoreCantieri from "@/pages/GestoreCantieri";
@@ -80,6 +83,8 @@ function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<RootRedirect />} />
+            <Route path="/blog" element={<Blog />} />
+            <Route path="/blog/:slug" element={<BlogPost />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/cambia-password" element={
@@ -128,6 +133,7 @@ function App() {
             <Route path="/admindatiazienda" element={P(AdminDatiAzienda)} />
             <Route path="/adminimpostazioni" element={P(AdminImpostazioni)} />
             <Route path="/admindocumentitemplate" element={P(AdminDocumentiTemplate)} />
+            <Route path="/adminblog" element={P(AdminBlog)} />
             {/* Round 10: Cantieri / Subappaltatori / Portale Cliente */}
             <Route path="/dashboard-subappaltatori" element={P(DashboardSubappaltatori)} />
             <Route path="/subappaltatori/:id" element={P(SubappaltatoreDettaglio)} />

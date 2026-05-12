@@ -776,7 +776,7 @@ export default function Landing() {
             <ul className="space-y-2.5 text-[14px]">
               <li><a href="#processo" className="text-zinc-300 hover:text-[#1FAE52] transition-colors">Come lavoriamo</a></li>
               <li><a href="#" className="text-zinc-300 hover:text-[#1FAE52] transition-colors">Chi siamo</a></li>
-              <li><a href="#" className="text-zinc-300 hover:text-[#1FAE52] transition-colors">Blog & Guide</a></li>
+              <li><Link to="/blog" className="text-zinc-300 hover:text-[#1FAE52] transition-colors">Blog & Guide</Link></li>
               <li><a href="#contatti" className="text-zinc-300 hover:text-[#1FAE52] transition-colors">Contatti</a></li>
               <li><Link to="/login" className="text-zinc-300 hover:text-[#1FAE52] transition-colors">Area riservata</Link></li>
             </ul>

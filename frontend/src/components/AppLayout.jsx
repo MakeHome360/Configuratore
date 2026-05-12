@@ -6,7 +6,7 @@ import {
   LayoutDashboard, FilePlus2, Files, Briefcase, Users2, Building2,
   Settings, Package, Sparkles, UserCircle2, LogOut, Store,
   ClipboardList, BarChart3, Mail, Layers, Hammer, Target, Pencil, Receipt,
-  Wallet, FileText,
+  Wallet, FileText, Newspaper,
   ChevronLeft, ChevronRight, Menu
 } from "lucide-react";
 
@@ -46,6 +46,7 @@ const NAV = [
     { to: "/adminnegozi", label: "Negozi", icon: Store, roles: ["admin"] },
     { to: "/admintemplateemail", label: "Template Email", icon: Mail, roles: ["admin"] },
     { to: "/admindocumentitemplate", label: "Documenti Aziendali", icon: FileText, roles: ["admin","venditore","gestore"] },
+    { to: "/adminblog", label: "Blog (SEO)", icon: Newspaper, roles: ["admin"] },
     { to: "/adminutenti", label: "Utenti & Ruoli", icon: UserCircle2, roles: ["admin"] },
     { to: "/admindatiazienda", label: "Dati Azienda", icon: Building2, roles: ["admin"] },
     { to: "/adminimpostazioni", label: "Impostazioni", icon: Settings, roles: ["admin"] },

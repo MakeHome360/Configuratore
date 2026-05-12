@@ -1,5 +1,43 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 47 — Mag 2026 — Blog SEO con 50 articoli pre-scritti)
+### 📰 Blog completo per acquisizione organica
+**Obiettivo**: aumentare traffico organico tramite contenuti SEO-ottimizzati sulle keyword "ristrutturazione", "bagno", "cucina", "preventivo", "bonus", "costi", ecc.
+
+**Backend** (`/app/backend/`):
+- **`blog_seed.py`**: 50 articoli pre-scritti su 18 categorie:
+  - Ristrutturazione, Bagno, Cucina, Costi e Preventivi, Bonus e Detrazioni, Materiali, Risparmio Energetico, Design, Errori da evitare, Guide pratiche, Progettazione, Esterni, Investimenti immobiliari, Accessibilità, Burocrazia, Tecnologia casa, Ristrutturazione low-cost, Mini appartamenti.
+  - Ogni articolo: ~300-700 parole, title, slug, excerpt, content_md (markdown), tags, seo_keywords, meta_description, hero_emoji.
+  - Date pubblicazione spread su 90 giorni passati per look naturale.
+- **Endpoint pubblici** (`server.py`):
+  - `GET /api/blog/posts?category=X&limit=N` — lista
+  - `GET /api/blog/posts/{slug}` — singolo (incrementa views)
+  - `GET /api/blog/categories` — lista categorie
+- **Endpoint admin**:
+  - `GET/POST/PUT/DELETE /api/admin/blog/posts[/{slug}]`
+- **Seed automatico startup**: se collection `blog_posts < 50` → upsert dei 50 articoli.
+
+**Frontend**:
+- **`/blog`** — `Blog.jsx`: index pubblico con filtri categoria + search, grid cards con emoji hero, CTA preventivo
+- **`/blog/:slug`** — `BlogPost.jsx`: detail pubblico con mini parser markdown → HTML (titoli, bold, liste, paragrafi), aggiornamento dinamico `<title>` e `<meta description>` per SEO, articoli correlati, breadcrumb back
+- **`/adminblog`** — `AdminBlog.jsx`: gestione completa (lista con stato pub/draft, views, edit modal con titolo/slug/categoria/excerpt/contenuto MD/tag/SEO keywords/meta description/published toggle)
+- **Sidebar admin**: nuova voce "Blog (SEO)" (icona Newspaper)
+- **Landing footer**: link `Blog & Guide` aggiornato da `#` a `/blog`
+
+**SEO ready**:
+- URL friendly: `/blog/quanto-costa-ristrutturare-casa-2026`
+- Meta description e title dinamici per ogni articolo
+- Categorie come tag visibili
+- Linking interno tramite articoli correlati
+- Markup HTML semantico (h1, h2, h3, article, time)
+
+**Test E2E**:
+- 50 articoli seedati ✅
+- 18 categorie distinte ✅
+- API `/api/blog/posts` ritorna 50 risultati ✅
+- API `/api/blog/posts/{slug}` ritorna contenuto completo + incrementa views ✅
+- Lint JS pulito ✅
+
 ## Recent Updates (Round 46 — Mag 2026 — Import planimetria: fix 504 timeout)
 ### 🚀 Performance fix Gateway Timeout 504
 **Causa**: l'ingress Kubernetes su sadicasa.it ha un timeout ~60s. `gemini-2.5-pro` su PDF/PNG di 1MB+ impiegava 35-40s + latenza upload → superava il limite e dava `Request failed with status code 504`.

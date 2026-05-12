@@ -1443,6 +1443,109 @@ from routes_commessa_workflow import build_commessa_workflow_router
 _cwf = build_commessa_workflow_router(db, get_current_user)
 app.include_router(_cwf, prefix="/api")
 
+
+# ============ BLOG (pubblico + admin) ============
+@app.get("/api/blog/posts")
+async def blog_list(category: Optional[str] = None, limit: int = 100, skip: int = 0):
+    """Lista pubblica articoli (solo pubblicati). Filtrabile per categoria."""
+    q = {"published": True}
+    if category:
+        q["category"] = category
+    posts = await db.blog_posts.find(q, {"_id": 0, "content_md": 0}).sort("published_at", -1).skip(skip).limit(limit).to_list(limit)
+    return posts
+
+
+@app.get("/api/blog/posts/{slug}")
+async def blog_detail(slug: str):
+    post = await db.blog_posts.find_one({"slug": slug, "published": True}, {"_id": 0})
+    if not post:
+        raise HTTPException(404, "Articolo non trovato")
+    try:
+        await db.blog_posts.update_one({"slug": slug}, {"$inc": {"views": 1}})
+    except Exception:
+        pass
+    return post
+
+
+@app.get("/api/blog/categories")
+async def blog_categories():
+    cats = await db.blog_posts.distinct("category", {"published": True})
+    return sorted(cats)
+
+
+@app.get("/api/admin/blog/posts")
+async def admin_blog_list(user: Dict[str, Any] = Depends(get_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Solo admin")
+    posts = await db.blog_posts.find({}, {"_id": 0}).sort("published_at", -1).to_list(500)
+    return posts
+
+
+@app.post("/api/admin/blog/posts")
+async def admin_blog_create(body: dict, user: Dict[str, Any] = Depends(get_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Solo admin")
+    slug = body.get("slug") or body.get("title", "").lower().replace(" ", "-")[:80]
+    existing = await db.blog_posts.find_one({"slug": slug})
+    if existing:
+        raise HTTPException(409, "Slug già esistente")
+    now = datetime.now(timezone.utc).isoformat()
+    post = {
+        "id": f"blog-{slug}", "slug": slug,
+        "title": body.get("title", "Nuovo articolo"),
+        "category": body.get("category", "Guide"),
+        "tags": body.get("tags", []),
+        "seo_keywords": body.get("seo_keywords", ""),
+        "meta_description": body.get("meta_description", body.get("excerpt", "")[:160]),
+        "excerpt": body.get("excerpt", ""),
+        "hero_emoji": body.get("hero_emoji", "📝"),
+        "content_md": body.get("content_md", ""),
+        "published": body.get("published", False),
+        "published_at": now if body.get("published") else None,
+        "created_at": now, "updated_at": now, "views": 0,
+        "author": user.get("name") or user.get("email") or "Admin",
+    }
+    await db.blog_posts.insert_one(dict(post))
+    post.pop("_id", None)
+    return post
+
+
+@app.put("/api/admin/blog/posts/{slug}")
+async def admin_blog_update(slug: str, body: dict, user: Dict[str, Any] = Depends(get_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Solo admin")
+    body["updated_at"] = datetime.now(timezone.utc).isoformat()
+    for k in ("_id", "id", "slug", "views", "created_at"):
+        body.pop(k, None)
+    if body.get("published") and not (await db.blog_posts.find_one({"slug": slug}, {"published_at": 1}) or {}).get("published_at"):
+        body["published_at"] = body["updated_at"]
+    await db.blog_posts.update_one({"slug": slug}, {"$set": body})
+    return {"ok": True}
+
+
+@app.delete("/api/admin/blog/posts/{slug}")
+async def admin_blog_delete(slug: str, user: Dict[str, Any] = Depends(get_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Solo admin")
+    await db.blog_posts.delete_one({"slug": slug})
+    return {"ok": True}
+
+
+@app.on_event("startup")
+async def seed_blog_posts_on_startup():
+    """Inserisce i 50 articoli SEO al primo avvio se la collection è vuota."""
+    try:
+        existing = await db.blog_posts.count_documents({})
+        if existing < 50:
+            from blog_seed import get_seed_posts
+            posts = get_seed_posts()
+            for p in posts:
+                await db.blog_posts.update_one({"slug": p["slug"]}, {"$setOnInsert": p}, upsert=True)
+            logger.info(f"[blog] seeded {len(posts)} articles (existing before: {existing})")
+    except Exception as e:
+        logger.warning(f"[blog] seed skipped: {e}")
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,

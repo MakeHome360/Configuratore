@@ -1181,6 +1181,24 @@ function VociAcquistiTab({ wf, cid, reload }) {
   };
 
   const add = () => setItems([...items, { voce: "", voce_id: "", subappaltatore: "", qty: 1, stima_backoffice: 0, preventivato: 0, effettivo: 0, pagato: false, note: "" }]);
+
+  const [importing, setImporting] = useState(false);
+  const [importMode, setImportMode] = useState({ open: false, only_assigned: false });
+  const cmCount = ((wf.computo_metrico || {}).items || []).length;
+
+  const doImport = async (only_assigned) => {
+    setImporting(true);
+    try {
+      const r = await api.post(`/commesse/${cid}/workflow/voci-acquisti/import-from-computo`, {
+        only_assigned: !!only_assigned, merge: true,
+      });
+      toast.success(`${r.data.added} voci importate dal Computo Metrico (${r.data.skipped} saltate, totale ${r.data.total})`);
+      setImportMode({ open: false, only_assigned: false });
+      reload();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Errore import");
+    } finally { setImporting(false); }
+  };
   const upd = (i, k, v) => setItems(items.map((x, j) => j === i ? { ...x, [k]: v } : x));
   const linkVoce = (i, voceId) => {
     const voce = voci.find(v => v.id === voceId);
@@ -1206,6 +1224,12 @@ function VociAcquistiTab({ wf, cid, reload }) {
             <p className="text-xs text-zinc-500">Per ogni voce collega il listino backoffice: <strong>Stima nostra</strong> = prezzo acquisto × qty (= quanto stimiamo di spendere). Confronta col preventivo del sub-appaltatore e l'effettivo.</p>
           </div>
           <div className="flex gap-2">
+            <Button size="sm" variant="outline" disabled={importing || !cmCount} onClick={() => doImport(false)} data-testid="va-import-all" title={!cmCount ? "Computo metrico vuoto: rigeneralo nella tab Computo" : `Importa tutte le ${cmCount} voci del computo`}>
+              {importing ? "…" : <><Sparkles className="h-4 w-4 mr-1" /> Importa da Computo</>}
+            </Button>
+            <Button size="sm" variant="outline" disabled={importing || !cmCount} onClick={() => doImport(true)} data-testid="va-import-assigned" title="Importa solo le voci già assegnate (artigiano/interno/autorizzato)">
+              Solo assegnate
+            </Button>
             <Button size="sm" variant="outline" onClick={add} data-testid="va-add"><Plus className="h-4 w-4 mr-1" /> Voce</Button>
             <Button size="sm" onClick={save} style={{ background: "var(--brand)", color: "white" }} data-testid="va-save">Salva</Button>
           </div>
@@ -1230,8 +1254,9 @@ function VociAcquistiTab({ wf, cid, reload }) {
                 const eff = parseFloat(v.effettivo) || 0;
                 const deltaStima = prev - stima;
                 return (
-                  <tr key={i}>
+                  <tr key={i} className={v.from_computo ? "bg-blue-50/30" : ""}>
                     <td className="px-2 py-1.5">
+                      {v.from_computo && <div className="text-[9px] uppercase tracking-widest text-blue-700 font-bold mb-0.5" title="Voce importata dal Computo Metrico">📋 da computo{v.category ? ` · ${v.category}` : ""}</div>}
                       <Select value={v.voce_id || ""} onValueChange={(val) => linkVoce(i, val)}>
                         <SelectTrigger className="h-8 text-xs" data-testid={`va-voce-link-${i}`}><SelectValue placeholder="Scegli dal listino…" /></SelectTrigger>
                         <SelectContent>
@@ -1251,7 +1276,19 @@ function VociAcquistiTab({ wf, cid, reload }) {
                   </tr>
                 );
               })}
-              {!items.length && <tr><td colSpan={9} className="px-3 py-12 text-center text-zinc-500">Nessuna voce. Clicca "Voce" per aggiungere la prima.</td></tr>}
+              {!items.length && (
+                <tr><td colSpan={9} className="px-3 py-12 text-center text-zinc-500">
+                  {cmCount > 0 ? (
+                    <div className="space-y-3">
+                      <div>Nessuna voce.</div>
+                      <div className="text-xs">Hai <strong>{cmCount}</strong> voci nel Computo Metrico → puoi importarle in 1 click</div>
+                      <Button size="sm" onClick={() => doImport(false)} disabled={importing} data-testid="va-import-empty" style={{ background: "var(--brand)", color: "white" }}>
+                        <Sparkles className="h-4 w-4 mr-1.5" /> Importa {cmCount} voci dal Computo
+                      </Button>
+                    </div>
+                  ) : "Nessuna voce. Clicca \"Voce\" per aggiungere la prima."}
+                </td></tr>
+              )}
             </tbody>
             {items.length > 0 && (
               <tfoot className="bg-zinc-50 font-bold">

@@ -241,6 +241,90 @@ def build_commessa_workflow_router(db, get_current_user):
         await db.commesse.update_one({"id": cid}, {"$set": {"computo_metrico": cm}})
         return {"ok": True, "item": items[idx]}
 
+    # ---------- 4c. IMPORTA "VOCI E ACQUISTI" DAL COMPUTO METRICO ----------
+    class ImportVociAcquistiIn(BaseModel):
+        only_assigned: bool = False  # se True, importa solo le voci con stato_assegnazione != "da_assegnare"
+        merge: bool = True  # se True, aggiunge solo voci non già presenti (match per voce_id); se False, sovrascrive
+        category_filter: Optional[List[str]] = None  # filtra per categoria (es. ["MURATURA","IMPIANTI"])
+
+    @r.post("/commesse/{cid}/workflow/voci-acquisti/import-from-computo")
+    async def import_voci_acquisti(cid: str, body: ImportVociAcquistiIn, user=Depends(get_current_user)):
+        """Auto-popola la lista 'Voci e Acquisti' a partire dagli item del Computo Metrico.
+        - stima_backoffice = prezzo_acquisto (da voci_backoffice) × qty
+        - preventivato = inizializzato a 0 (compilato a mano dopo il sub)
+        - subappaltatore = artigiano_nome se la voce è stata già assegnata, altrimenti vuoto
+        - merge=True (default): salta voci con voce_id già presenti in voci_acquisti
+        - only_assigned=True: importa solo voci con stato_assegnazione != "da_assegnare"
+        """
+        com = await db.commesse.find_one({"id": cid}, {"_id": 0})
+        if not com:
+            raise HTTPException(404, "Commessa non trovata")
+        cm_items = ((com.get("computo_metrico") or {}).get("items") or [])
+        if not cm_items:
+            raise HTTPException(400, "Computo metrico vuoto. Rigenera il computo prima di importare.")
+
+        # Carica voci_backoffice una volta per recuperare prezzo_acquisto
+        voci_back_list = await db.voci_backoffice.find({}, {"_id": 0}).to_list(2000)
+        voci_back = {v["id"]: v for v in voci_back_list if v.get("id")}
+
+        existing = list(com.get("voci_acquisti") or [])
+        existing_voce_ids = {v.get("voce_id") for v in existing if v.get("voce_id")}
+
+        added = 0
+        skipped = 0
+        out_items = list(existing) if body.merge else []
+
+        for cm_it in cm_items:
+            voce_id = cm_it.get("voce_id")
+            qty = float(cm_it.get("qty") or 0)
+            name = cm_it.get("name") or ""
+            stato_ass = cm_it.get("stato_assegnazione") or "da_assegnare"
+            categoria = (cm_it.get("category") or "")
+
+            # Filtri
+            if body.only_assigned and stato_ass == "da_assegnare":
+                skipped += 1
+                continue
+            if body.category_filter and categoria and categoria not in body.category_filter:
+                skipped += 1
+                continue
+            if body.merge and voce_id and voce_id in existing_voce_ids:
+                skipped += 1
+                continue
+
+            # Recupera prezzo_acquisto da voci_backoffice; fallback a prezzo_unit del computo
+            prezzo_acquisto = 0.0
+            vb = voci_back.get(voce_id) if voce_id else None
+            if vb:
+                prezzo_acquisto = float(vb.get("prezzo_acquisto") or 0)
+            if prezzo_acquisto == 0:
+                # Fallback: usa il prezzo_unit dal computo (è prezzo_rivendita) — sovra-stimato ma meglio di 0
+                prezzo_acquisto = float(cm_it.get("prezzo_unit") or 0)
+
+            stima_backoffice = round(prezzo_acquisto * qty, 2)
+            subappaltatore = cm_it.get("artigiano_nome") if stato_ass in ("artigiano", "autorizzato") else ""
+
+            out_items.append({
+                "voce_id": voce_id or "",
+                "voce": name,
+                "subappaltatore": subappaltatore or "",
+                "qty": qty,
+                "stima_backoffice": stima_backoffice,
+                "preventivato": 0,
+                "effettivo": 0,
+                "pagato": False,
+                "note": "",
+                "from_computo": True,
+                "computo_item_id": cm_it.get("id"),
+                "category": categoria,
+                "imported_at": NOW(),
+            })
+            existing_voce_ids.add(voce_id)
+            added += 1
+
+        await db.commesse.update_one({"id": cid}, {"$set": {"voci_acquisti": out_items}})
+        return {"ok": True, "added": added, "skipped": skipped, "total": len(out_items)}
+
 
     # ---------- 5. PREVENTIVI ARTIGIANI (+ AI analisi + autorizzazione) ----------
     class PrevArtigianoIn(BaseModel):

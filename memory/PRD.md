@@ -1,6 +1,31 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
-## Recent Updates (Round 48 — Feb 2026 — Fix Import Planimetria porte/finestre + Auto-pagamento SAL)
+## Recent Updates (Round 48 — Feb 2026 — Fix Import Planimetria porte/finestre + Auto-pagamento SAL + Auto-popolazione Voci Acquisti)
+### 📋 Auto-popolazione "Voci e Acquisti" dal "Computo Metrico" (P1)
+**Prima**: l'utente doveva digitare manualmente ogni voce di acquisto nella tab "Voci e Acquisti" anche se il computo metrico la conteneva già.
+
+**Adesso** (`routes_commessa_workflow.py:import_voci_acquisti` — `POST /commesse/{cid}/workflow/voci-acquisti/import-from-computo`):
+- Legge `commessa.computo_metrico.items`
+- Per ogni voce calcola `stima_backoffice = voce_backoffice.prezzo_acquisto × qty` (fallback su prezzo_unit se voce non in catalogo)
+- Copia automaticamente `subappaltatore = artigiano_nome` se voce già assegnata (artigiano/autorizzato)
+- 3 modalità:
+  - `merge=true` (default): aggiunge solo voci con `voce_id` non già presente
+  - `only_assigned=true`: importa solo voci con `stato_assegnazione ≠ da_assegnare`
+  - `category_filter=[...]`: importa solo categorie selezionate
+- Voci importate marcate con `from_computo=true` + `computo_item_id` per tracciabilità
+
+**UI** (`CommessaWorkflow.jsx:VociAcquistiTab`):
+- 2 nuovi bottoni nell'header: "📋 Importa da Computo" (tutte) + "Solo assegnate"
+- Empty state ricco: se la lista è vuota e il computo ha N voci → CTA grande "Importa N voci dal Computo"
+- Riga importata evidenziata in blue + badge `📋 da computo · CATEGORIA`
+- Tooltip "Computo metrico vuoto: rigeneralo nella tab Computo" quando disabilitato
+
+**Test E2E** (4/4 passati):
+- Import completo: stima_backoffice corretta (prezzo_acquisto × qty), sub copiato per voci assegnate
+- only_assigned salta correttamente le da_assegnare
+- merge=true evita duplicati su re-import
+- Computo vuoto → 400
+
 ### 🔴 Fix CRITICO Import Planimetria: porte/finestre ora arrivano davvero
 **Bug root**: il prompt Gemini chiedeva `doors`/`windows` ma il backend in `server.py:ai_floorplan_import` parsava SOLO `rooms` e a riga 1050 forzava `"doors": [], "windows": []` hardcoded → l'output dell'AI veniva BUTTATO. Per questo l'utente vedeva la pianta importata "più piccola e senza porte/finestre".
 
@@ -28,11 +53,15 @@
   - Banner emerald in alto "Auto-pagamento SAL attivo" spiega il flusso
   - Toast post-convalida mostra importo programmato: `"SAL convalidato · Pagamento programmato di € 5.000,00 aggiunto alla Cassa Commessa"`
 
-### Test E2E (4/4 passati)
+### Test E2E Round 48 (8/8 passati)
 - `test_floorplan_parses_doors_windows` ✅
 - `test_floorplan_rescale_applies_to_doors` ✅ (target 48m² → factor 2.0)
-- `test_sal_convalida_genera_cassa_movimento` ✅ (50% di 10k = 5k programmato + idempotenza)
-- `test_sal_convalida_solo_delta_perc` ✅ (60% dopo 30% già pagato → genera solo Δ3.000€)
+- `test_sal_convalida_genera_cassa_movimento` ✅
+- `test_sal_convalida_solo_delta_perc` ✅
+- `test_import_all_voci_da_computo` ✅
+- `test_import_solo_assegnate` ✅
+- `test_import_merge_evita_duplicati` ✅
+- `test_import_computo_vuoto_400` ✅
 
 ### Verifiche su P1 pre-esistenti
 - **Drag interattivo demolizione parziale**: già funzionante da Round 25 (`demo-partial-drag` + maniglie `demo-handle` in Canvas2D.jsx:550-577)

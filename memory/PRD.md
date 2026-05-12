@@ -1,5 +1,20 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 43 — Mag 2026 — Import planimetria PDF)
+### 📄 Import planimetria — supporto PDF
+- **Causa**: il modal "Importa Pianta" accettava solo `image/*`. I PDF venivano rifiutati dal file picker e `optimizeImage` crashava sul tipo `application/pdf`.
+- **Fix backend** (`server.py:/api/ai/floorplan-import`):
+  - Nuova dipendenza `pypdfium2==5.8.0` (pure Python, niente poppler/system libs) — aggiunta a `requirements.txt`.
+  - Rileva PDF da MIME (`application/pdf`) o da magic-bytes base64 (`JVBERi0` = `%PDF-`).
+  - Converte la **prima pagina** in PNG @ scale 2.0 (~150 DPI), ridimensiona a max 1600px lato lungo, comprime PNG ottimizzato. Logging di dimensioni.
+  - Errori PDF restituiti come HTTP 400 con messaggio chiaro ("Salva la planimetria come JPG/PNG e riprova").
+- **Fix frontend** (`Editor.jsx`):
+  - Input file `accept="image/*,.pdf,application/pdf"`.
+  - Branch dedicato: i PDF bypassano `optimizeImage` e vanno al backend tal-quali. Le immagini continuano col flow esistente (ottimizzazione canvas).
+  - Payload include `mime` (`"application/pdf"` o tipo originale) per indicare al backend cosa è arrivato.
+  - Timeout esteso a 180s per i PDF (il rendering può richiedere qualche secondo extra).
+- **Test E2E**: PDF di prova (3 stanze disegnate come rettangoli) → AI estrae correttamente 3 stanze (Cucina, Bagno, Camera) con 4 punti ciascuna. ✅
+
 ## Recent Updates (Round 42 — Mag 2026 — Chiusura lista 10 punti utente)
 ### 📁 Documenti Aziendali Template (NUOVO)
 - Backend: 4 endpoint `/api/documenti-template/*` (admin POST/DELETE, all-roles GET). File su `/app/backend/uploads/tpl-{uuid}.{ext}`, collection `documenti_template`. Tipi predefiniti: contratto_cliente, contratto_subappalto, capitolato, privacy_gdpr, checklist_sopralluogo, verbale_consegna, sal_template, altro.

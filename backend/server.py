@@ -755,14 +755,49 @@ async def ai_render(body: AIRenderReq, user: Dict[str, Any] = Depends(get_curren
 # ---------------- AI Floorplan Import ----------------
 @api.post("/ai/floorplan-import")
 async def ai_floorplan_import(body: dict, user: Dict[str, Any] = Depends(get_current_user)):
-    """Analyze a floorplan image and extract rooms + walls as CAD project_data (cm)."""
+    """Analyze a floorplan image (or PDF) and extract rooms + walls as CAD project_data (cm)."""
     if not EMERGENT_LLM_KEY:
         raise HTTPException(status_code=500, detail="EMERGENT_LLM_KEY non configurata")
     img_b64 = body.get("image_base64", "")
     if "," in img_b64:
-        img_b64 = img_b64.split(",", 1)[1]
+        # data URL: data:application/pdf;base64,... oppure data:image/png;base64,...
+        header, img_b64 = img_b64.split(",", 1)
+        body_mime = header.split(";")[0].replace("data:", "").lower() if "data:" in header else ""
+    else:
+        body_mime = (body.get("mime") or "").lower()
     if not img_b64:
-        raise HTTPException(400, "Immagine mancante")
+        raise HTTPException(400, "File mancante")
+
+    # Se il file è un PDF, converti la PRIMA pagina in PNG (alta risoluzione) via pypdfium2
+    is_pdf = ("pdf" in body_mime) or img_b64.startswith("JVBERi0")  # %PDF- in base64
+    if is_pdf:
+        try:
+            import base64 as _b64
+            import pypdfium2 as pdfium
+            import io as _io
+            raw = _b64.b64decode(img_b64)
+            pdf = pdfium.PdfDocument(raw)
+            if len(pdf) == 0:
+                raise HTTPException(400, "PDF senza pagine")
+            page = pdf[0]
+            # Scale: ~150 DPI per leggibilità AI senza pesare troppo
+            pil_image = page.render(scale=2.0).to_pil()
+            # Limita a max 1600px lato lungo
+            max_side = 1600
+            w, h = pil_image.size
+            if max(w, h) > max_side:
+                ratio = max_side / max(w, h)
+                pil_image = pil_image.resize((int(w * ratio), int(h * ratio)))
+            buf = _io.BytesIO()
+            pil_image.save(buf, format="PNG", optimize=True)
+            img_b64 = _b64.b64encode(buf.getvalue()).decode("ascii")
+            logger.info(f"[floorplan] PDF convertito in PNG {pil_image.size} ({len(img_b64)} bytes b64)")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.exception("PDF conversion failed")
+            raise HTTPException(status_code=400, detail=f"Errore conversione PDF: {str(e)[:200]}. Salva la planimetria come JPG/PNG e riprova.")
+
     session_id = f"floorplan-{user['id']}-{uuid.uuid4().hex[:8]}"
     chat = LlmChat(
         api_key=EMERGENT_LLM_KEY,

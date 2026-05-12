@@ -498,19 +498,28 @@ export default function Editor() {
         img.src = URL.createObjectURL(file);
       });
 
+      const isPdf = floorplanFile.type === "application/pdf" || /\.pdf$/i.test(floorplanFile.name || "");
       let blob;
-      try {
-        blob = await optimizeImage(floorplanFile);
-      } catch {
-        // Fallback se browser non supporta conversione
+      if (isPdf) {
+        // I PDF vanno mandati così come sono — il backend li renderizza in PNG con pypdfium2
         blob = floorplanFile;
+      } else {
+        try {
+          blob = await optimizeImage(floorplanFile);
+        } catch {
+          // Fallback se browser non supporta conversione
+          blob = floorplanFile;
+        }
       }
-      const b64 = await blobToBase64(blob);
+      const b64Raw = await blobToBase64(blob);
+      // blobToBase64 ritorna data URL: usiamo solo la parte base64
+      const b64 = b64Raw.includes(",") ? b64Raw.split(",")[1] : b64Raw;
       const sizeKb = Math.round(b64.length * 0.75 / 1024);
-      console.log(`[floorplan] sending ${sizeKb}KB to AI...`);
+      console.log(`[floorplan] sending ${sizeKb}KB (${isPdf ? "PDF" : "image"}) to AI...`);
 
       try {
-        const { data } = await api.post("/ai/floorplan-import", { image_base64: b64 }, { timeout: 120000 });
+        const payload = { image_base64: b64, mime: isPdf ? "application/pdf" : (floorplanFile.type || "image/png") };
+        const { data } = await api.post("/ai/floorplan-import", payload, { timeout: 180000 });
         if (data.project_data && (data.rooms_count || 0) > 0) {
           setProjectData(() => ({ ...emptyProjectData(), ...data.project_data }));
           toast.success(`Planimetria importata · ${data.rooms_count} stanze`);
@@ -2603,8 +2612,8 @@ function FloorplanImportModal({ open, setOpen, file, setFile, loading, onImport 
           <button className="ml-auto" onClick={() => setOpen(false)}><X size={18} /></button>
         </div>
         <div className="p-5 space-y-4">
-          <div className="text-sm text-zinc-600">Carica una planimetria del cliente (jpg/png). L'AI Gemini analizzerà l'immagine ed estrarrà i muri principali per generare un progetto base 2D/3D modificabile.</div>
-          <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] || null)} className="block w-full text-sm" data-testid="floorplan-file-input" />
+          <div className="text-sm text-zinc-600">Carica una planimetria del cliente (PDF, JPG, PNG). Per i PDF viene importata la <strong>prima pagina</strong>. L'AI Gemini analizzerà l'immagine ed estrarrà i muri principali per generare un progetto base 2D/3D modificabile.</div>
+          <input type="file" accept="image/*,.pdf,application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} className="block w-full text-sm" data-testid="floorplan-file-input" />
           {file && <div className="text-xs mono text-zinc-500">File: {file.name} ({Math.round(file.size / 1024)} KB)</div>}
           <Button onClick={onImport} disabled={!file || loading} className="rounded-sm w-full h-10 bg-zinc-900 hover:bg-zinc-800" data-testid="floorplan-import-btn">{loading ? "Elaborazione AI in corso…" : "Importa con AI"}</Button>
           <div className="text-xs text-zinc-400">⚠️ Il progetto attuale verrà sostituito dai dati estratti dall'immagine. Salva prima se serve.</div>

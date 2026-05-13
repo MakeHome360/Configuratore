@@ -1221,7 +1221,7 @@ export default function Canvas2D({
   };
 
   const onDblClick = () => {
-    if (tool === "wall" || tool === "wall-cartongesso") {
+    if (tool === "wall" || tool === "wall-cartongesso" || tool === "wall-arc") {
       if (pendingWallClickRef.current) { clearTimeout(pendingWallClickRef.current); pendingWallClickRef.current = null; }
       setWallDraft(null);
     }
@@ -1373,6 +1373,12 @@ export default function Canvas2D({
         } else if (tool === "wall-cartongesso" && wallDraft) {
           const d = Math.hypot(cursor.x - wallDraft.x, cursor.y - wallDraft.y);
           active = { label: "Muro cartongesso", m: d / 100 };
+        } else if (tool === "wall-arc" && wallDraft) {
+          const chord = Math.hypot(cursor.x - wallDraft.x, cursor.y - wallDraft.y);
+          const bow = chord / 6;
+          const r = (chord * chord) / (8 * bow) + bow / 2;
+          const arcLen = 2 * r * Math.asin(Math.min(1, chord / (2 * r)));
+          active = { label: "Muro ad arco · doppio click per terminare", m: arcLen / 100 };
         } else if (tool === "room" && roomDraft.length > 0) {
           const last = roomDraft[roomDraft.length - 1];
           const d = Math.hypot(cursor.x - last.x, cursor.y - last.y);
@@ -2486,7 +2492,7 @@ export default function Canvas2D({
       {tool === "circle" && <div className="absolute top-3 left-3 bg-amber-600 text-white px-3 py-1.5 text-xs mono">cerchio · drag per impostare raggio · ⌀ default {Math.round((circleParams?.radius || 100) * 2)}cm</div>}
       {tool === "room-round" && <div className="absolute top-3 left-3 bg-blue-700 text-white px-3 py-1.5 text-xs mono">stanza tonda · click + drag dal centro al raggio</div>}
       {tool === "room-halfmoon" && <div className="absolute top-3 left-3 bg-blue-700 text-white px-3 py-1.5 text-xs mono">stanza a mezzaluna · click sul centro + drag verso il punto più curvo</div>}
-      {tool === "wall-arc" && <div className="absolute top-3 left-3 bg-emerald-700 text-white px-3 py-1.5 text-xs mono">muro ad arco · 1° click endpoint A · 2° click endpoint B (sagitta = 1/6 corda · regolabile da pannello)</div>}
+      {tool === "wall-arc" && <div className="absolute top-3 left-3 bg-emerald-700 text-white px-3 py-1.5 text-xs mono">muro ad arco · 1° click endpoint A · 2° click endpoint B · DOPPIO CLICK = termina</div>}
       {tool === "measure-length" && <div className="absolute top-3 left-3 bg-purple-700 text-white px-3 py-1.5 text-xs mono">misura lunghezza · 1° click inizio · 2° click fine · DOPPIO CLICK = annulla</div>}
       {tool === "measure-area" && <div className="absolute top-3 left-3 bg-purple-700 text-white px-3 py-1.5 text-xs mono">misura area · click sui vertici · DOPPIO CLICK = chiudi (≥3 punti) o annulla</div>}
       {tool === "measure-volume" && <div className="absolute top-3 left-3 bg-purple-700 text-white px-3 py-1.5 text-xs mono">misura volume · click sui vertici · DOPPIO CLICK = chiudi · h={project.roomHeight || 270}cm</div>}

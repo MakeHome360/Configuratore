@@ -621,12 +621,15 @@ export default function Canvas2D({
               const dist = Math.hypot(cx - proposedX, cy - proposedY);
               if (dist < bestDist) { bestDist = dist; bestWall = { w, cx, cy, t }; }
             });
-            // Hysteresis: una volta agganciato, soglia di "release" più ampia per evitare scatti
+            // Hysteresis: si attiva solo quando il BORDO dell'oggetto è davvero vicino al muro (no più scatti da lontano)
+            // bestDist = distanza dal CENTRO dell'oggetto al muro
+            // Distanza del bordo proiettato sul lato del muro: bestDist - D/2
             const wasAttached = drag.attachedToWall === true;
-            const SNAP_ENGAGE_CM = D / 2 + 60;   // raggio di "aggancio" generoso
-            const SNAP_RELEASE_CM = D / 2 + 120; // raggio di "rilascio" più ampio (sticky)
+            const edgeDist = bestDist - D / 2; // distanza tra il bordo dell'oggetto e la superficie del muro
+            const SNAP_ENGAGE_CM = 12;   // si aggancia SOLO se il bordo è entro 12cm dal muro
+            const SNAP_RELEASE_CM = 25;  // resta agganciato finché il bordo non si allontana oltre 25cm
             const threshold = wasAttached ? SNAP_RELEASE_CM : SNAP_ENGAGE_CM;
-            if (bestWall && bestDist < threshold) {
+            if (bestWall && edgeDist < threshold) {
               const wall = bestWall.w;
               const wallAng = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
               const nx = -Math.sin(wallAng);

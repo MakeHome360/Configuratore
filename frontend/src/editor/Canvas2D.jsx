@@ -407,6 +407,7 @@ export default function Canvas2D({
   const [wallDraft, setWallDraft] = useState(null);
   const [roomDraft, setRoomDraft] = useState([]);
   const [demoAreaDraft, setDemoAreaDraft] = useState([]);
+  const [measureDraft, setMeasureDraft] = useState([]); // [{x,y}, ...] punti accumulati per measure-area/volume
   const [cursor, setCursor] = useState({ x: 0, y: 0 });
   const [viewBox, setViewBox] = useState(INITIAL_VIEW);
 
@@ -491,6 +492,7 @@ export default function Canvas2D({
     setWallDraft(null);
     setRoomDraft([]);
     setDemoAreaDraft([]);
+    setMeasureDraft([]);
   }, [tool]);
 
   const toWorld = useCallback((evt) => {
@@ -663,6 +665,34 @@ export default function Canvas2D({
     }
     if (tool === "door" || tool === "window") {
       placeDoorOrWindow(p);
+      return;
+    }
+    // ---- MISURAZIONE: lunghezza / area / volume ----
+    if (tool === "measure-length") {
+      // 2 click = un segmento di misura
+      setMeasureDraft((arr) => {
+        if (arr.length === 0) return [p];
+        const a = arr[0];
+        const meas = { id: uid(), kind: "length", points: [a, p] };
+        setProject((prj) => ({ ...prj, measurements: [...(prj.measurements || []), meas] }));
+        return [];
+      });
+      return;
+    }
+    if (tool === "measure-area" || tool === "measure-volume") {
+      // Poligono libero: click vertici, doppio click chiude (vedi onDoubleClick sotto)
+      setMeasureDraft((arr) => {
+        const last = arr[arr.length - 1];
+        if (last && Math.hypot(p.x - last.x, p.y - last.y) < 8) return arr;
+        return [...arr, p];
+      });
+      return;
+    }
+    if (tool === "measure-clear") {
+      // Click qualsiasi → pulisci tutte le misure (con conferma rapida via toast)
+      setProject((prj) => ({ ...prj, measurements: [] }));
+      setMeasureDraft([]);
+      setTool("select");
       return;
     }
     if (tool === "demolish-wall") {
@@ -980,6 +1010,20 @@ export default function Canvas2D({
         }));
         setRoomDraft([]);
       }
+    }
+    if (tool === "measure-area" || tool === "measure-volume") {
+      if (measureDraft.length >= 3) {
+        const poly = measureDraft.slice();
+        const meas = {
+          id: uid(),
+          kind: tool === "measure-area" ? "area" : "volume",
+          points: poly,
+          height_cm: tool === "measure-volume" ? (project.roomHeight || 270) : null,
+        };
+        setProject((prj) => ({ ...prj, measurements: [...(prj.measurements || []), meas] }));
+      }
+      setMeasureDraft([]);
+      return;
     }
   };
 
@@ -1839,6 +1883,105 @@ export default function Canvas2D({
             ))}
           </g>
         )}
+
+        {/* ---- MISURE: draft length (1 click fatto) ---- */}
+        {tool === "measure-length" && measureDraft.length === 1 && (
+          <g pointerEvents="none">
+            <line x1={measureDraft[0].x} y1={measureDraft[0].y} x2={cursor.x} y2={cursor.y} stroke="#9333EA" strokeWidth="2" strokeDasharray="4,3" />
+            <circle cx={measureDraft[0].x} cy={measureDraft[0].y} r="6" fill="#9333EA" stroke="white" strokeWidth="2" />
+            {(() => {
+              const d = Math.hypot(cursor.x - measureDraft[0].x, cursor.y - measureDraft[0].y);
+              const mx = (measureDraft[0].x + cursor.x) / 2;
+              const my = (measureDraft[0].y + cursor.y) / 2;
+              return (
+                <g>
+                  <rect x={mx - 36} y={my - 22} width="72" height="18" fill="white" stroke="#9333EA" strokeWidth="1" rx="3" />
+                  <text x={mx} y={my - 9} textAnchor="middle" fontSize="11px" fontFamily="JetBrains Mono" fontWeight="800" fill="#6B21A8">{fmtNum(d / 100, 2)} m</text>
+                </g>
+              );
+            })()}
+          </g>
+        )}
+
+        {/* ---- MISURE: draft area/volume (poligono in costruzione) ---- */}
+        {(tool === "measure-area" || tool === "measure-volume") && measureDraft.length > 0 && (
+          <g pointerEvents="none">
+            <polyline points={[...measureDraft, cursor].map((p) => `${p.x},${p.y}`).join(" ")} fill="#9333EA" fillOpacity="0.10" stroke="#9333EA" strokeWidth="2" strokeDasharray="5,4" />
+            {measureDraft.map((p, i) => (
+              <circle key={i} cx={p.x} cy={p.y} r="6" fill="#9333EA" stroke="white" strokeWidth="2" />
+            ))}
+            {measureDraft.length >= 2 && (() => {
+              const poly = [...measureDraft, cursor];
+              const a = polygonArea(poly) / 10000;
+              const cx = poly.reduce((s, p) => s + p.x, 0) / poly.length;
+              const cy = poly.reduce((s, p) => s + p.y, 0) / poly.length;
+              const lbl = tool === "measure-volume"
+                ? `${fmtNum(a, 2)} m² · ${fmtNum(a * ((project.roomHeight || 270) / 100), 2)} m³`
+                : `${fmtNum(a, 2)} m²`;
+              return (
+                <g>
+                  <rect x={cx - 60} y={cy - 12} width="120" height="22" fill="white" stroke="#9333EA" strokeWidth="1" rx="3" opacity="0.9" />
+                  <text x={cx} y={cy + 4} textAnchor="middle" fontSize="11px" fontFamily="JetBrains Mono" fontWeight="800" fill="#6B21A8">{lbl}</text>
+                </g>
+              );
+            })()}
+            <text x={cursor.x + 14} y={cursor.y - 10} fontSize="10px" fontFamily="JetBrains Mono" fill="#6B21A8" opacity="0.7">doppio click per chiudere</text>
+          </g>
+        )}
+
+        {/* ---- MISURE persistenti ---- */}
+        {(project.measurements || []).map((m) => {
+          if (m.kind === "length" && m.points?.length === 2) {
+            const [a, b] = m.points;
+            const d = Math.hypot(b.x - a.x, b.y - a.y);
+            const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+            return (
+              <g key={m.id} data-testid={`measure-length-${m.id}`}>
+                <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#9333EA" strokeWidth="1.8" />
+                {/* Tick perpendicolari agli estremi */}
+                {(() => {
+                  const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+                  const nx = -(b.y - a.y) / len * 8;
+                  const ny = (b.x - a.x) / len * 8;
+                  return (
+                    <g>
+                      <line x1={a.x - nx} y1={a.y - ny} x2={a.x + nx} y2={a.y + ny} stroke="#9333EA" strokeWidth="1.8" />
+                      <line x1={b.x - nx} y1={b.y - ny} x2={b.x + nx} y2={b.y + ny} stroke="#9333EA" strokeWidth="1.8" />
+                    </g>
+                  );
+                })()}
+                <rect x={mx - 36} y={my - 22} width="72" height="18" fill="white" stroke="#9333EA" strokeWidth="1" rx="3" />
+                <text x={mx} y={my - 9} textAnchor="middle" fontSize="11px" fontFamily="JetBrains Mono" fontWeight="800" fill="#6B21A8">{fmtNum(d / 100, 2)} m</text>
+                <g onMouseDown={(ev) => { ev.stopPropagation(); setProject((prj) => ({ ...prj, measurements: (prj.measurements || []).filter((x) => x.id !== m.id) })); }} style={{ cursor: "pointer" }} data-testid={`measure-del-${m.id}`}>
+                  <circle cx={mx + 32} cy={my - 16} r="6" fill="#DC2626" />
+                  <text x={mx + 32} y={my - 12} textAnchor="middle" fontSize="10px" fontFamily="Outfit" fontWeight="900" fill="white">×</text>
+                </g>
+              </g>
+            );
+          }
+          if ((m.kind === "area" || m.kind === "volume") && m.points?.length >= 3) {
+            const a = polygonArea(m.points) / 10000;
+            const perim = polygonPerimeter(m.points) / 100;
+            const cx = m.points.reduce((s, p) => s + p.x, 0) / m.points.length;
+            const cy = m.points.reduce((s, p) => s + p.y, 0) / m.points.length;
+            const h_m = m.kind === "volume" ? (m.height_cm || 270) / 100 : null;
+            return (
+              <g key={m.id} data-testid={`measure-${m.kind}-${m.id}`}>
+                <polygon points={m.points.map((p) => `${p.x},${p.y}`).join(" ")} fill="#9333EA" fillOpacity="0.08" stroke="#9333EA" strokeWidth="1.8" strokeDasharray="6,4" />
+                <rect x={cx - 70} y={cy - 22} width="140" height={m.kind === "volume" ? 56 : 40} fill="white" stroke="#9333EA" strokeWidth="1" rx="3" opacity="0.95" />
+                <text x={cx} y={cy - 8} textAnchor="middle" fontSize="11px" fontFamily="JetBrains Mono" fontWeight="800" fill="#6B21A8">Area: {fmtNum(a, 2)} m²</text>
+                <text x={cx} y={cy + 6} textAnchor="middle" fontSize="10px" fontFamily="JetBrains Mono" fill="#7C3AED">Perimetro: {fmtNum(perim, 2)} m</text>
+                {h_m && <text x={cx} y={cy + 20} textAnchor="middle" fontSize="11px" fontFamily="JetBrains Mono" fontWeight="800" fill="#6B21A8">Volume: {fmtNum(a * h_m, 2)} m³</text>}
+                {/* Bottone elimina (X rosso) in alto a destra del label */}
+                <g onMouseDown={(ev) => { ev.stopPropagation(); setProject((prj) => ({ ...prj, measurements: (prj.measurements || []).filter((x) => x.id !== m.id) })); }} style={{ cursor: "pointer" }} data-testid={`measure-del-${m.id}`}>
+                  <circle cx={cx + 64} cy={cy - 16} r="7" fill="#DC2626" />
+                  <text x={cx + 64} y={cy - 12} textAnchor="middle" fontSize="10px" fontFamily="Outfit" fontWeight="900" fill="white">×</text>
+                </g>
+              </g>
+            );
+          }
+          return null;
+        })}
 
         {/* controsoffitti AD AREA persistenti */}
         {(project.controsoffitti || []).map((c) => (

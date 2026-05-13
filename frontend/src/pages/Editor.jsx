@@ -21,7 +21,7 @@ import {
   ChevronRight, ChevronLeft, Hammer, Layers, Zap, Droplet, Flame, Wind, Grid3x3,
   Package, Upload, FileImage, FileText, Type, RotateCcw, RotateCw, Receipt,
 } from "lucide-react";
-import { estimateProject, estimateProjectV2, fmtEuro, fmtEuro2, fmtNum, emptyProjectData, uid, polygonArea, polygonPerimeter, splitRoomByWall, buildPackageRef } from "../editor/utils";
+import { estimateProject, estimateProjectV2, fmtEuro, fmtEuro2, fmtNum, emptyProjectData, uid, polygonArea, polygonPerimeter, splitRoomByWall, buildPackageRef, detectRoomsFromWalls, roomPolygonAlreadyExists } from "../editor/utils";
 import { ProspettoWall, ProspettoInputs, computeInterestingWalls } from "../editor/Prospetti";
 import jsPDF from "jspdf";
 
@@ -61,6 +61,12 @@ const TOOL_GROUPS = [
     { id: "plumbing", icon: Droplet, label: "Idraulico (acqua/scarico)" },
     { id: "gas", icon: Flame, label: "Gas" },
     { id: "hvac", icon: Wind, label: "Climatizz./Riscald." },
+  ]},
+  { id: "misura", label: "Misura", tools: [
+    { id: "measure-length", icon: Ruler, label: "Lunghezza · 2 click" },
+    { id: "measure-area", icon: Square, label: "Area · poligono" },
+    { id: "measure-volume", icon: Box, label: "Volume · poligono × H" },
+    { id: "measure-clear", icon: Trash2, label: "Cancella misure" },
   ]},
 ];
 
@@ -257,6 +263,44 @@ export default function Editor() {
       const newData = typeof fnOrVal === "function" ? fnOrVal(prj.data) : fnOrVal;
       return { ...prj, data: newData };
     });
+  };
+
+  // Rileva automaticamente le stanze chiuse a partire dai muri disegnati.
+  // Per ogni faccia interna trovata: se non già coperta da una stanza esistente,
+  // la aggiunge come nuova stanza con nome "Stanza N". Le stanze nuove ereditano
+  // la `phase` corrente (fatto/progetto).
+  const autoDetectRooms = () => {
+    if (!project) return;
+    const walls = project.data.walls || [];
+    if (walls.length < 3) { toast.info("Disegna almeno 3 muri per chiudere un'area."); return; }
+    const candidates = detectRoomsFromWalls(walls, { tol: 8, minAreaCm2: 100 * 100 });
+    if (!candidates.length) { toast.info("Nessuna stanza chiusa rilevata. Verifica che i muri si tocchino agli angoli."); return; }
+    const existing = project.data.rooms || [];
+    const newRooms = [];
+    let nameCounter = existing.length + 1;
+    const phase = editMode === "fatto" ? "fatto" : "progetto";
+    candidates.forEach((c) => {
+      if (roomPolygonAlreadyExists(c.points, existing)) return;
+      newRooms.push({
+        id: uid(),
+        name: `Stanza ${nameCounter++}`,
+        points: c.points,
+        floorMaterial: "floor-parquet",
+        wallMaterial: "wall-paint",
+        ceilingMaterial: "ceil-paint",
+        electrical: true,
+        plumbing: false,
+        phase,
+        auto_detected: true,
+      });
+    });
+    if (!newRooms.length) {
+      toast.info(`Rilevate ${candidates.length} stanze, già tutte presenti.`);
+      return;
+    }
+    setProjectData((d) => ({ ...d, rooms: [...(d.rooms || []), ...newRooms] }));
+    const totArea = newRooms.reduce((s, r) => s + Math.abs(polygonArea(r.points)) / 10000, 0);
+    toast.success(`✓ ${newRooms.length} stanze rilevate dai muri · ${fmtNum(totArea, 1)} m² · rinominale dal pannello proprietà`);
   };
 
   const addQuickRoom = (q) => {
@@ -794,6 +838,7 @@ export default function Editor() {
           <Button size="sm" variant="ghost" className="rounded-sm h-8 px-2" onClick={redo} title="Ripristina (Ctrl+Shift+Z)" data-testid="redo-btn"><RotateCw size={14} /></Button>
           <div className="w-px h-5 bg-zinc-200 mx-1"></div>
           <Button size="sm" variant="outline" className="rounded-sm h-8 px-2" onClick={() => setFloorplanOpen(true)} title="Importa Pianta da immagine (AI)" data-testid="open-floorplan-import"><Upload size={14} /></Button>
+          <Button size="sm" variant="outline" className="rounded-sm h-8 px-2 border-emerald-400 text-emerald-700 hover:bg-emerald-50" onClick={autoDetectRooms} title="Rileva automaticamente le stanze chiuse dai muri disegnati" data-testid="auto-detect-rooms"><Home size={14} className="mr-1" /><span className="text-xs font-bold">Auto-stanze</span></Button>
           <div className="flex border border-zinc-300 rounded-sm overflow-hidden h-8" data-testid="view-layout-toggle">
             <button onClick={() => setViewLayout("2d")} className={`px-2 text-[10px] uppercase tracking-widest ${viewLayout === "2d" ? "bg-zinc-900 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"}`} title="Solo planimetria 2D" data-testid="view-2d-only">2D</button>
             <button onClick={() => setViewLayout("both")} className={`px-2 text-[10px] uppercase tracking-widest border-l border-r border-zinc-300 ${viewLayout === "both" ? "bg-zinc-900 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"}`} title="Affiancato" data-testid="view-both">2D+3D</button>

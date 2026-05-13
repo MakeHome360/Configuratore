@@ -1009,3 +1009,158 @@ export function splitRoomByWall(points, W1, W2) {
 }
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
+
+// ============================================================================
+// Auto-rilevamento stanze chiuse a partire dai muri (planar-graph face finding)
+// ============================================================================
+// Idea: ogni muro è un edge non orientato. Lo trasformo in 2 semi-archi orientati.
+// Per ogni semi-arco (u→v) cerco il "successivo CCW" attorno a v: il prossimo
+// semi-arco uscente da v che forma l'angolo più piccolo girando in senso
+// antiorario. Seguendo questi successori da ogni semi-arco non visitato si
+// ricostruiscono tutte le facce del grafo planare. La faccia esterna ha area
+// orientata negativa (o è la più grande in valore assoluto) e va scartata.
+//
+// Output: array di poligoni {points: [{x,y}, ...]} che possono essere
+// convertiti in `rooms`. I muri vengono "snappati" a una griglia di tolleranza
+// per fondere endpoint quasi-coincidenti.
+export function detectRoomsFromWalls(walls, opts = {}) {
+  const tol = opts.tol || 8; // cm: tolleranza di snap endpoint
+  const minAreaCm2 = opts.minAreaCm2 || 100 * 100; // 1 m² minimo
+  if (!walls || walls.length < 3) return [];
+
+  // Step 1: snap endpoint a una griglia e costruisci la lista nodi univoci
+  const keyFor = (x, y) => `${Math.round(x / tol)}_${Math.round(y / tol)}`;
+  const nodes = new Map(); // key → {id, x, y}
+  const getNode = (x, y) => {
+    const k = keyFor(x, y);
+    if (!nodes.has(k)) nodes.set(k, { id: nodes.size, x, y, key: k });
+    return nodes.get(k);
+  };
+
+  // Step 2: costruisci semi-archi (escludendo muri demoliti)
+  // halfEdges: array di {from, to, angle (uscente da from), twin}
+  const halfEdges = [];
+  walls.forEach((w) => {
+    if (w?.demolito === true) return; // i muri demoliti non chiudono stanze
+    const a = getNode(w.x1, w.y1);
+    const b = getNode(w.x2, w.y2);
+    if (a.id === b.id) return; // muro degenere
+    const angAB = Math.atan2(b.y - a.y, b.x - a.x);
+    const angBA = Math.atan2(a.y - b.y, a.x - b.x);
+    const i1 = halfEdges.length;
+    const i2 = i1 + 1;
+    halfEdges.push({ from: a.id, to: b.id, angle: angAB, twin: i2, visited: false, wallId: w.id });
+    halfEdges.push({ from: b.id, to: a.id, angle: angBA, twin: i1, visited: false, wallId: w.id });
+  });
+  if (halfEdges.length < 6) return [];
+
+  // Step 3: per ogni nodo, ordina i semi-archi uscenti per angolo
+  const outByNode = new Map();
+  halfEdges.forEach((he, i) => {
+    if (!outByNode.has(he.from)) outByNode.set(he.from, []);
+    outByNode.get(he.from).push(i);
+  });
+  outByNode.forEach((list) => list.sort((a, b) => halfEdges[a].angle - halfEdges[b].angle));
+
+  // Step 4: dato un semi-arco entrante (u→v), trova il prossimo uscente da v
+  // ruotando in senso ANTIORARIO (= il twin posizionato nella lista, poi il
+  // successivo nell'ordinamento). Questo identifica la faccia a SINISTRA del
+  // semi-arco corrente.
+  const nextEdge = (heIdx) => {
+    const he = halfEdges[heIdx];
+    const outList = outByNode.get(he.to) || [];
+    if (!outList.length) return -1;
+    const twinIdx = he.twin;
+    const pos = outList.indexOf(twinIdx);
+    if (pos < 0) return -1;
+    // Next CCW: prendo il successivo nella lista circolare
+    return outList[(pos + 1) % outList.length];
+  };
+
+  // Step 5: estrai i cicli (facce)
+  const faces = [];
+  for (let start = 0; start < halfEdges.length; start++) {
+    if (halfEdges[start].visited) continue;
+    const cycle = [];
+    let cur = start;
+    let safety = halfEdges.length * 2 + 5;
+    while (safety-- > 0) {
+      const he = halfEdges[cur];
+      if (he.visited) break;
+      he.visited = true;
+      cycle.push(cur);
+      const nxt = nextEdge(cur);
+      if (nxt < 0) break;
+      if (nxt === start) break;
+      cur = nxt;
+    }
+    if (cycle.length >= 3) faces.push(cycle);
+  }
+
+  // Step 6: converti ogni faccia in poligono (sequenza di punti)
+  const nodeById = new Map();
+  nodes.forEach((n) => nodeById.set(n.id, n));
+  const polys = faces.map((cycle) => {
+    const points = cycle.map((heIdx) => {
+      const fromNode = nodeById.get(halfEdges[heIdx].from);
+      return { x: fromNode.x, y: fromNode.y };
+    });
+    const area = polygonArea(points);
+    // L'orientamento dei poligoni dipende dall'algoritmo. In genere le facce
+    // interne hanno area "negativa" nella convenzione shoelace standard
+    // (perché percorse in CCW in coordinate Y verso il basso del canvas →
+    // appaiono CW). Manteniamo solo le facce con area_assoluta sensata.
+    return { points, areaAbs: Math.abs(area), signedArea: area };
+  });
+
+  // Step 7: scarta la faccia "esterna" (la più grande in area assoluta) e quelle troppo piccole
+  if (!polys.length) return [];
+  let outerIdx = 0;
+  for (let i = 1; i < polys.length; i++) {
+    if (polys[i].areaAbs > polys[outerIdx].areaAbs) outerIdx = i;
+  }
+  // Se ci sono più componenti connesse separate, ognuna ha la sua "outer face":
+  // identifichiamo le outer faces come quelle con signedArea positiva (in canvas Y-down)
+  // ATTENZIONE: dopo qualche test empirico la faccia esterna ha SEMPRE l'area orientata
+  // di segno opposto rispetto alle facce interne. Usiamo un criterio robusto:
+  // la outer face è quella che contiene TUTTI gli altri vertici al suo interno.
+  const isOuter = (i) => {
+    const poly = polys[i].points;
+    for (let j = 0; j < polys.length; j++) {
+      if (j === i) continue;
+      const sample = polys[j].points[0];
+      if (!pointInPolygon(sample, poly)) return false;
+    }
+    return true;
+  };
+  const out = polys
+    .map((p, i) => ({ ...p, idx: i }))
+    .filter((p) => p.areaAbs >= minAreaCm2 && !isOuter(p.idx))
+    // Ordina dal più grande al più piccolo (utile in UI)
+    .sort((a, b) => b.areaAbs - a.areaAbs)
+    .map((p) => ({ points: p.points, area_m2: p.areaAbs / 10000 }));
+  return out;
+}
+
+// Verifica se un poligono di stanza potenziale coincide (≈) con una stanza già esistente.
+// Confronta i centroidi con tolleranza pari a una frazione della radice dell'area.
+export function roomPolygonAlreadyExists(candidatePoly, existingRooms, tolFrac = 0.15) {
+  if (!candidatePoly || !candidatePoly.length || !existingRooms?.length) return false;
+  const cArea = Math.abs(polygonArea(candidatePoly));
+  if (cArea < 1) return false;
+  const cTol = Math.max(20, tolFrac * Math.sqrt(cArea));
+  const cCenter = candidatePoly.reduce((a, p) => ({ x: a.x + p.x, y: a.y + p.y }), { x: 0, y: 0 });
+  cCenter.x /= candidatePoly.length; cCenter.y /= candidatePoly.length;
+  for (const r of existingRooms) {
+    const pts = r.points || [];
+    if (!pts.length) continue;
+    const rArea = Math.abs(polygonArea(pts));
+    if (rArea < 1) continue;
+    const center = pts.reduce((a, p) => ({ x: a.x + p.x, y: a.y + p.y }), { x: 0, y: 0 });
+    center.x /= pts.length; center.y /= pts.length;
+    const d = Math.hypot(center.x - cCenter.x, center.y - cCenter.y);
+    const areaRatio = Math.min(cArea, rArea) / Math.max(cArea, rArea);
+    if (d < cTol && areaRatio > 0.7) return true;
+  }
+  return false;
+}

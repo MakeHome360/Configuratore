@@ -1,5 +1,50 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 49 — Feb 2026 — Rilevamento automatico stanze + Strumenti di misurazione + Landing Blog)
+### 🏠 Auto-rilevamento stanze dai muri (richiesta utente P0)
+**Problema**: quando l'utente disegnava una stanza con il tool "Muro" (anziché tool "Stanza"), il sistema non la riconosceva come stanza → niente quote, niente conteggio nel preventivo.
+
+**Soluzione** (`utils.js:detectRoomsFromWalls`):
+- Algoritmo planar-graph **face-finding**: ogni muro diventa 2 semi-archi orientati. Per ogni semi-arco trova il successivo "left-turn" (CCW) attorno al nodo di destinazione. Seguendo i cicli si estraggono tutte le facce del grafo.
+- Snap endpoint con tolleranza 8cm (per fondere angoli quasi-coincidenti)
+- Esclude i muri demoliti
+- Identifica e scarta la faccia esterna (test point-in-polygon per ogni candidata)
+- `roomPolygonAlreadyExists` dedup intelligente: confronta centroidi + rapporto aree (>70%) per non duplicare stanze esistenti
+
+**UI** (`Editor.jsx`):
+- Bottone **"Auto-stanze"** (emerald, icona Home) nella toolbar superiore accanto a "Importa Pianta"
+- Toast risultato: `"✓ 3 stanze rilevate dai muri · 47.5 m² · rinominale dal pannello proprietà"`
+- Le stanze rilevate ereditano la `phase` corrente (fatto/progetto) e hanno `auto_detected=true`
+
+**Test unitari** (9/9 passati, `__tests__/detectRooms.test.mjs`):
+- Rettangolo singolo → 1 stanza, area corretta
+- Triangolo aperto → 0 stanze
+- 2 rettangoli adiacenti con muro condiviso → 2 stanze
+- Muro demolito esclude stanza
+- Snap endpoint con tolleranza 8cm
+- Dedup di stanza già esistente
+
+### 📐 Strumenti di misurazione (Lunghezza / Area / Volume)
+**Nuovo gruppo tool "Misura"** in `Editor.jsx` con 4 strumenti:
+- **Lunghezza · 2 click**: 2 click su 2 punti → mostra distanza in metri con tick perpendicolari agli estremi e badge centrale
+- **Area · poligono**: click multipli sui vertici, doppio click chiude → mostra Area in m² + Perimetro in m
+- **Volume · poligono × H**: come Area + altezza pavimento corrente (default 270cm) → calcola e mostra Volume in m³
+- **Cancella misure**: pulisce tutte le misurazioni
+
+**Storage**: tutte le misure persistite in `project.data.measurements: [{id, kind, points, height_cm?}]`. Si salvano col progetto.
+
+**UI**:
+- Render dedicato in violet (#9333EA) per distinguersi dai disegni progettuali
+- Bottone X rosso accanto al badge per eliminare la singola misura
+- Hint "doppio click per chiudere" durante il draft di area/volume
+- Live preview durante il drawing (linea tratteggiata + badge in tempo reale)
+
+### 📰 Blog visibile nel menu principale + 2 aperture separate (Brà / Settimo)
+- **Navbar Landing** (`Navbar.jsx`): aggiunto link **"Blog"** tra "Come funziona" e "Contatti" (desktop + mobile)
+- **Aperture separate** (`Landing.jsx`): Brà (CN) e Settimo Torinese (TO) ora hanno 2 card distinte nella sezione contatti, ognuna con email mailto dedicato (`?subject=Apertura%20Brà` / `?subject=Apertura%20Settimo%20Torinese`)
+- **Footer** aggiornato con 2 voci "Prossima apertura" separate
+- **Top strip**: "2 NUOVI SHOWROOM IN ARRIVO: BRA' (CN) · SETTIMO TORINESE (TO)"
+
 ## Recent Updates (Round 48 — Feb 2026 — Fix Import Planimetria porte/finestre + Auto-pagamento SAL + Auto-popolazione Voci Acquisti)
 ### 📋 Auto-popolazione "Voci e Acquisti" dal "Computo Metrico" (P1)
 **Prima**: l'utente doveva digitare manualmente ogni voce di acquisto nella tab "Voci e Acquisti" anche se il computo metrico la conteneva già.

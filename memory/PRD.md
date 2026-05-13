@@ -1,5 +1,41 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 50 — Feb 2026 — Pilastri circolari + Cerchio libero)
+### ⭕ Pilastri/Colonne con forma circolare
+**Prima**: i pilastri erano solo rettangolari (`width × depth`).
+
+**Ora** (`column.shape: 'rect' | 'circle'`):
+- Toggle **▭ Rettangolare / ⭕ Circolare** nella toolbar inferiore (quando tool=column) E nel pannello proprietà
+- Forma circolare: 1 input "⌀ Diametro" invece di L/P + preset rapidi ⌀20/⌀30/⌀40/⌀50/⌀60/⌀80
+- Forma rettangolare: 3 input L/P/H + preset 30×30, 40×40, 50×50, 60×25
+- Banner placement adattivo: `"pilastro · cemento · ⌀30×270cm"` o `"pilastro · cemento · 40×30×270cm"`
+- **Render 2D**: `<circle>` con croce centrale CAD e label "P" per pilastri tondi; `<rect>` con diagonali per rettangolari
+- **Render 3D** (`Viewer3D.jsx`): `THREE.CylinderGeometry(diam/2, diam/2, h, 32)` per circolari, `BoxGeometry` per rettangolari
+- Backward compatible: pilastri esistenti senza `shape` rimangono `'rect'`
+
+### 🔵 Tool "Cerchio libero" per elementi decorativi/strutturali tondi
+**Nuovo tool generico** `tool='circle'` per disegnare cerchi liberi: gazebo, fontane, tavoli rotondi, aiuole, marker di progetto, ecc.
+
+**Workflow**:
+- Click+drag → definisce il raggio in tempo reale (con label `⌀NNcm` live durante il draw)
+- Click singolo → usa il raggio default configurato in toolbar
+- Storage in `project.data.circles[]: {id, x, y, radius, label, fillColor, strokeColor, filled, phase}`
+
+**Configurazione toolbar** (panel quando tool=circle):
+- Raggio default + preset ⌀50/⌀100/⌀150/⌀200/⌀300/⌀400
+- Etichetta opzionale (es. "Gazebo", "Tavolo", "Fontana")
+- Toggle Riempito on/off
+- 2 color picker: Riempimento + Bordo
+
+**Render 2D**:
+- Cerchio in opacity 35% (se filled) + bordo continuo
+- Croce centrale piccola (simbolo CAD di marker)
+- Label esterna sotto al cerchio (se impostata) + label interna "⌀NNcm"
+- Maniglia di resize blu sulla destra quando selezionato (drag → cambia raggio in tempo reale)
+- Drag del corpo intero per spostarlo
+
+**Pannello proprietà** con: label, raggio/diametro, colori, toggle riempimento, area calcolata in m² + circonferenza in m.
+
 ## Recent Updates (Round 49 — Feb 2026 — Rilevamento automatico stanze + Strumenti di misurazione + Landing Blog)
 ### 🏠 Auto-rilevamento stanze dai muri (richiesta utente P0)
 **Problema**: quando l'utente disegnava una stanza con il tool "Muro" (anziché tool "Stanza"), il sistema non la riconosceva come stanza → niente quote, niente conteggio nel preventivo.

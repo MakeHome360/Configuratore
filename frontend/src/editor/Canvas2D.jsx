@@ -400,7 +400,7 @@ function TilingPattern({ t, room }) {
 export default function Canvas2D({
   project, setProject, tool, setTool, selected, setSelected,
   selectedMaterial, catalog,
-  doorParams, windowParams, electricalKind, plumbingKind, gasKind, hvacKind, tilingParams, stairsKind, columnKind, columnSize,
+  doorParams, windowParams, electricalKind, plumbingKind, gasKind, hvacKind, tilingParams, stairsKind, columnKind, columnSize, columnShape, circleParams,
   layers, viewMode, autoFit,
 }) {
   const svgRef = useRef(null);
@@ -408,6 +408,7 @@ export default function Canvas2D({
   const [roomDraft, setRoomDraft] = useState([]);
   const [demoAreaDraft, setDemoAreaDraft] = useState([]);
   const [measureDraft, setMeasureDraft] = useState([]); // [{x,y}, ...] punti accumulati per measure-area/volume
+  const [circleDraft, setCircleDraft] = useState(null); // {center:{x,y}, radius:number} durante drag
   const [cursor, setCursor] = useState({ x: 0, y: 0 });
   const [viewBox, setViewBox] = useState(INITIAL_VIEW);
 
@@ -493,6 +494,7 @@ export default function Canvas2D({
     setRoomDraft([]);
     setDemoAreaDraft([]);
     setMeasureDraft([]);
+    setCircleDraft(null);
   }, [tool]);
 
   const toWorld = useCallback((evt) => {
@@ -518,6 +520,21 @@ export default function Canvas2D({
     if (drag) {
       const startPt = drag.start || p;
       const dx = p.x - startPt.x, dy = p.y - startPt.y;
+      if (drag.kind === "circle-draft") {
+        const r = Math.hypot(p.x - drag.center.x, p.y - drag.center.y);
+        setCircleDraft({ center: drag.center, radius: r });
+        return;
+      }
+      if (drag.kind === "circle-pos") {
+        const newX = drag.orig.x + dx, newY = drag.orig.y + dy;
+        setProject((prj) => ({ ...prj, circles: (prj.circles || []).map((c) => c.id === drag.id ? { ...c, x: newX, y: newY } : c) }));
+        return;
+      }
+      if (drag.kind === "circle-radius") {
+        const r = Math.max(5, Math.hypot(p.x - drag.center.x, p.y - drag.center.y));
+        setProject((prj) => ({ ...prj, circles: (prj.circles || []).map((c) => c.id === drag.id ? { ...c, radius: r } : c) }));
+        return;
+      }
       if (drag.kind === "wall-end") {
         // drag wall endpoint p1 or p2
         setProject((prj) => ({
@@ -585,6 +602,24 @@ export default function Canvas2D({
       // Switch to select per consentire il refining via pannello proprietà
       setTool("select");
     }
+    if (drag?.kind === "circle-draft") {
+      // Finalizza il cerchio. Se raggio < 5cm → usa default da circleParams.
+      const cp = circleParams || { radius: 100, fillColor: "#FBBF24", strokeColor: "#92400E", filled: true, label: "" };
+      const r = (circleDraft?.radius && circleDraft.radius > 5) ? circleDraft.radius : (cp.radius || 100);
+      const center = drag.center;
+      const newCircle = {
+        id: uid(),
+        x: center.x, y: center.y,
+        radius: r,
+        label: cp.label || "",
+        fillColor: cp.fillColor || "#FBBF24",
+        strokeColor: cp.strokeColor || "#92400E",
+        filled: cp.filled !== false,
+        phase: VM,
+      };
+      setProject((prj) => ({ ...prj, circles: [...(prj.circles || []), newCircle] }));
+      setCircleDraft(null);
+    }
     if (drag) setDrag(null);
     setPan(null);
   };
@@ -623,6 +658,13 @@ export default function Canvas2D({
       return;
     }
     const p = snapPt(toWorld(e));
+
+    if (tool === "circle") {
+      // Inizio drag-to-set-radius. Center = p.
+      setDrag({ kind: "circle-draft", center: p, radius: 0, start: p });
+      setCircleDraft({ center: p, radius: 0 });
+      return;
+    }
 
     if (tool === "wall") {
       if (e.detail >= 2) return;
@@ -905,12 +947,13 @@ export default function Canvas2D({
       return;
     }
     if (tool === "column") {
-      // Pilastri/colonne — kind e dimensioni dalla toolbar (l'utente può modificare L/P/H prima del click)
+      // Pilastri/colonne — kind, shape e dimensioni dalla toolbar
       const kind = columnKind || "cemento";
+      const shape = columnShape || "rect";
       const sz = columnSize || { w: 30, d: 30, h: prj.roomHeight || 270 };
       setProject((prj) => ({
         ...prj,
-        columns: [...(prj.columns || []), { id: uid(), kind, x: p.x, y: p.y, rotation: 0, width: sz.w, depth: sz.d, height: sz.h || prj.roomHeight || 270, phase: VM }],
+        columns: [...(prj.columns || []), { id: uid(), kind, shape, x: p.x, y: p.y, rotation: 0, width: sz.w, depth: shape === "circle" ? sz.w : sz.d, height: sz.h || prj.roomHeight || 270, phase: VM }],
       }));
       return;
     }
@@ -1745,8 +1788,10 @@ export default function Canvas2D({
           const isSel = selected?.kind === "columns" && selected.id === c.id;
           const w = c.width || 30, d = c.depth || 30;
           const k = c.kind || "cemento";
+          const shape = c.shape || "rect";
           const fill = k === "cemento" ? "#A8A29E" : k === "mattone" ? "#B45309" : "#F4E4C1";
           const stroke = k === "cemento" ? "#44403C" : k === "mattone" ? "#7C2D12" : "#92400E";
+          const r = Math.max(w, d) / 2; // raggio per cerchio (usa il diametro principale)
           return (
             <g key={c.id} transform={`translate(${c.x},${c.y}) rotate(${c.rotation || 0})`}
               onMouseDown={(ev) => {
@@ -1760,12 +1805,22 @@ export default function Canvas2D({
               style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
               data-testid={`column-${c.id}`}
             >
-              <rect x={-w / 2} y={-d / 2} width={w} height={d} fill={fill} stroke={isSel ? "#2563EB" : stroke} strokeWidth={isSel ? "3" : "1.6"} />
-              {/* Diagonali per indicare il pilastro (simbolo CAD classico) */}
-              <line x1={-w / 2} y1={-d / 2} x2={w / 2} y2={d / 2} stroke={stroke} strokeWidth="1" opacity="0.7" />
-              <line x1={w / 2} y1={-d / 2} x2={-w / 2} y2={d / 2} stroke={stroke} strokeWidth="1" opacity="0.7" />
-              {/* Label "P" o "C" centrale */}
-              <text x={0} y={4} textAnchor="middle" fontSize={Math.min(w, d) * 0.45} fontWeight="900" fontFamily="JetBrains Mono" fill={k === "cartongesso" ? "#92400E" : "white"} pointerEvents="none">P</text>
+              {shape === "circle" ? (
+                <>
+                  <circle cx={0} cy={0} r={r} fill={fill} stroke={isSel ? "#2563EB" : stroke} strokeWidth={isSel ? "3" : "1.6"} />
+                  {/* Croce centrale (simbolo CAD pilastro tondo) */}
+                  <line x1={-r * 0.7} y1={0} x2={r * 0.7} y2={0} stroke={stroke} strokeWidth="1" opacity="0.7" />
+                  <line x1={0} y1={-r * 0.7} x2={0} y2={r * 0.7} stroke={stroke} strokeWidth="1" opacity="0.7" />
+                  <text x={0} y={4} textAnchor="middle" fontSize={r * 0.9} fontWeight="900" fontFamily="JetBrains Mono" fill={k === "cartongesso" ? "#92400E" : "white"} pointerEvents="none">P</text>
+                </>
+              ) : (
+                <>
+                  <rect x={-w / 2} y={-d / 2} width={w} height={d} fill={fill} stroke={isSel ? "#2563EB" : stroke} strokeWidth={isSel ? "3" : "1.6"} />
+                  <line x1={-w / 2} y1={-d / 2} x2={w / 2} y2={d / 2} stroke={stroke} strokeWidth="1" opacity="0.7" />
+                  <line x1={w / 2} y1={-d / 2} x2={-w / 2} y2={d / 2} stroke={stroke} strokeWidth="1" opacity="0.7" />
+                  <text x={0} y={4} textAnchor="middle" fontSize={Math.min(w, d) * 0.45} fontWeight="900" fontFamily="JetBrains Mono" fill={k === "cartongesso" ? "#92400E" : "white"} pointerEvents="none">P</text>
+                </>
+              )}
             </g>
           );
         })}
@@ -1929,7 +1984,60 @@ export default function Canvas2D({
           </g>
         )}
 
-        {/* ---- MISURE persistenti ---- */}
+        {/* ---- CERCHI LIBERI (decorativi, gazebo, fontane, tavoli rotondi, ecc.) ---- */}
+        {(project.circles || []).map((c) => {
+          const isSel = selected?.kind === "circles" && selected.id === c.id;
+          const filled = c.filled !== false;
+          return (
+            <g key={c.id} transform={`translate(${c.x},${c.y})`}
+              onMouseDown={(ev) => {
+                if (isPlacementTool) return;
+                ev.stopPropagation();
+                handleElementClick("circles", c.id);
+                if (selected?.kind === "circles" && selected.id === c.id) {
+                  setDrag({ kind: "circle-pos", id: c.id, start: snapPt(toWorld(ev)), orig: { x: c.x, y: c.y } });
+                }
+              }}
+              style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
+              data-testid={`circle-${c.id}`}
+            >
+              <circle cx={0} cy={0} r={c.radius}
+                fill={filled ? (c.fillColor || "#FBBF24") : "transparent"}
+                fillOpacity={filled ? 0.35 : 0}
+                stroke={isSel ? "#2563EB" : (c.strokeColor || "#92400E")}
+                strokeWidth={isSel ? "3" : "2"}
+              />
+              {/* croce centrale piccola */}
+              <line x1={-6} y1={0} x2={6} y2={0} stroke={c.strokeColor || "#92400E"} strokeWidth="1" opacity="0.6" />
+              <line x1={0} y1={-6} x2={0} y2={6} stroke={c.strokeColor || "#92400E"} strokeWidth="1" opacity="0.6" />
+              {c.label && (
+                <text x={0} y={c.radius + 14} textAnchor="middle" fontSize="11px" fontFamily="JetBrains Mono" fontWeight="700" fill="#1F2937" pointerEvents="none">{c.label}</text>
+              )}
+              <text x={0} y={c.radius - 4} textAnchor="middle" fontSize="9px" fontFamily="JetBrains Mono" fill="#475569" pointerEvents="none" opacity="0.9">⌀{Math.round(c.radius * 2)}cm</text>
+              {/* maniglia di resize quando selezionato */}
+              {isSel && (
+                <circle cx={c.radius} cy={0} r="6" fill="white" stroke="#2563EB" strokeWidth="2"
+                  onMouseDown={(ev) => {
+                    ev.stopPropagation();
+                    setDrag({ kind: "circle-radius", id: c.id, center: { x: c.x, y: c.y } });
+                  }}
+                  style={{ cursor: "ew-resize" }}
+                  data-testid={`circle-resize-${c.id}`}
+                />
+              )}
+            </g>
+          );
+        })}
+        {/* draft del cerchio in disegno */}
+        {tool === "circle" && circleDraft && (
+          <g pointerEvents="none">
+            <circle cx={circleDraft.center.x} cy={circleDraft.center.y} r={Math.max(circleDraft.radius, 1)}
+              fill={circleParams?.fillColor || "#FBBF24"} fillOpacity="0.25"
+              stroke={circleParams?.strokeColor || "#92400E"} strokeWidth="2" strokeDasharray="5,4" />
+            <circle cx={circleDraft.center.x} cy={circleDraft.center.y} r="4" fill="#92400E" />
+            <text x={circleDraft.center.x} y={circleDraft.center.y - circleDraft.radius - 8} textAnchor="middle" fontSize="11px" fontFamily="JetBrains Mono" fontWeight="800" fill="#92400E">⌀{Math.round(circleDraft.radius * 2)}cm</text>
+          </g>
+        )}
         {(project.measurements || []).map((m) => {
           if (m.kind === "length" && m.points?.length === 2) {
             const [a, b] = m.points;
@@ -2037,7 +2145,8 @@ export default function Canvas2D({
       {tool === "demolish-rivestimento" && <div className="absolute top-3 left-3 bg-orange-500 text-white px-3 py-1.5 text-xs mono">demoliz. rivestimento · click sul muro · poi regola sx/dx/h-da-terra/altezza nel pannello</div>}
       {tool === "package-area" && <div className="absolute top-3 left-3 bg-emerald-700 text-white px-3 py-1.5 text-xs mono">area pacchetto · click vertici, doppio click chiude · ricalcola mq automatico</div>}
       {tool === "stairs" && <div className="absolute top-3 left-3 bg-amber-700 text-white px-3 py-1.5 text-xs mono">scala · {stairsKind || "muratura"} · click per posizionare</div>}
-      {tool === "column" && <div className="absolute top-3 left-3 bg-stone-700 text-white px-3 py-1.5 text-xs mono">pilastro · {columnKind || "cemento"} · {(columnSize?.w || 30)}×{(columnSize?.d || 30)}×{(columnSize?.h || 270)}cm · click per posizionare</div>}
+      {tool === "circle" && <div className="absolute top-3 left-3 bg-amber-600 text-white px-3 py-1.5 text-xs mono">cerchio · drag per impostare raggio · ⌀ default {Math.round((circleParams?.radius || 100) * 2)}cm</div>}
+      {tool === "column" && <div className="absolute top-3 left-3 bg-stone-700 text-white px-3 py-1.5 text-xs mono">pilastro · {columnKind || "cemento"} · {(columnShape || "rect") === "circle" ? `⌀${columnSize?.w || 30}` : `${(columnSize?.w || 30)}×${(columnSize?.d || 30)}`}×{(columnSize?.h || 270)}cm · click per posizionare</div>}
       {tool === "controsoffitto" && <div className="absolute top-3 left-3 bg-teal-700 text-white px-3 py-1.5 text-xs mono">controsoffitto · click su stanza per attivare/disattivare</div>}
       {tool === "controsoffitto-area" && <div className="absolute top-3 left-3 bg-sky-700 text-white px-3 py-1.5 text-xs mono">controsoffitto area · click vertici, doppio click chiude</div>}
       {tool === "electrical" && <div className="absolute top-3 left-3 bg-purple-700 text-white px-3 py-1.5 text-xs mono">elettrico · {electricalKind || "presa"}</div>}

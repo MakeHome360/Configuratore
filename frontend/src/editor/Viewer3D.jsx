@@ -389,17 +389,19 @@ function buildScene(project, catalog) {
     root.add(group);
   });
 
-  // Pilastri / colonne: BoxGeometry verticale a tutta altezza con colore/texture per kind
+  // Pilastri / colonne: rettangolare (Box) o circolare (Cylinder) verticale a tutta altezza
   (project.columns || []).filter(phaseOK).forEach((c) => {
     const w = (c.width || 30) * CM;
     const d = (c.depth || 30) * CM;
     const h = (c.height || (project.roomHeight || 270)) * CM;
     const kind = c.kind || "cemento";
+    const shape = c.shape || "rect";
     const color = kind === "cemento" ? "#A8A29E" : kind === "mattone" ? "#B45309" : "#F4E4C1";
-    const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(w, h, d),
-      new THREE.MeshStandardMaterial({ color: new THREE.Color(color), roughness: 0.85 })
-    );
+    const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(color), roughness: 0.85 });
+    const geom = shape === "circle"
+      ? new THREE.CylinderGeometry(Math.max(w, d) / 2, Math.max(w, d) / 2, h, 32)
+      : new THREE.BoxGeometry(w, h, d);
+    const mesh = new THREE.Mesh(geom, mat);
     mesh.position.set(c.x * CM, h / 2, c.y * CM);
     mesh.rotation.y = -(c.rotation || 0) * Math.PI / 180;
     mesh.castShadow = true;

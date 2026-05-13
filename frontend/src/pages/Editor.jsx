@@ -34,7 +34,8 @@ const TOOL_GROUPS = [
     { id: "door", icon: DoorClosed, label: "Porta" },
     { id: "window", icon: RectangleHorizontal, label: "Finestra" },
     { id: "stairs", icon: Layers, label: "Scala" },
-    { id: "column", icon: Square, label: "Pilastro" },
+    { id: "column", icon: Square, label: "Pilastro · ▭/⭕" },
+    { id: "circle", icon: Box, label: "Cerchio libero · drag" },
     { id: "item", icon: Sofa, label: "Arredo" },
     { id: "text", icon: Type, label: "Testo" },
     { id: "delete", icon: Trash2, label: "Elimina" },
@@ -119,6 +120,8 @@ export default function Editor() {
   const [stairsKind, setStairsKind] = useState("muratura");
   const [columnKind, setColumnKind] = useState("cemento");
   const [columnSize, setColumnSize] = useState({ w: 30, d: 30, h: 270 });
+  const [columnShape, setColumnShape] = useState("rect"); // 'rect' | 'circle'
+  const [circleParams, setCircleParams] = useState({ radius: 100, label: "", fillColor: "#FBBF24", strokeColor: "#92400E", filled: true });
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const [wallProspettoId, setWallProspettoId] = useState(null);
   const [tilingParams, setTilingParams] = useState({ size: "60x60", angle: 0, color: "#D4A574" });
@@ -935,7 +938,24 @@ export default function Editor() {
                 { v: "cartongesso", l: "Cartongesso (rivest.)" },
               ]} testid="column-kind" />
               <div className="mx-2 mt-2 px-2 space-y-2">
+                <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Forma</Label>
+                <div className="flex gap-1">
+                  <button onClick={() => setColumnShape("rect")} className={`flex-1 text-[11px] py-1.5 border rounded ${columnShape === "rect" ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-300 hover:bg-zinc-100"}`} data-testid="column-shape-rect">▭ Rettangolare</button>
+                  <button onClick={() => setColumnShape("circle")} className={`flex-1 text-[11px] py-1.5 border rounded ${columnShape === "circle" ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-300 hover:bg-zinc-100"}`} data-testid="column-shape-circle">⭕ Circolare</button>
+                </div>
                 <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Dimensioni (cm)</Label>
+                {columnShape === "circle" ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-[9px] text-zinc-500">⌀ Diametro</Label>
+                      <Input type="number" min={10} value={columnSize.w} onChange={(e) => { const v = Math.max(10, parseInt(e.target.value) || 30); setColumnSize(s => ({ ...s, w: v, d: v })); }} className="rounded-sm h-8 mt-1 mono text-xs" data-testid="column-circle-diam" />
+                    </div>
+                    <div>
+                      <Label className="text-[9px] text-zinc-500">H</Label>
+                      <Input type="number" min={50} value={columnSize.h} onChange={(e) => setColumnSize(s => ({ ...s, h: Math.max(50, parseInt(e.target.value) || 270) }))} className="rounded-sm h-8 mt-1 mono text-xs" data-testid="column-size-h" />
+                    </div>
+                  </div>
+                ) : (
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <Label className="text-[9px] text-zinc-500">L</Label>
@@ -950,10 +970,48 @@ export default function Editor() {
                     <Input type="number" min={50} value={columnSize.h} onChange={(e) => setColumnSize(s => ({ ...s, h: Math.max(50, parseInt(e.target.value) || 270) }))} className="rounded-sm h-8 mt-1 mono text-xs" data-testid="column-size-h" />
                   </div>
                 </div>
+                )}
+                {columnShape === "rect" ? (
                 <div className="flex gap-1">
                   {[{w:30,d:30,h:270,l:"30×30"},{w:40,d:40,h:270,l:"40×40"},{w:50,d:50,h:270,l:"50×50"},{w:60,d:25,h:270,l:"60×25"}].map(p => (
                     <button key={p.l} onClick={() => setColumnSize({ w: p.w, d: p.d, h: p.h })} className="text-[10px] px-1.5 py-0.5 border border-zinc-300 rounded hover:bg-zinc-100" data-testid={`column-preset-${p.l}`}>{p.l}</button>
                   ))}
+                </div>
+                ) : (
+                <div className="flex gap-1">
+                  {[20, 30, 40, 50, 60, 80].map(diam => (
+                    <button key={diam} onClick={() => setColumnSize(s => ({ ...s, w: diam, d: diam }))} className="text-[10px] px-1.5 py-0.5 border border-zinc-300 rounded hover:bg-zinc-100" data-testid={`column-diam-${diam}`}>⌀{diam}</button>
+                  ))}
+                </div>
+                )}
+              </div>
+            </div>
+          )}
+          {tool === "circle" && (
+            <div className="mx-2 mt-2 px-2 space-y-2" data-testid="circle-config-panel">
+              <div className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Cerchio libero</div>
+              <p className="text-[10px] text-zinc-500 leading-tight">Click+drag per impostare il raggio, oppure click singolo per usare il raggio predefinito.</p>
+              <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Raggio default (cm)</Label>
+              <Input type="number" min={5} value={circleParams.radius} onChange={(e) => setCircleParams(s => ({ ...s, radius: Math.max(5, parseInt(e.target.value) || 100) }))} className="rounded-sm h-8 mono text-xs" data-testid="circle-radius" />
+              <div className="flex gap-1">
+                {[25, 50, 75, 100, 150, 200].map(r => (
+                  <button key={r} onClick={() => setCircleParams(s => ({ ...s, radius: r }))} className={`text-[10px] px-1.5 py-0.5 border rounded ${circleParams.radius === r ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-300 hover:bg-zinc-100"}`} data-testid={`circle-r-${r}`}>⌀{r * 2}</button>
+                ))}
+              </div>
+              <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Etichetta (opzionale)</Label>
+              <Input value={circleParams.label} onChange={(e) => setCircleParams(s => ({ ...s, label: e.target.value }))} placeholder="es. Gazebo, Tavolo, Fontana" className="rounded-sm h-8 mono text-xs" data-testid="circle-label" />
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="circle-filled" checked={circleParams.filled} onChange={(e) => setCircleParams(s => ({ ...s, filled: e.target.checked }))} data-testid="circle-filled-toggle" />
+                <Label htmlFor="circle-filled" className="text-[11px] cursor-pointer">Riempito</Label>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-[9px] text-zinc-500">Riempimento</Label>
+                  <input type="color" value={circleParams.fillColor} onChange={(e) => setCircleParams(s => ({ ...s, fillColor: e.target.value }))} className="w-full h-8 mt-1 rounded-sm border border-zinc-300" data-testid="circle-fill-color" />
+                </div>
+                <div>
+                  <Label className="text-[9px] text-zinc-500">Bordo</Label>
+                  <input type="color" value={circleParams.strokeColor} onChange={(e) => setCircleParams(s => ({ ...s, strokeColor: e.target.value }))} className="w-full h-8 mt-1 rounded-sm border border-zinc-300" data-testid="circle-stroke-color" />
                 </div>
               </div>
             </div>
@@ -1084,7 +1142,7 @@ export default function Editor() {
                 selected={selected} setSelected={setSelected}
                 selectedMaterial={selectedMaterial} catalog={catalog}
                 doorParams={doorParams} windowParams={windowParams}
-                electricalKind={electricalKind} plumbingKind={plumbingKind} hvacKind={hvacKind} tilingParams={tilingParams} stairsKind={stairsKind} columnKind={columnKind} columnSize={columnSize}
+                electricalKind={electricalKind} plumbingKind={plumbingKind} hvacKind={hvacKind} tilingParams={tilingParams} stairsKind={stairsKind} columnKind={columnKind} columnSize={columnSize} columnShape={columnShape} circleParams={circleParams}
                 viewMode={editMode}
               />
               </div>
@@ -2095,6 +2153,13 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
             </SelectContent>
           </Select>
         </div>
+        <div>
+          <Label className="text-xs uppercase tracking-widest text-zinc-500">Forma</Label>
+          <div className="flex gap-1 mt-1.5">
+            <button onClick={() => updateObj({ shape: "rect" })} className={`flex-1 text-[11px] py-1.5 border rounded ${(obj.shape || "rect") === "rect" ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-300 hover:bg-zinc-100"}`} data-testid="column-prop-shape-rect">▭ Rettangolare</button>
+            <button onClick={() => updateObj({ shape: "circle", depth: obj.width || 30 })} className={`flex-1 text-[11px] py-1.5 border rounded ${obj.shape === "circle" ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-300 hover:bg-zinc-100"}`} data-testid="column-prop-shape-circle">⭕ Circolare</button>
+          </div>
+        </div>
         <div className="grid grid-cols-3 gap-2">
           <div><Label className="text-[10px] uppercase tracking-widest text-zinc-500">L (cm)</Label><Input type="number" min={10} value={obj.width || 30} onChange={(e) => updateObj({ width: Math.max(10, parseInt(e.target.value) || 30) })} className="rounded-sm h-9 mt-1 mono" data-testid="column-width" /></div>
           <div><Label className="text-[10px] uppercase tracking-widest text-zinc-500">P (cm)</Label><Input type="number" min={10} value={obj.depth || 30} onChange={(e) => updateObj({ depth: Math.max(10, parseInt(e.target.value) || 30) })} className="rounded-sm h-9 mt-1 mono" data-testid="column-depth" /></div>
@@ -2110,6 +2175,43 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
           📐 Il pilastro viene conteggiato come <strong>1 pz</strong> di "Pilastro {obj.kind || "cemento"}" nella voce backoffice (NON come muro).
         </div>
         <button onClick={() => setProject((p) => ({ ...p, columns: (p.columns || []).filter((x) => x.id !== selected.id) }))} className="text-xs text-rose-600 underline" data-testid="column-delete">Rimuovi pilastro</button>
+      </div>
+    );
+  }
+  if (kind === "circles") {
+    return (
+      <div className="space-y-3">
+        <div className="label-kicker">Cerchio · disegno libero</div>
+        <div>
+          <Label className="text-xs uppercase tracking-widest text-zinc-500">Etichetta</Label>
+          <Input value={obj.label || ""} onChange={(e) => updateObj({ label: e.target.value })} placeholder="es. Gazebo, Tavolo rotondo, Fontana" className="rounded-sm h-9 mt-1.5 mono text-xs" data-testid="circle-prop-label" />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label className="text-xs uppercase tracking-widest text-zinc-500">Raggio (cm)</Label>
+            <Input type="number" min={5} value={Math.round(obj.radius || 100)} onChange={(e) => updateObj({ radius: Math.max(5, parseInt(e.target.value) || 100) })} className="rounded-sm h-9 mt-1.5 mono" data-testid="circle-prop-radius" />
+          </div>
+          <div>
+            <Label className="text-xs uppercase tracking-widest text-zinc-500">⌀ Diametro (cm)</Label>
+            <Input type="number" min={10} value={Math.round((obj.radius || 100) * 2)} onChange={(e) => updateObj({ radius: Math.max(5, (parseInt(e.target.value) || 200) / 2) })} className="rounded-sm h-9 mt-1.5 mono" data-testid="circle-prop-diam" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label className="text-xs uppercase tracking-widest text-zinc-500">Riempimento</Label>
+            <input type="color" value={obj.fillColor || "#FBBF24"} onChange={(e) => updateObj({ fillColor: e.target.value })} className="w-full h-9 mt-1.5 rounded-sm border border-zinc-300" data-testid="circle-prop-fill" />
+          </div>
+          <div>
+            <Label className="text-xs uppercase tracking-widest text-zinc-500">Bordo</Label>
+            <input type="color" value={obj.strokeColor || "#92400E"} onChange={(e) => updateObj({ strokeColor: e.target.value })} className="w-full h-9 mt-1.5 rounded-sm border border-zinc-300" data-testid="circle-prop-stroke" />
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Switch checked={obj.filled !== false} onCheckedChange={(v) => updateObj({ filled: v })} data-testid="circle-prop-filled" />
+          <Label className="text-xs">Riempito</Label>
+        </div>
+        <div className="text-[11px] text-zinc-500 mono">Area: {fmtNum(Math.PI * Math.pow((obj.radius || 100) / 100, 2), 2)} m² · Circonferenza: {fmtNum(2 * Math.PI * (obj.radius || 100) / 100, 2)} m</div>
+        <button onClick={() => setProject((p) => ({ ...p, circles: (p.circles || []).filter((x) => x.id !== selected.id) }))} className="text-xs text-rose-600 underline" data-testid="circle-delete">Rimuovi cerchio</button>
       </div>
     );
   }

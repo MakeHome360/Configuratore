@@ -213,12 +213,26 @@ export default function Editor() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
         if (e.shiftKey) redo(); else undo();
+        return;
+      }
+      // R / Shift+R = ruota +/-90° l'elemento selezionato (items, columns, stairs, electrical, hvac)
+      if ((e.key === "r" || e.key === "R") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const sel = selected;
+        if (!sel) return;
+        const rotatableKinds = ["items", "columns", "stairs", "electrical", "hvac"];
+        if (!rotatableKinds.includes(sel.kind)) return;
+        e.preventDefault();
+        const delta = e.shiftKey ? -90 : 90;
+        setProject((prj) => ({
+          ...prj,
+          [sel.kind]: (prj[sel.kind] || []).map((x) => x.id === sel.id ? { ...x, rotation: (((x.rotation || 0) + delta) % 360 + 360) % 360 } : x),
+        }));
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project]);
+  }, [project, selected]);
 
   useEffect(() => {
     (async () => {
@@ -2042,7 +2056,24 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
           <div><Label className="text-[10px] uppercase tracking-widest text-zinc-500">P.</Label><Input type="number" value={obj.depth} onChange={(e) => updateObj({ depth: parseInt(e.target.value) || 60 })} className="rounded-sm h-9 mt-1 mono" /></div>
           <div><Label className="text-[10px] uppercase tracking-widest text-zinc-500">H.</Label><Input type="number" value={obj.height} onChange={(e) => updateObj({ height: parseInt(e.target.value) || 60 })} className="rounded-sm h-9 mt-1 mono" /></div>
         </div>
-        <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Rotazione (°)</Label><Input type="number" value={obj.rotation || 0} onChange={(e) => updateObj({ rotation: parseInt(e.target.value) || 0 })} className="rounded-sm h-9 mt-1.5 mono" /></div>
+        <div>
+          <Label className="text-xs uppercase tracking-widest text-zinc-500">Rotazione</Label>
+          <div className="flex items-center gap-2 mt-1.5">
+            <Input type="number" step="15" value={obj.rotation || 0} onChange={(e) => updateObj({ rotation: ((parseInt(e.target.value) || 0) % 360 + 360) % 360 })} className="rounded-sm h-9 mono flex-1" data-testid="item-rotation-input" />
+            <span className="text-xs text-zinc-500 mono">°</span>
+          </div>
+          <div className="flex gap-1 mt-1.5">
+            {[0, 45, 90, 135, 180, 225, 270, 315].map((a) => (
+              <button key={a} onClick={() => updateObj({ rotation: a })} className={`flex-1 text-[10px] mono py-1 border ${(obj.rotation || 0) === a ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-300 hover:bg-zinc-50"}`} data-testid={`item-rotation-preset-${a}`}>{a}°</button>
+            ))}
+          </div>
+          <div className="flex gap-1 mt-1.5">
+            <button onClick={() => updateObj({ rotation: (((obj.rotation || 0) - 90) % 360 + 360) % 360 })} className="flex-1 text-[11px] py-1.5 border border-blue-300 bg-blue-50 hover:bg-blue-100 rounded font-bold text-blue-900" data-testid="item-rotate-ccw">↺ -90°</button>
+            <button onClick={() => updateObj({ rotation: (((obj.rotation || 0) + 90) % 360 + 360) % 360 })} className="flex-1 text-[11px] py-1.5 border border-blue-300 bg-blue-50 hover:bg-blue-100 rounded font-bold text-blue-900" data-testid="item-rotate-cw">↻ +90°</button>
+            <button onClick={() => updateObj({ rotation: (((obj.rotation || 0) + 180) % 360 + 360) % 360 })} className="flex-1 text-[11px] py-1.5 border border-blue-300 bg-blue-50 hover:bg-blue-100 rounded font-bold text-blue-900" data-testid="item-rotate-180">↔ 180°</button>
+          </div>
+          <div className="text-[10px] text-zinc-500 mt-1.5 leading-tight">💡 In planimetria: clicca l'oggetto e trascina la <span className="text-blue-700 font-bold">maniglia blu sopra</span> per ruotare con snap a 45°. Da tastiera: <kbd className="bg-zinc-100 px-1 rounded text-[9px]">R</kbd> = +90°, <kbd className="bg-zinc-100 px-1 rounded text-[9px]">Shift+R</kbd> = -90°.</div>
+        </div>
         <div><Label className="text-xs uppercase tracking-widest text-zinc-500">Quantità</Label><Input type="number" min={1} value={obj.qty || 1} onChange={(e) => updateObj({ qty: parseInt(e.target.value) || 1 })} className="rounded-sm h-9 mt-1.5 mono" /></div>
       </div>
     );

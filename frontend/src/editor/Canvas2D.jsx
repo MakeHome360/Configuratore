@@ -520,6 +520,32 @@ export default function Canvas2D({
     if (drag) {
       const startPt = drag.start || p;
       const dx = p.x - startPt.x, dy = p.y - startPt.y;
+      if (drag.kind === "item-rotate") {
+        // angolo basato sul vettore center→cursor
+        const ang = Math.atan2(p.y - drag.center.y, p.x - drag.center.x);
+        // offset di +90° per allineare al "fronte" che è verso -Y (svg)
+        let deg = (ang * 180 / Math.PI) + 90;
+        // snap a 5° standard, snap a 0/45/90/135/180/225/270/315 con tolleranza 4°
+        const snaps = [0, 45, 90, 135, 180, 225, 270, 315, -45, -90, -135, -180];
+        for (const s of snaps) {
+          if (Math.abs(((deg - s + 540) % 360) - 180) < 4) { deg = s; break; }
+        }
+        deg = Math.round(deg);
+        setProject((prj) => ({ ...prj, items: (prj.items || []).map((x) => x.id === drag.id ? { ...x, rotation: ((deg % 360) + 360) % 360 } : x) }));
+        return;
+      }
+      if (drag.kind === "stairs-rotate" || drag.kind === "column-rotate") {
+        const arrKey = drag.kind === "stairs-rotate" ? "stairs" : "columns";
+        const ang = Math.atan2(p.y - drag.center.y, p.x - drag.center.x);
+        let deg = (ang * 180 / Math.PI) + 90;
+        const snaps = [0, 45, 90, 135, 180, 225, 270, 315];
+        for (const s of snaps) {
+          if (Math.abs(((deg - s + 540) % 360) - 180) < 4) { deg = s; break; }
+        }
+        deg = Math.round(deg);
+        setProject((prj) => ({ ...prj, [arrKey]: (prj[arrKey] || []).map((x) => x.id === drag.id ? { ...x, rotation: ((deg % 360) + 360) % 360 } : x) }));
+        return;
+      }
       if (drag.kind === "circle-draft") {
         const r = Math.hypot(p.x - drag.center.x, p.y - drag.center.y);
         setCircleDraft({ center: drag.center, radius: r });
@@ -1816,7 +1842,31 @@ export default function Canvas2D({
               data-testid={`item-${it.id}`}
             >
               <rect x={-w / 2} y={-d / 2} width={w} height={d} fill={color} fillOpacity="0.85" stroke={isSel ? "#2563EB" : "#3F3F46"} strokeWidth={isSel ? 1.5 : 0.6} />
+              {/* Freccia direzionale "fronte" oggetto (utile per divani, sedie, letti, ecc.) */}
+              {isSel && (
+                <g pointerEvents="none">
+                  <line x1={0} y1={0} x2={0} y2={-d / 2 + 6} stroke="#2563EB" strokeWidth="2" />
+                  <polygon points={`0,${-d / 2 + 6} -4,${-d / 2 + 12} 4,${-d / 2 + 12}`} fill="#2563EB" />
+                </g>
+              )}
               <text x={0} y={4} fontSize="9px" textAnchor="middle" fontFamily="JetBrains Mono" fill="#0A0A0A" pointerEvents="none">{(m?.name || "item").slice(0, 12)}</text>
+              {/* MANIGLIA DI ROTAZIONE: cerchio blu sopra l'oggetto, drag per ruotare */}
+              {isSel && (
+                <g
+                  onMouseDown={(ev) => {
+                    ev.stopPropagation();
+                    setDrag({ kind: "item-rotate", id: it.id, center: { x: it.x, y: it.y }, startAngle: it.rotation || 0, mouseStart: toWorld(ev) });
+                  }}
+                  style={{ cursor: "grab" }}
+                  data-testid={`item-rotate-handle-${it.id}`}
+                >
+                  <line x1={0} y1={-d / 2} x2={0} y2={-d / 2 - 28} stroke="#2563EB" strokeWidth="1.5" strokeDasharray="3,2" pointerEvents="none" />
+                  <circle cx={0} cy={-d / 2 - 28} r="9" fill="white" stroke="#2563EB" strokeWidth="2.5" />
+                  {/* glifo "↻" simbolo rotazione */}
+                  <path d={`M -4,${-d / 2 - 30} A 4 4 0 1 1 -4,${-d / 2 - 26}`} fill="none" stroke="#2563EB" strokeWidth="1.5" />
+                  <polygon points={`-2,${-d / 2 - 25} -6,${-d / 2 - 25} -4,${-d / 2 - 22}`} fill="#2563EB" />
+                </g>
+              )}
             </g>
           );
         })}

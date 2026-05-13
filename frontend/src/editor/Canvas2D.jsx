@@ -510,7 +510,8 @@ export default function Canvas2D({
   const snapPt = (p) => ({ x: snap(p.x, GRID), y: snap(p.y, GRID) });
 
   const onMouseMove = (e) => {
-    const p = snapPt(toWorld(e));
+    const pRaw = toWorld(e); // posizione esatta del cursore (senza grid snap)
+    const p = snapPt(pRaw);
     setCursor(p);
     if (pan) {
       const dx = (e.clientX - pan.sx) * (viewBox.w / svgRef.current.clientWidth);
@@ -593,17 +594,18 @@ export default function Canvas2D({
         });
       } else if (drag.kind === "item-pos" || drag.kind === "elec-pos" || drag.kind === "plumb-pos" || drag.kind === "gas-pos" || drag.kind === "hvac-pos" || drag.kind === "text-pos" || drag.kind === "stairs-pos" || drag.kind === "columns-pos") {
         const arrKey = drag.kind === "item-pos" ? "items" : drag.kind === "elec-pos" ? "electrical" : drag.kind === "plumb-pos" ? "plumbing" : drag.kind === "gas-pos" ? "gas" : drag.kind === "hvac-pos" ? "hvac" : drag.kind === "stairs-pos" ? "stairs" : drag.kind === "columns-pos" ? "columns" : "texts";
-        // Posizione proposta (senza snap)
-        let proposedX = drag.orig.x + dx;
-        let proposedY = drag.orig.y + dy;
-        let proposedRot = null;
-        // SNAP-TO-WALL: solo per items/columns/stairs (gli oggetti voluminosi) e solo se Shift NON è premuto
+        // Eligibile per snap-to-wall? (oggetti voluminosi: items/columns/stairs) e Shift non premuto
         const eligibleForSnap = (drag.kind === "item-pos" || drag.kind === "columns-pos" || drag.kind === "stairs-pos") && !e.shiftKey;
+        // Per oggetti eligibili usiamo coordinate FINE (senza grid snap) → niente scatti da 10cm; lo snap-wall fornisce posizionamento esatto
+        const baseDx = eligibleForSnap ? (pRaw.x - (drag.startRaw?.x ?? startPt.x)) : dx;
+        const baseDy = eligibleForSnap ? (pRaw.y - (drag.startRaw?.y ?? startPt.y)) : dy;
+        let proposedX = drag.orig.x + baseDx;
+        let proposedY = drag.orig.y + baseDy;
+        let proposedRot = null;
         if (eligibleForSnap) {
           const arr = (project[arrKey] || []);
           const obj = arr.find((x) => x.id === drag.id);
           if (obj) {
-            const W = obj.width || 60;
             const D = obj.depth || 60;
             // Trova il muro più vicino al centro proposto
             const walls = project.walls || [];
@@ -619,26 +621,36 @@ export default function Canvas2D({
               const dist = Math.hypot(cx - proposedX, cy - proposedY);
               if (dist < bestDist) { bestDist = dist; bestWall = { w, cx, cy, t }; }
             });
-            const SNAP_DIST_CM = 50; // soglia di attivazione snap (50cm dal muro)
-            if (bestWall && bestDist < SNAP_DIST_CM) {
+            // Hysteresis: una volta agganciato, soglia di "release" più ampia per evitare scatti
+            const wasAttached = drag.attachedToWall === true;
+            const SNAP_ENGAGE_CM = D / 2 + 60;   // raggio di "aggancio" generoso
+            const SNAP_RELEASE_CM = D / 2 + 120; // raggio di "rilascio" più ampio (sticky)
+            const threshold = wasAttached ? SNAP_RELEASE_CM : SNAP_ENGAGE_CM;
+            if (bestWall && bestDist < threshold) {
               const wall = bestWall.w;
               const wallAng = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-              // Normale uscente verso il centro proposto (lato in cui sta l'arredo)
               const nx = -Math.sin(wallAng);
               const ny = Math.cos(wallAng);
               const sideSign = ((proposedX - bestWall.cx) * nx + (proposedY - bestWall.cy) * ny) >= 0 ? 1 : -1;
               const halfThick = (wall.thickness || 10) / 2;
               const offsetFromWall = halfThick + D / 2;
-              // Posizione snappata: lungo il muro nella proiezione, perpendicolare a offsetFromWall
+              // Posizione a filo del muro
               proposedX = bestWall.cx + nx * sideSign * offsetFromWall;
               proposedY = bestWall.cy + ny * sideSign * offsetFromWall;
-              // Rotazione: oggetto "fronte" deve essere perpendicolare al muro (verso la stanza)
-              // Il render originale considera rotation=0 con fronte verso -Y. Quindi rotazione = (wallAng * 180/PI) per parallelo al muro.
-              // Per orientare il fronte verso l'interno della stanza (sideSign=+1 = lato esterno → rotaz +90; -1 → -90)
+              // Orientazione: oggetto allineato al muro (fronte verso la stanza)
               let rotDeg = (wallAng * 180 / Math.PI);
               if (sideSign > 0) rotDeg += 90; else rotDeg -= 90;
               rotDeg = (rotDeg % 360 + 360) % 360;
               proposedRot = rotDeg;
+              // Memorizzo lo stato "attached" sul drag per la hysteresis del prossimo frame
+              drag.attachedToWall = true;
+              drag.attachedWallId = wall.id;
+            } else {
+              drag.attachedToWall = false;
+              drag.attachedWallId = null;
+              // Per oggetti NON agganciati: applica grid snap finale per posizionamento pulito
+              proposedX = Math.round(proposedX / 5) * 5;
+              proposedY = Math.round(proposedY / 5) * 5;
             }
           }
         }
@@ -1892,13 +1904,20 @@ export default function Canvas2D({
                 e.stopPropagation();
                 handleElementClick("items", it.id);
                 if (selected?.kind === "items" && selected.id === it.id) {
-                  setDrag({ kind: "item-pos", id: it.id, start: snapPt(toWorld(e)), orig: { x: it.x, y: it.y } });
+                  setDrag({ kind: "item-pos", id: it.id, start: snapPt(toWorld(e)), startRaw: toWorld(e), orig: { x: it.x, y: it.y } });
                 }
               }}
               style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
               data-testid={`item-${it.id}`}
             >
               <rect x={-w / 2} y={-d / 2} width={w} height={d} fill={color} fillOpacity="0.85" stroke={isSel ? "#2563EB" : "#3F3F46"} strokeWidth={isSel ? 1.5 : 0.6} />
+              {/* Indicatore "agganciato al muro" durante drag */}
+              {isSel && drag?.kind === "item-pos" && drag?.id === it.id && drag?.attachedToWall && (
+                <g pointerEvents="none">
+                  <rect x={-w / 2 - 2} y={-d / 2 - 2} width={w + 4} height={d + 4} fill="none" stroke="#10B981" strokeWidth="3" strokeDasharray="4,2" />
+                  <text x={0} y={-d / 2 - 8} textAnchor="middle" fontSize="9px" fontFamily="JetBrains Mono" fontWeight="800" fill="#10B981">🧲 a filo muro</text>
+                </g>
+              )}
               {/* Freccia direzionale "fronte" oggetto (utile per divani, sedie, letti, ecc.) */}
               {isSel && (
                 <g pointerEvents="none">
@@ -2042,7 +2061,7 @@ export default function Canvas2D({
                 ev.stopPropagation();
                 handleElementClick("stairs", s.id);
                 if (selected?.kind === "stairs" && selected.id === s.id) {
-                  setDrag({ kind: "stairs-pos", id: s.id, start: snapPt(toWorld(ev)), orig: { x: s.x, y: s.y } });
+                  setDrag({ kind: "stairs-pos", id: s.id, start: snapPt(toWorld(ev)), startRaw: toWorld(ev), orig: { x: s.x, y: s.y } });
                 }
               }}
               style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}
@@ -2067,7 +2086,7 @@ export default function Canvas2D({
                 ev.stopPropagation();
                 handleElementClick("columns", c.id);
                 if (selected?.kind === "columns" && selected.id === c.id) {
-                  setDrag({ kind: "columns-pos", id: c.id, start: snapPt(toWorld(ev)), orig: { x: c.x, y: c.y } });
+                  setDrag({ kind: "columns-pos", id: c.id, start: snapPt(toWorld(ev)), startRaw: toWorld(ev), orig: { x: c.x, y: c.y } });
                 }
               }}
               style={{ cursor: isPlacementTool ? "crosshair" : (isSel ? "move" : "pointer") }}

@@ -142,6 +142,58 @@ function buildScene(project, catalog) {
   const height = (project.roomHeight || 270) * CM;
 
   (project.walls || []).filter((w) => phaseOK(w) && !w.demolito).forEach((w) => {
+    // MURO AD ARCO: segmenta in N piccoli muri rettilinei lungo l'arco circolare
+    if (w.arc === true && w.bow > 0) {
+      const N = 16;
+      const chord = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
+      if (chord < 1) return;
+      const r = (chord * chord) / (8 * w.bow) + w.bow / 2;
+      const mx0 = (w.x1 + w.x2) / 2;
+      const my0 = (w.y1 + w.y2) / 2;
+      const nx = -(w.y2 - w.y1) / chord;
+      const ny = (w.x2 - w.x1) / chord;
+      const sweepSign = w.sweep === -1 ? -1 : 1;
+      // Centro del cerchio: dal punto medio della corda, sposto in direzione normale di (r - bow)
+      const cx0 = mx0 - nx * (r - w.bow) * sweepSign;
+      const cy0 = my0 - ny * (r - w.bow) * sweepSign;
+      const angA = Math.atan2(w.y1 - cy0, w.x1 - cx0);
+      const angB = Math.atan2(w.y2 - cy0, w.x2 - cx0);
+      let totalAng = angB - angA;
+      // normalizza in direzione minore di π in valore assoluto, secondo sweep
+      while (totalAng > Math.PI) totalAng -= 2 * Math.PI;
+      while (totalAng < -Math.PI) totalAng += 2 * Math.PI;
+      const points = [];
+      for (let i = 0; i <= N; i++) {
+        const t = i / N;
+        const a = angA + t * totalAng;
+        points.push({ x: cx0 + r * Math.cos(a), y: cy0 + r * Math.sin(a) });
+      }
+      const effPaintColor = (viewMode === "progetto" && w.progetto?.paintColor) ? w.progetto.paintColor : w.paintColor;
+      const wallColor = effPaintColor ? new THREE.Color(effPaintColor) : new THREE.Color(0xf4f4f5);
+      const thArc = (w.thickness || 10) * CM;
+      for (let i = 0; i < N; i++) {
+        const a = points[i], b = points[i + 1];
+        const segLen = Math.hypot(b.x - a.x, b.y - a.y) * CM;
+        const segAngle = Math.atan2(b.y - a.y, b.x - a.x);
+        const segMx = ((a.x + b.x) / 2) * CM;
+        const segMz = ((a.y + b.y) / 2) * CM;
+        const segShape = new THREE.Shape();
+        segShape.moveTo(-segLen / 2, 0);
+        segShape.lineTo(segLen / 2, 0);
+        segShape.lineTo(segLen / 2, height);
+        segShape.lineTo(-segLen / 2, height);
+        segShape.lineTo(-segLen / 2, 0);
+        const segGeom = new THREE.ExtrudeGeometry(segShape, { depth: thArc, bevelEnabled: false });
+        const segMesh = new THREE.Mesh(segGeom, new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.85 }));
+        segMesh.position.set(segMx, 0, segMz);
+        segMesh.rotation.y = -segAngle;
+        segMesh.castShadow = true;
+        segMesh.receiveShadow = true;
+        segMesh.userData = { kind: "walls", id: w.id, arcSeg: i };
+        root.add(segMesh);
+      }
+      return; // skip flusso normale per i muri ad arco
+    }
     const dx = w.x2 - w.x1;
     const dy = w.y2 - w.y1;
     const length = Math.hypot(dx, dy) * CM;

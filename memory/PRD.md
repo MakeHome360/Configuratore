@@ -1,5 +1,39 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 51 — Feb 2026 — Stanze curve & Muri ad arco)
+**Problema utente**: "se voglio disegnare una stanza tonda o a mezza luna non posso perchè posso solo fare linee rette sia con le stanze che con i muri".
+
+### ⌒ Muro ad arco (parete curva)
+Nuovo tool **"Muro ad arco · click+drag"** in toolbar Base.
+- **Workflow**: 1° click endpoint A · 2° click endpoint B → genera muro ad arco con sagitta default = 1/6 della corda
+- Salvato in `walls[]` con campi extra: `arc: true, bow: number, sweep: 1|-1`
+- **Render 2D**: SVG `<path>` con elliptical arc command, raggio calcolato `r = chord²/(8·bow) + bow/2`
+- **Render 3D**: segmentato in 16 piccoli muri rettilinei lungo l'arco circolare (mantiene visual qualità + compatibilità con il flusso esistente)
+- **Etichetta lunghezza arco**: posizionata sul punto medio dell'arco, mostra la **lunghezza reale dell'arco** (non la corda)
+- **Pannello proprietà completo**:
+  - Input sagitta (cm) + preset rapidi (10/20/30/50/70/100/150 cm)
+  - Bottone **"⇋ Ribalta direzione arco"** per cambiare il verso (sweep)
+  - **"Converti in muro retto"** per appiattire
+  - Su qualsiasi muro retto esistente: bottone **"⌒ Trasforma in muro ad arco"** (sagitta iniziale = corda/6)
+
+### ⭕ Stanza tonda (perimetro circolare)
+Nuovo tool **"Stanza tonda · drag raggio"**.
+- **Workflow**: click sul centro + drag verso il bordo → finalizza con il rilascio
+- Genera 48 punti uniformi sulla circonferenza → poligono regolare 48-gon (visivamente liscio)
+- Crea 48 muri perimetrali + 1 room con `shape: 'round'`, `centerX/Y, radius` memorizzati
+- Compatibile con tutta la pipeline esistente: pavimenti, prospetti, demolizioni, MEP, preventivo
+
+### 🌙 Stanza a mezzaluna (semicerchio chiuso)
+Nuovo tool **"Stanza a mezzaluna · drag"**.
+- **Workflow**: click sul centro + drag verso il punto più curvo → l'asse del diametro è perpendicolare al vettore di drag, l'arco è sul lato del drag
+- Genera 24 punti sul semicerchio + 2 endpoint del diametro → poligono di 26 vertici
+- Calcolo dinamico in tempo reale di area e diametro nel draft (label live)
+
+### Live preview durante il disegno
+- Stanze tonde: cerchio tratteggiato blu + label `⌀NNcm · X.XX m²` + hint "rilascia per creare"
+- Mezzaluna: SVG path tratteggiato con area calcolata
+- Muri arcuati: arco tratteggiato verde + linea corda di riferimento + label `corda Xm · sagitta Ym`
+
 ## Recent Updates (Round 50 — Feb 2026 — Pilastri circolari + Cerchio libero)
 ### ⭕ Pilastri/Colonne con forma circolare
 **Prima**: i pilastri erano solo rettangolari (`width × depth`).

@@ -525,6 +525,11 @@ export default function Canvas2D({
         setCircleDraft({ center: drag.center, radius: r });
         return;
       }
+      if (drag.kind === "room-round-draft" || drag.kind === "room-halfmoon-draft") {
+        const r = Math.hypot(p.x - drag.center.x, p.y - drag.center.y);
+        setCircleDraft({ center: drag.center, radius: r, axisPt: p });
+        return;
+      }
       if (drag.kind === "circle-pos") {
         const newX = drag.orig.x + dx, newY = drag.orig.y + dy;
         setProject((prj) => ({ ...prj, circles: (prj.circles || []).map((c) => c.id === drag.id ? { ...c, x: newX, y: newY } : c) }));
@@ -602,6 +607,100 @@ export default function Canvas2D({
       // Switch to select per consentire il refining via pannello proprietà
       setTool("select");
     }
+    if (drag?.kind === "room-round-draft") {
+      const r = circleDraft?.radius || 0;
+      if (r > 20) {
+        const N = 48; // 48 lati = cerchio liscio
+        const pts = [];
+        for (let i = 0; i < N; i++) {
+          const a = (i / N) * Math.PI * 2;
+          pts.push({ x: drag.center.x + Math.cos(a) * r, y: drag.center.y + Math.sin(a) * r });
+        }
+        const walls = pts.map((pt, i) => {
+          const next = pts[(i + 1) % pts.length];
+          return { id: uid(), x1: pt.x, y1: pt.y, x2: next.x, y2: next.y, thickness: 10, kind: VM === "fatto" ? "esistente" : "nuovo", phase: VM, partOfRoundRoom: true };
+        });
+        const newRoom = {
+          id: uid(),
+          name: `Stanza tonda ${(project.rooms || []).length + 1}`,
+          points: pts,
+          floorMaterial: "floor-ceramic",
+          wallMaterial: "wall-paint",
+          ceilingMaterial: "ceil-paint",
+          electrical: true,
+          plumbing: false,
+          phase: VM,
+          shape: "round",
+          centerX: drag.center.x,
+          centerY: drag.center.y,
+          radius: r,
+        };
+        setProject((prj) => ({
+          ...prj,
+          rooms: [...(prj.rooms || []), newRoom],
+          walls: [...(prj.walls || []), ...walls],
+        }));
+      }
+      setCircleDraft(null);
+    }
+    if (drag?.kind === "room-halfmoon-draft") {
+      const r = circleDraft?.radius || 0;
+      if (r > 20) {
+        // Asse del diametro = vettore center→axisPt. Il semicerchio sta sul lato verso axisPt.
+        const ax = (circleDraft?.axisPt?.x ?? (drag.center.x + r)) - drag.center.x;
+        const ay = (circleDraft?.axisPt?.y ?? drag.center.y) - drag.center.y;
+        const axisAng = Math.atan2(ay, ax); // direzione dell'asse "verso il fondo del semicerchio"
+        // Diametro è perpendicolare all'asse: i 2 endpoint del diametro sono a ±90° dall'asse
+        const diamAng = axisAng + Math.PI / 2;
+        const A = { x: drag.center.x + Math.cos(diamAng) * r, y: drag.center.y + Math.sin(diamAng) * r };
+        const B = { x: drag.center.x - Math.cos(diamAng) * r, y: drag.center.y - Math.sin(diamAng) * r };
+        // 24 punti sul semicerchio da B a A passando per il "fondo" (direzione axisAng)
+        const N = 24;
+        const pts = [A];
+        for (let i = 1; i < N; i++) {
+          // angolo da diamAng a diamAng+PI (semicerchio dalla parte di axisAng)
+          // Verifica direzione: voglio che il punto centrale del semicerchio sia center + (cos axisAng, sin axisAng)*r
+          // Quindi partendo da A (angolo diamAng) arrivo a B (angolo diamAng+PI) passando attraverso diamAng+PI/2 = axisAng+PI
+          // ma vogliamo passare per axisAng. Quindi ruoto in senso opposto:
+          const t = i / N;
+          const ang = diamAng + t * Math.PI;
+          // Se questo passa per axisAng+PI/2 invece che axisAng, ribalto:
+          // (diamAng + PI/2) = axisAng + PI invece di axisAng → inverto
+          const angRev = diamAng - t * Math.PI;
+          // Per garantire che il punto medio sia verso axisAng usiamo il segno corretto:
+          const useRev = (Math.cos(diamAng + Math.PI / 2) * Math.cos(axisAng) + Math.sin(diamAng + Math.PI / 2) * Math.sin(axisAng)) < 0;
+          const finalAng = useRev ? angRev : ang;
+          pts.push({ x: drag.center.x + Math.cos(finalAng) * r, y: drag.center.y + Math.sin(finalAng) * r });
+        }
+        pts.push(B);
+        const walls = pts.map((pt, i) => {
+          const next = pts[(i + 1) % pts.length];
+          return { id: uid(), x1: pt.x, y1: pt.y, x2: next.x, y2: next.y, thickness: 10, kind: VM === "fatto" ? "esistente" : "nuovo", phase: VM, partOfRoundRoom: true };
+        });
+        const newRoom = {
+          id: uid(),
+          name: `Mezzaluna ${(project.rooms || []).length + 1}`,
+          points: pts,
+          floorMaterial: "floor-ceramic",
+          wallMaterial: "wall-paint",
+          ceilingMaterial: "ceil-paint",
+          electrical: true,
+          plumbing: false,
+          phase: VM,
+          shape: "halfmoon",
+          centerX: drag.center.x,
+          centerY: drag.center.y,
+          radius: r,
+          axisAngle: axisAng,
+        };
+        setProject((prj) => ({
+          ...prj,
+          rooms: [...(prj.rooms || []), newRoom],
+          walls: [...(prj.walls || []), ...walls],
+        }));
+      }
+      setCircleDraft(null);
+    }
     if (drag?.kind === "circle-draft") {
       // Finalizza il cerchio. Se raggio < 5cm → usa default da circleParams.
       const cp = circleParams || { radius: 100, fillColor: "#FBBF24", strokeColor: "#92400E", filled: true, label: "" };
@@ -663,6 +762,36 @@ export default function Canvas2D({
       // Inizio drag-to-set-radius. Center = p.
       setDrag({ kind: "circle-draft", center: p, radius: 0, start: p });
       setCircleDraft({ center: p, radius: 0 });
+      return;
+    }
+    if (tool === "room-round") {
+      // Stanza circolare: click+drag definisce centro e raggio
+      setDrag({ kind: "room-round-draft", center: p, radius: 0, start: p });
+      setCircleDraft({ center: p, radius: 0 });
+      return;
+    }
+    if (tool === "room-halfmoon") {
+      // Stanza a mezzaluna: click+drag definisce centro e raggio.
+      // L'asse del diametro è perpendicolare al vettore center→drag-cursor.
+      setDrag({ kind: "room-halfmoon-draft", center: p, radius: 0, start: p });
+      setCircleDraft({ center: p, radius: 0 });
+      return;
+    }
+    if (tool === "wall-arc") {
+      // Muro ad arco: 1° click = endpoint A · 2° click = endpoint B + sagitta dal cursore
+      // Workflow: 1° click → memorizza A. 2° click → finalizza con B + sagitta=distanza cursore dal segmento AB.
+      // Per semplicità: usiamo wallDraft come endpoint A; al 2° click usiamo come endpoint B
+      // e calcoliamo automaticamente una sagitta proporzionale (1/6 della corda) ribaltabile dal pannello.
+      if (e.detail >= 2) return;
+      if (!wallDraft) { setWallDraft(p); return; }
+      if (Math.hypot(p.x - wallDraft.x, p.y - wallDraft.y) < 8) { setWallDraft(null); return; }
+      const a = wallDraft, b = p;
+      const chord = Math.hypot(b.x - a.x, b.y - a.y);
+      const bow = chord / 6; // sagitta default = 1/6 della corda (modificabile poi dal pannello)
+      const sweep = 1; // direzione arco di default: +1 (sopra rispetto al verso A→B)
+      const newWall = { id: uid(), x1: a.x, y1: a.y, x2: b.x, y2: b.y, thickness: 10, kind: VM === "fatto" ? "esistente" : "nuovo", phase: VM, arc: true, bow, sweep };
+      setProject((prj) => ({ ...prj, walls: [...(prj.walls || []), newWall] }));
+      setWallDraft(p);
       return;
     }
 
@@ -1459,24 +1588,39 @@ export default function Canvas2D({
           else if (w.kind === "nuovo") stroke = "#EAB308";
           // Partial demolition: a sub-section of the wall
           const partial = w.demolito_partial;
+          // ARC wall: rendered as SVG <path> with elliptical arc command
+          const isArc = w.arc === true && w.bow > 0;
+          const arcRadius = isArc ? (len * len) / (8 * w.bow) + w.bow / 2 : 0;
+          const arcSweep = isArc ? (w.sweep === -1 ? 0 : 1) : 1;
+          const arcLength = isArc ? 2 * arcRadius * Math.asin(Math.min(1, len / (2 * arcRadius))) : len;
+          const arcPathD = isArc ? `M ${w.x1} ${w.y1} A ${arcRadius} ${arcRadius} 0 0 ${arcSweep} ${w.x2} ${w.y2}` : null;
           return (
             <g key={w.id}
               onMouseDown={(e) => { if (isPlacementTool) return; e.stopPropagation(); handleElementClick("walls", w.id); }}
               style={{ cursor: isPlacementTool ? "crosshair" : "pointer" }}
               data-testid={`wall-${w.id}`}
             >
-              <line x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2}
-                stroke={stroke} strokeWidth={w.thickness || 10} strokeLinecap="round"
-                strokeDasharray={w.demolito ? "8,5" : (w.kind === "cartongesso" ? "12,4" : undefined)}
-                opacity={w.demolito ? 0.65 : 1}
-              />
+              {isArc ? (
+                <path d={arcPathD} fill="none" stroke={stroke} strokeWidth={w.thickness || 10} strokeLinecap="round"
+                  strokeDasharray={w.demolito ? "8,5" : (w.kind === "cartongesso" ? "12,4" : undefined)}
+                  opacity={w.demolito ? 0.65 : 1} />
+              ) : (
+                <line x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2}
+                  stroke={stroke} strokeWidth={w.thickness || 10} strokeLinecap="round"
+                  strokeDasharray={w.demolito ? "8,5" : (w.kind === "cartongesso" ? "12,4" : undefined)}
+                  opacity={w.demolito ? 0.65 : 1}
+                />
+              )}
               {/* paint color overlay (decorazione parete) */}
               {(() => {
                 const effPaint = VM === "progetto" && w.progetto?.paintColor ? w.progetto.paintColor : w.paintColor;
-                return effPaint && !w.demolito ? (
+                if (!effPaint || w.demolito) return null;
+                return isArc ? (
+                  <path d={arcPathD} fill="none" stroke={effPaint} strokeWidth={(w.thickness || 10) - 3} strokeLinecap="round" opacity="0.85" />
+                ) : (
                   <line x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2}
                     stroke={effPaint} strokeWidth={(w.thickness || 10) - 3} strokeLinecap="round" opacity="0.85" />
-                ) : null;
+                );
               })()}
               {/* corner cap */}
               <circle cx={w.x1} cy={w.y1} r={(w.thickness || 10) / 2} fill={stroke} pointerEvents="none" />
@@ -1495,7 +1639,24 @@ export default function Canvas2D({
                 <line x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2} stroke="url(#hatch-new)" strokeWidth={(w.thickness || 10) - 4} strokeLinecap="butt" opacity="0.6" />
               )}
               <line x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2} stroke="transparent" strokeWidth="20" />
-              {L.dimensions && len > 30 && <Measurement x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2} big color={w.demolito ? "#DC2626" : "#16A34A"} />}
+              {L.dimensions && len > 30 && !isArc && <Measurement x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2} big color={w.demolito ? "#DC2626" : "#16A34A"} />}
+              {L.dimensions && isArc && (() => {
+                // Etichetta lunghezza arco posizionata sul punto medio dell'arco
+                const mx = (w.x1 + w.x2) / 2;
+                const my = (w.y1 + w.y2) / 2;
+                // direzione perpendicolare alla corda
+                const nx = -(w.y2 - w.y1) / (len || 1);
+                const ny = (w.x2 - w.x1) / (len || 1);
+                const offset = (w.bow || 0) * (w.sweep === -1 ? -1 : 1);
+                const labelX = mx + nx * offset;
+                const labelY = my + ny * offset;
+                return (
+                  <g pointerEvents="none">
+                    <rect x={labelX - 40} y={labelY - 22} width="80" height="18" fill="white" stroke="#16A34A" strokeWidth="1" rx="3" opacity="0.95" />
+                    <text x={labelX} y={labelY - 9} textAnchor="middle" fontSize="11px" fontFamily="JetBrains Mono" fontWeight="800" fill="#15803D">{fmtNum(arcLength / 100, 2)} m</text>
+                  </g>
+                );
+              })()}
               {!w.demolito && partial && partial.to > partial.from && L.dimensions && (
                 <text
                   x={w.x1 + ((partial.from + partial.to) / 2) * (w.x2 - w.x1)}
@@ -2038,6 +2199,57 @@ export default function Canvas2D({
             <text x={circleDraft.center.x} y={circleDraft.center.y - circleDraft.radius - 8} textAnchor="middle" fontSize="11px" fontFamily="JetBrains Mono" fontWeight="800" fill="#92400E">⌀{Math.round(circleDraft.radius * 2)}cm</text>
           </g>
         )}
+        {/* draft stanza tonda */}
+        {tool === "room-round" && circleDraft && circleDraft.radius > 0 && (
+          <g pointerEvents="none">
+            <circle cx={circleDraft.center.x} cy={circleDraft.center.y} r={circleDraft.radius}
+              fill="#3B82F6" fillOpacity="0.15" stroke="#1D4ED8" strokeWidth="2.5" strokeDasharray="6,4" />
+            <circle cx={circleDraft.center.x} cy={circleDraft.center.y} r="4" fill="#1D4ED8" />
+            <text x={circleDraft.center.x} y={circleDraft.center.y - circleDraft.radius - 10} textAnchor="middle" fontSize="12px" fontFamily="JetBrains Mono" fontWeight="800" fill="#1D4ED8">⌀{Math.round(circleDraft.radius * 2)}cm · {fmtNum(Math.PI * Math.pow(circleDraft.radius / 100, 2), 2)} m²</text>
+            <text x={circleDraft.center.x} y={circleDraft.center.y + circleDraft.radius + 18} textAnchor="middle" fontSize="10px" fontFamily="JetBrains Mono" fill="#1D4ED8" opacity="0.85">rilascia per creare la stanza tonda</text>
+          </g>
+        )}
+        {/* draft stanza mezzaluna */}
+        {tool === "room-halfmoon" && circleDraft && circleDraft.radius > 0 && (() => {
+          const r = circleDraft.radius;
+          const ax = (circleDraft.axisPt?.x ?? (circleDraft.center.x + r)) - circleDraft.center.x;
+          const ay = (circleDraft.axisPt?.y ?? circleDraft.center.y) - circleDraft.center.y;
+          const axisAng = Math.atan2(ay, ax);
+          const diamAng = axisAng + Math.PI / 2;
+          const A = { x: circleDraft.center.x + Math.cos(diamAng) * r, y: circleDraft.center.y + Math.sin(diamAng) * r };
+          const B = { x: circleDraft.center.x - Math.cos(diamAng) * r, y: circleDraft.center.y - Math.sin(diamAng) * r };
+          // Determina sweep flag corretto in modo che l'arco sia dal lato di axisAng
+          const useRev = (Math.cos(diamAng + Math.PI / 2) * Math.cos(axisAng) + Math.sin(diamAng + Math.PI / 2) * Math.sin(axisAng)) < 0;
+          const sweepFlag = useRev ? 0 : 1;
+          return (
+            <g pointerEvents="none">
+              <path d={`M ${A.x} ${A.y} A ${r} ${r} 0 0 ${sweepFlag} ${B.x} ${B.y} L ${A.x} ${A.y} Z`}
+                fill="#3B82F6" fillOpacity="0.15" stroke="#1D4ED8" strokeWidth="2.5" strokeDasharray="6,4" />
+              <circle cx={circleDraft.center.x} cy={circleDraft.center.y} r="4" fill="#1D4ED8" />
+              <text x={circleDraft.center.x} y={circleDraft.center.y} dy={-r - 8} textAnchor="middle" fontSize="11px" fontFamily="JetBrains Mono" fontWeight="800" fill="#1D4ED8">⌀{Math.round(r * 2)}cm · {fmtNum((Math.PI * r * r) / 2 / 10000, 2)} m²</text>
+            </g>
+          );
+        })()}
+        {/* draft muro arcuato (preview tra wallDraft e cursor) */}
+        {tool === "wall-arc" && wallDraft && (() => {
+          const a = wallDraft, b = cursor;
+          const chord = Math.hypot(b.x - a.x, b.y - a.y);
+          if (chord < 5) return null;
+          const bow = chord / 6;
+          // calcola path arc: lo SVG A command vuole rx,ry x-axis-rotation large-arc sweep x y
+          // calcolo raggio dell'arco circolare passante per a, b, con sagitta bow:
+          const r = (chord * chord) / (8 * bow) + bow / 2;
+          return (
+            <g pointerEvents="none">
+              <path d={`M ${a.x} ${a.y} A ${r} ${r} 0 0 1 ${b.x} ${b.y}`} fill="none" stroke="#16A34A" strokeWidth="3" strokeDasharray="6,4" />
+              <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#16A34A" strokeWidth="1" opacity="0.4" strokeDasharray="2,4" />
+              <circle cx={a.x} cy={a.y} r="5" fill="#16A34A" />
+              <text x={(a.x + b.x) / 2} y={(a.y + b.y) / 2 - 14} textAnchor="middle" fontSize="11px" fontFamily="JetBrains Mono" fontWeight="800" fill="#16A34A">
+                arco · corda {fmtNum(chord / 100, 2)}m · sagitta {fmtNum(bow / 100, 2)}m
+              </text>
+            </g>
+          );
+        })()}
         {(project.measurements || []).map((m) => {
           if (m.kind === "length" && m.points?.length === 2) {
             const [a, b] = m.points;
@@ -2146,6 +2358,9 @@ export default function Canvas2D({
       {tool === "package-area" && <div className="absolute top-3 left-3 bg-emerald-700 text-white px-3 py-1.5 text-xs mono">area pacchetto · click vertici, doppio click chiude · ricalcola mq automatico</div>}
       {tool === "stairs" && <div className="absolute top-3 left-3 bg-amber-700 text-white px-3 py-1.5 text-xs mono">scala · {stairsKind || "muratura"} · click per posizionare</div>}
       {tool === "circle" && <div className="absolute top-3 left-3 bg-amber-600 text-white px-3 py-1.5 text-xs mono">cerchio · drag per impostare raggio · ⌀ default {Math.round((circleParams?.radius || 100) * 2)}cm</div>}
+      {tool === "room-round" && <div className="absolute top-3 left-3 bg-blue-700 text-white px-3 py-1.5 text-xs mono">stanza tonda · click + drag dal centro al raggio</div>}
+      {tool === "room-halfmoon" && <div className="absolute top-3 left-3 bg-blue-700 text-white px-3 py-1.5 text-xs mono">stanza a mezzaluna · click sul centro + drag verso il punto più curvo</div>}
+      {tool === "wall-arc" && <div className="absolute top-3 left-3 bg-emerald-700 text-white px-3 py-1.5 text-xs mono">muro ad arco · 1° click endpoint A · 2° click endpoint B (sagitta = 1/6 corda · regolabile da pannello)</div>}
       {tool === "column" && <div className="absolute top-3 left-3 bg-stone-700 text-white px-3 py-1.5 text-xs mono">pilastro · {columnKind || "cemento"} · {(columnShape || "rect") === "circle" ? `⌀${columnSize?.w || 30}` : `${(columnSize?.w || 30)}×${(columnSize?.d || 30)}`}×{(columnSize?.h || 270)}cm · click per posizionare</div>}
       {tool === "controsoffitto" && <div className="absolute top-3 left-3 bg-teal-700 text-white px-3 py-1.5 text-xs mono">controsoffitto · click su stanza per attivare/disattivare</div>}
       {tool === "controsoffitto-area" && <div className="absolute top-3 left-3 bg-sky-700 text-white px-3 py-1.5 text-xs mono">controsoffitto area · click vertici, doppio click chiude</div>}

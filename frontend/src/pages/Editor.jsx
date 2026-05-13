@@ -28,14 +28,17 @@ import jsPDF from "jspdf";
 const TOOL_GROUPS = [
   { id: "base", label: "Base", tools: [
     { id: "select", icon: MousePointer2, label: "Seleziona" },
-    { id: "wall", icon: Minus, label: "Muro mattone" },
-    { id: "wall-cartongesso", icon: Minus, label: "Muro cartongesso" },
-    { id: "room", icon: Square, label: "Stanza" },
+    { id: "wall", icon: Minus, label: "Muro mattone (linea)" },
+    { id: "wall-cartongesso", icon: Minus, label: "Muro cartongesso (linea)" },
+    { id: "wall-arc", icon: Box, label: "Muro ad arco · click+drag" },
+    { id: "room", icon: Square, label: "Stanza rettangolare" },
+    { id: "room-round", icon: Box, label: "Stanza tonda · drag raggio" },
+    { id: "room-halfmoon", icon: Box, label: "Stanza a mezzaluna · drag" },
     { id: "door", icon: DoorClosed, label: "Porta" },
     { id: "window", icon: RectangleHorizontal, label: "Finestra" },
     { id: "stairs", icon: Layers, label: "Scala" },
     { id: "column", icon: Square, label: "Pilastro · ▭/⭕" },
-    { id: "circle", icon: Box, label: "Cerchio libero · drag" },
+    { id: "circle", icon: Box, label: "Cerchio libero · decorativo" },
     { id: "item", icon: Sofa, label: "Arredo" },
     { id: "text", icon: Type, label: "Testo" },
     { id: "delete", icon: Trash2, label: "Elimina" },
@@ -1696,6 +1699,26 @@ function PropertiesPanel({ project, setProject, selected, catalog, editMode, voc
             </Select>
           </div>
           <div className="mt-3"><Label className="text-xs uppercase tracking-widest text-zinc-500">Spessore (cm)</Label><Input type="number" value={obj.thickness || 10} onChange={(e) => updateObj({ thickness: parseInt(e.target.value) || 10 })} className="rounded-sm h-9 mt-1.5 mono" /></div>
+          {obj.arc === true && (
+            <div className="mt-3 bg-emerald-50 border border-emerald-300 p-2 space-y-2" data-testid="wall-arc-controls">
+              <Label className="text-xs uppercase tracking-widest text-emerald-800">⌒ Muro ad arco</Label>
+              <div className="text-[10px] text-emerald-900 mono">La sagitta è la "freccia" dell'arco rispetto alla corda. Più alta = arco più pronunciato.</div>
+              <div>
+                <Label className="text-[10px] uppercase text-emerald-700">Sagitta (cm)</Label>
+                <Input type="number" min={1} max={Math.round(Math.hypot(obj.x2 - obj.x1, obj.y2 - obj.y1) / 2)} value={Math.round(obj.bow || 0)} onChange={(e) => updateObj({ bow: Math.max(1, parseInt(e.target.value) || 1) })} className="rounded-sm h-8 mt-1 mono text-xs" data-testid="wall-arc-bow" />
+              </div>
+              <div className="flex gap-1.5 flex-wrap">
+                {[10, 20, 30, 50, 70, 100, 150].map((v) => (
+                  <button key={v} type="button" onClick={() => updateObj({ bow: v })} className="text-[10px] px-2 py-0.5 bg-white border border-emerald-300 rounded hover:bg-emerald-100 mono">{v}cm</button>
+                ))}
+              </div>
+              <button type="button" onClick={() => updateObj({ sweep: (obj.sweep === -1 ? 1 : -1) })} className="w-full text-[11px] py-1.5 bg-white border border-emerald-400 rounded hover:bg-emerald-100 font-bold" data-testid="wall-arc-flip">⇋ Ribalta direzione arco</button>
+              <button type="button" onClick={() => updateObj({ arc: false, bow: null, sweep: null })} className="w-full text-[11px] py-1.5 bg-white border border-zinc-300 rounded hover:bg-zinc-100">Converti in muro retto</button>
+            </div>
+          )}
+          {obj.arc !== true && (
+            <button type="button" onClick={() => updateObj({ arc: true, bow: Math.max(20, Math.hypot(obj.x2 - obj.x1, obj.y2 - obj.y1) / 6), sweep: 1 })} className="mt-3 w-full text-[11px] py-1.5 bg-emerald-50 border border-emerald-300 rounded hover:bg-emerald-100 text-emerald-800 font-bold" data-testid="wall-make-arc">⌒ Trasforma in muro ad arco</button>
+          )}
         </fieldset>
         <Separator />
         <div className="bg-purple-50 border border-purple-200 p-2 space-y-2" data-testid="wall-decoration-block">

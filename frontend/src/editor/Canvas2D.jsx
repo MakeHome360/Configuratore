@@ -593,9 +593,58 @@ export default function Canvas2D({
         });
       } else if (drag.kind === "item-pos" || drag.kind === "elec-pos" || drag.kind === "plumb-pos" || drag.kind === "gas-pos" || drag.kind === "hvac-pos" || drag.kind === "text-pos" || drag.kind === "stairs-pos" || drag.kind === "columns-pos") {
         const arrKey = drag.kind === "item-pos" ? "items" : drag.kind === "elec-pos" ? "electrical" : drag.kind === "plumb-pos" ? "plumbing" : drag.kind === "gas-pos" ? "gas" : drag.kind === "hvac-pos" ? "hvac" : drag.kind === "stairs-pos" ? "stairs" : drag.kind === "columns-pos" ? "columns" : "texts";
+        // Posizione proposta (senza snap)
+        let proposedX = drag.orig.x + dx;
+        let proposedY = drag.orig.y + dy;
+        let proposedRot = null;
+        // SNAP-TO-WALL: solo per items/columns/stairs (gli oggetti voluminosi) e solo se Shift NON è premuto
+        const eligibleForSnap = (drag.kind === "item-pos" || drag.kind === "columns-pos" || drag.kind === "stairs-pos") && !e.shiftKey;
+        if (eligibleForSnap) {
+          const arr = (project[arrKey] || []);
+          const obj = arr.find((x) => x.id === drag.id);
+          if (obj) {
+            const W = obj.width || 60;
+            const D = obj.depth || 60;
+            // Trova il muro più vicino al centro proposto
+            const walls = project.walls || [];
+            let bestWall = null, bestDist = 9999;
+            walls.forEach((w) => {
+              if (w.demolito) return;
+              const segDx = w.x2 - w.x1, segDy = w.y2 - w.y1;
+              const L2 = segDx * segDx + segDy * segDy;
+              if (L2 < 1) return;
+              const t = Math.max(0, Math.min(1, ((proposedX - w.x1) * segDx + (proposedY - w.y1) * segDy) / L2));
+              const cx = w.x1 + t * segDx;
+              const cy = w.y1 + t * segDy;
+              const dist = Math.hypot(cx - proposedX, cy - proposedY);
+              if (dist < bestDist) { bestDist = dist; bestWall = { w, cx, cy, t }; }
+            });
+            const SNAP_DIST_CM = 50; // soglia di attivazione snap (50cm dal muro)
+            if (bestWall && bestDist < SNAP_DIST_CM) {
+              const wall = bestWall.w;
+              const wallAng = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
+              // Normale uscente verso il centro proposto (lato in cui sta l'arredo)
+              const nx = -Math.sin(wallAng);
+              const ny = Math.cos(wallAng);
+              const sideSign = ((proposedX - bestWall.cx) * nx + (proposedY - bestWall.cy) * ny) >= 0 ? 1 : -1;
+              const halfThick = (wall.thickness || 10) / 2;
+              const offsetFromWall = halfThick + D / 2;
+              // Posizione snappata: lungo il muro nella proiezione, perpendicolare a offsetFromWall
+              proposedX = bestWall.cx + nx * sideSign * offsetFromWall;
+              proposedY = bestWall.cy + ny * sideSign * offsetFromWall;
+              // Rotazione: oggetto "fronte" deve essere perpendicolare al muro (verso la stanza)
+              // Il render originale considera rotation=0 con fronte verso -Y. Quindi rotazione = (wallAng * 180/PI) per parallelo al muro.
+              // Per orientare il fronte verso l'interno della stanza (sideSign=+1 = lato esterno → rotaz +90; -1 → -90)
+              let rotDeg = (wallAng * 180 / Math.PI);
+              if (sideSign > 0) rotDeg += 90; else rotDeg -= 90;
+              rotDeg = (rotDeg % 360 + 360) % 360;
+              proposedRot = rotDeg;
+            }
+          }
+        }
         setProject((prj) => ({
           ...prj,
-          [arrKey]: (prj[arrKey] || []).map((x) => x.id === drag.id ? { ...x, x: drag.orig.x + dx, y: drag.orig.y + dy } : x),
+          [arrKey]: (prj[arrKey] || []).map((x) => x.id === drag.id ? { ...x, x: proposedX, y: proposedY, ...(proposedRot != null ? { rotation: proposedRot } : {}) } : x),
         }));
       } else if (drag.kind === "demo-partial-drag") {
         // Trascina lungo il muro per estendere la zona demolita
@@ -866,10 +915,16 @@ export default function Canvas2D({
     }
     // ---- MISURAZIONE: lunghezza / area / volume ----
     if (tool === "measure-length") {
-      // 2 click = un segmento di misura
+      // 2 click = un segmento di misura. Se DOPPIO click veloce (e.detail >= 2) → annulla draft.
+      if (e.detail >= 2) {
+        setMeasureDraft([]);
+        return;
+      }
       setMeasureDraft((arr) => {
         if (arr.length === 0) return [p];
         const a = arr[0];
+        // se il 2° click è troppo vicino al 1° → annulla (probabile doppio click involontario)
+        if (Math.hypot(p.x - a.x, p.y - a.y) < 8) return [];
         const meas = { id: uid(), kind: "length", points: [a, p] };
         setProject((prj) => ({ ...prj, measurements: [...(prj.measurements || []), meas] }));
         return [];
@@ -877,7 +932,22 @@ export default function Canvas2D({
       return;
     }
     if (tool === "measure-area" || tool === "measure-volume") {
-      // Poligono libero: click vertici, doppio click chiude (vedi onDoubleClick sotto)
+      // Doppio click veloce: chiude poligono se >= 3 punti, altrimenti annulla draft
+      if (e.detail >= 2) {
+        if (measureDraft.length >= 3) {
+          const poly = measureDraft.slice();
+          const meas = {
+            id: uid(),
+            kind: tool === "measure-area" ? "area" : "volume",
+            points: poly,
+            height_cm: tool === "measure-volume" ? (project.roomHeight || 270) : null,
+          };
+          setProject((prj) => ({ ...prj, measurements: [...(prj.measurements || []), meas] }));
+        }
+        setMeasureDraft([]);
+        return;
+      }
+      // Poligono libero: click vertici
       setMeasureDraft((arr) => {
         const last = arr[arr.length - 1];
         if (last && Math.hypot(p.x - last.x, p.y - last.y) < 8) return arr;
@@ -1209,20 +1279,7 @@ export default function Canvas2D({
         setRoomDraft([]);
       }
     }
-    if (tool === "measure-area" || tool === "measure-volume") {
-      if (measureDraft.length >= 3) {
-        const poly = measureDraft.slice();
-        const meas = {
-          id: uid(),
-          kind: tool === "measure-area" ? "area" : "volume",
-          points: poly,
-          height_cm: tool === "measure-volume" ? (project.roomHeight || 270) : null,
-        };
-        setProject((prj) => ({ ...prj, measurements: [...(prj.measurements || []), meas] }));
-      }
-      setMeasureDraft([]);
-      return;
-    }
+    // measure-area / measure-volume: gestiti in onMouseDown con e.detail >= 2 (dblclick veloce)
   };
 
   const onWheel = (e) => {
@@ -2411,6 +2468,9 @@ export default function Canvas2D({
       {tool === "room-round" && <div className="absolute top-3 left-3 bg-blue-700 text-white px-3 py-1.5 text-xs mono">stanza tonda · click + drag dal centro al raggio</div>}
       {tool === "room-halfmoon" && <div className="absolute top-3 left-3 bg-blue-700 text-white px-3 py-1.5 text-xs mono">stanza a mezzaluna · click sul centro + drag verso il punto più curvo</div>}
       {tool === "wall-arc" && <div className="absolute top-3 left-3 bg-emerald-700 text-white px-3 py-1.5 text-xs mono">muro ad arco · 1° click endpoint A · 2° click endpoint B (sagitta = 1/6 corda · regolabile da pannello)</div>}
+      {tool === "measure-length" && <div className="absolute top-3 left-3 bg-purple-700 text-white px-3 py-1.5 text-xs mono">misura lunghezza · 1° click inizio · 2° click fine · DOPPIO CLICK = annulla</div>}
+      {tool === "measure-area" && <div className="absolute top-3 left-3 bg-purple-700 text-white px-3 py-1.5 text-xs mono">misura area · click sui vertici · DOPPIO CLICK = chiudi (≥3 punti) o annulla</div>}
+      {tool === "measure-volume" && <div className="absolute top-3 left-3 bg-purple-700 text-white px-3 py-1.5 text-xs mono">misura volume · click sui vertici · DOPPIO CLICK = chiudi · h={project.roomHeight || 270}cm</div>}
       {tool === "column" && <div className="absolute top-3 left-3 bg-stone-700 text-white px-3 py-1.5 text-xs mono">pilastro · {columnKind || "cemento"} · {(columnShape || "rect") === "circle" ? `⌀${columnSize?.w || 30}` : `${(columnSize?.w || 30)}×${(columnSize?.d || 30)}`}×{(columnSize?.h || 270)}cm · click per posizionare</div>}
       {tool === "controsoffitto" && <div className="absolute top-3 left-3 bg-teal-700 text-white px-3 py-1.5 text-xs mono">controsoffitto · click su stanza per attivare/disattivare</div>}
       {tool === "controsoffitto-area" && <div className="absolute top-3 left-3 bg-sky-700 text-white px-3 py-1.5 text-xs mono">controsoffitto area · click vertici, doppio click chiude</div>}

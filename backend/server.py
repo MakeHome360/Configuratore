@@ -1566,7 +1566,225 @@ async def update_stato(prev_id: str, body: Dict[str, Any], user: Dict[str, Any] 
         {"id": prev_id, "user_id": user["id"]},
         {"$set": {"stato": stato, "updated_at": datetime.now(timezone.utc).isoformat()}},
     )
-    return {"ok": True, "stato": stato}
+    # AUTO-POPOLAMENTO COMMESSA + COMPUTO + TABELLA MATERIALI bozza quando il preventivo viene accettato
+    auto_commessa_info = None
+    if stato == "accettato":
+        try:
+            auto_commessa_info = await _auto_populate_commessa_from_preventivo(prev_id, user)
+        except Exception as e:
+            logger.exception(f"[auto-populate commessa] errore per preventivo {prev_id}: {e}")
+    return {"ok": True, "stato": stato, "auto_commessa": auto_commessa_info}
+
+
+async def _auto_populate_commessa_from_preventivo(prev_id: str, user: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Quando un preventivo viene accettato, crea (se non esiste) una commessa collegata
+    e ne pre-compila Computo Metrico + bozza Tabella Materiali dalle righe del preventivo.
+
+    Pipeline:
+      1. Se esiste già una commessa con `preventivo_id=prev_id`, ne aggiorna soltanto i campi mancanti
+         (no overwrite). Altrimenti la crea.
+      2. Computo Metrico: 1 item per ogni voce del preventivo (items/extra_voci/infissi/composite_selections)
+         con qty/prezzo_unit/totale.
+      3. Tabella Materiali bozza: applica il template `materiali_template` ATTIVO (se esiste); altrimenti
+         estrae solo le voci del preventivo che hanno categoria "materiali"/"finiture" oppure unit in
+         (m²,pz,ml,kg).
+      4. Compila lo skeleton di documenti vuoti (contratto, capitolato, polizza) puntando ai
+         `documenti_template` attivi se presenti.
+    """
+    prev = await db.preventivi.find_one({"id": prev_id, "user_id": user["id"]}, {"_id": 0})
+    if not prev:
+        return None
+    cliente = prev.get("cliente") or {}
+    # 1) Esiste commessa collegata?
+    com = await db.commesse.find_one({"preventivo_id": prev_id}, {"_id": 0})
+    now_iso_v = datetime.now(timezone.utc).isoformat()
+    voci_back = {v["id"]: v for v in await db.voci_backoffice.find({}, {"_id": 0}).to_list(3000)}
+    # 2) Estrai righe dal preventivo (items+extra+composite+infissi)
+    righe = []
+    for it in (prev.get("items") or []):
+        righe.append({
+            "voce_id": it.get("voce_id") or it.get("id"),
+            "name": it.get("name") or it.get("voce") or "Voce",
+            "qty": float(it.get("qty") or 0),
+            "unit": it.get("unit") or "pz",
+            "prezzo_unit": float(it.get("prezzo_unit") or it.get("price") or 0),
+        })
+    for it in (prev.get("extra_voci") or []):
+        righe.append({
+            "voce_id": it.get("voce_id") or it.get("id"),
+            "name": it.get("name") or "Extra",
+            "qty": float(it.get("qty") or 0),
+            "unit": it.get("unit") or "pz",
+            "prezzo_unit": float(it.get("prezzo_unit") or it.get("price") or 0),
+        })
+    for inf in (prev.get("infissi") or []):
+        righe.append({
+            "voce_id": None,
+            "name": f"Infisso {inf.get('tipologia', 'finestra')} {inf.get('larghezza', '')}x{inf.get('altezza', '')}",
+            "qty": float(inf.get("qty") or 1),
+            "unit": "pz",
+            "prezzo_unit": float(inf.get("prezzo") or inf.get("prezzo_unit") or 0),
+        })
+    # Costruisci computo_metrico items
+    cm_items = []
+    for r in righe:
+        if r["qty"] <= 0 and r["prezzo_unit"] <= 0:
+            continue
+        vb = voci_back.get(r["voce_id"]) if r["voce_id"] else None
+        cm_items.append({
+            "id": f"cm-{uuid.uuid4().hex[:8]}",
+            "voce_id": r["voce_id"] or "",
+            "name": r["name"],
+            "qty": r["qty"],
+            "unit": r["unit"],
+            "prezzo_unit": r["prezzo_unit"],
+            "totale": round(r["qty"] * r["prezzo_unit"], 2),
+            "category": (vb or {}).get("category", ""),
+            "stato_assegnazione": "da_assegnare",
+            "auto_from_preventivo": True,
+        })
+    cm_totale = round(sum(x["totale"] for x in cm_items), 2)
+    # 3) Tabella Materiali bozza: usa template attivo se esiste, altrimenti estrai voci "materiali"
+    mat_items = []
+    template_doc = await db.materiali_template.find_one({"is_default": True}, {"_id": 0})
+    if template_doc and template_doc.get("voci"):
+        for tv in template_doc["voci"]:
+            mat_items.append({
+                "voce_id": tv.get("voce_id") or "",
+                "name": tv.get("name", "Materiale"),
+                "category": tv.get("category", "materiali"),
+                "qty": tv.get("qty_default", 1),
+                "unit": tv.get("unit", "pz"),
+                "prezzo": tv.get("prezzo_default", 0),
+                "finitura": "",  # da scegliere
+                "finiture_disponibili": tv.get("finiture", []),
+                "note": "",
+                "from_template": True,
+            })
+    else:
+        # Fallback: estrai voci del preventivo con category materiali/finiture/sanitari/cucina/arredo
+        material_categories = {"materiali", "finiture", "sanitari", "cucina", "arredo", "piastrelle", "rivestimenti"}
+        for r in righe:
+            vb = voci_back.get(r["voce_id"]) if r["voce_id"] else None
+            cat = ((vb or {}).get("category") or "").lower()
+            unit = (r["unit"] or "").lower()
+            if cat in material_categories or unit in ("m²", "m2", "mq", "pz", "ml"):
+                mat_items.append({
+                    "voce_id": r["voce_id"] or "",
+                    "name": r["name"],
+                    "category": cat or "materiali",
+                    "qty": r["qty"],
+                    "unit": r["unit"],
+                    "prezzo": r["prezzo_unit"],
+                    "finitura": "",
+                    "note": "",
+                    "from_preventivo": True,
+                })
+    # 4) Crea/aggiorna commessa
+    if not com:
+        com_id = f"com-{uuid.uuid4().hex[:8]}"
+        next_num = await db.commesse.count_documents({}) + 1
+        com = {
+            "id": com_id,
+            "numero": f"COM-{datetime.now(timezone.utc).year}-{next_num:04d}",
+            "preventivo_id": prev_id,
+            "stato": "in_corso",
+            "cliente": cliente,
+            "totale": prev.get("totale_iva_incl") or prev.get("totale_iva_escl") or cm_totale,
+            "computo_metrico": {"items": cm_items, "totale": cm_totale, "auto_from_preventivo": True, "generato_il": now_iso_v},
+            "materiali_scelta": {"items": mat_items, "firmato_cliente": False, "auto_bozza": True, "generato_il": now_iso_v},
+            "voci_acquisti": [],
+            "documenti": [],
+            "auto_from_preventivo": True,
+            "created_at": now_iso_v,
+            "created_by": user["id"],
+        }
+        await db.commesse.insert_one(com)
+        # Allinea anche eventuali Documenti Template virgine: copiali come documenti vuoti da firmare
+        try:
+            templates = await db.documenti_template.find({}, {"_id": 0}).to_list(50)
+            doc_skel = []
+            for t in templates:
+                doc_skel.append({
+                    "id": f"doc-{uuid.uuid4().hex[:8]}",
+                    "nome": t.get("nome", "Documento"),
+                    "tipo": t.get("tipo", "contratto"),
+                    "file_url": t.get("file_url"),
+                    "auto_from_template": True,
+                    "stato": "da_compilare",
+                })
+            if doc_skel:
+                await db.commesse.update_one({"id": com_id}, {"$set": {"documenti": doc_skel}})
+        except Exception:
+            pass
+        return {"created": True, "commessa_id": com_id, "computo_items": len(cm_items), "materiali_items": len(mat_items)}
+    else:
+        # Esistente: aggiorna SOLO le sezioni vuote (no overwrite distruttivo)
+        upd = {}
+        if not (com.get("computo_metrico") or {}).get("items"):
+            upd["computo_metrico"] = {"items": cm_items, "totale": cm_totale, "auto_from_preventivo": True, "generato_il": now_iso_v}
+        if not (com.get("materiali_scelta") or {}).get("items"):
+            upd["materiali_scelta"] = {"items": mat_items, "firmato_cliente": False, "auto_bozza": True, "generato_il": now_iso_v}
+        if upd:
+            await db.commesse.update_one({"id": com["id"]}, {"$set": upd})
+        return {"updated": True, "commessa_id": com["id"], "computo_added": "computo_metrico" in upd, "materiali_added": "materiali_scelta" in upd}
+
+
+# ============ MATERIALI TEMPLATE (admin) ============
+class MaterialiTemplateVoceIn(BaseModel):
+    voce_id: Optional[str] = None
+    name: str
+    category: str = "materiali"
+    unit: str = "pz"
+    qty_default: float = 1
+    prezzo_default: float = 0
+    finiture: List[str] = []
+
+
+class MaterialiTemplateIn(BaseModel):
+    nome: str
+    is_default: bool = False
+    voci: List[MaterialiTemplateVoceIn] = []
+
+
+@api.get("/admin/materiali-template")
+async def list_materiali_template(user: Dict[str, Any] = Depends(get_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Solo admin")
+    return await db.materiali_template.find({}, {"_id": 0}).sort("nome", 1).to_list(200)
+
+
+@api.post("/admin/materiali-template")
+async def create_materiali_template(body: MaterialiTemplateIn, user: Dict[str, Any] = Depends(get_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Solo admin")
+    tpl_id = f"mt-{uuid.uuid4().hex[:10]}"
+    doc = {"id": tpl_id, **body.model_dump(), "created_at": datetime.now(timezone.utc).isoformat()}
+    if body.is_default:
+        await db.materiali_template.update_many({"is_default": True}, {"$set": {"is_default": False}})
+    await db.materiali_template.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api.put("/admin/materiali-template/{tpl_id}")
+async def update_materiali_template(tpl_id: str, body: MaterialiTemplateIn, user: Dict[str, Any] = Depends(get_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Solo admin")
+    if body.is_default:
+        await db.materiali_template.update_many({"is_default": True, "id": {"$ne": tpl_id}}, {"$set": {"is_default": False}})
+    upd = body.model_dump()
+    upd["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.materiali_template.update_one({"id": tpl_id}, {"$set": upd})
+    return await db.materiali_template.find_one({"id": tpl_id}, {"_id": 0})
+
+
+@api.delete("/admin/materiali-template/{tpl_id}")
+async def delete_materiali_template(tpl_id: str, user: Dict[str, Any] = Depends(get_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Solo admin")
+    await db.materiali_template.delete_one({"id": tpl_id})
+    return {"ok": True}
 
 
 app.include_router(api)

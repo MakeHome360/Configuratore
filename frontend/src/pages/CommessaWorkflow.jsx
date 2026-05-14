@@ -278,49 +278,69 @@ function Materiali({ wf, cid, reload, voci }) {
   const m = wf.materiali_scelta || { items: [] };
   const [items, setItems] = useState(m.items || []);
   const [firmato, setFirmato] = useState(!!m.firmato_cliente);
+  const isAutoBozza = m.auto_bozza === true && !m.firmato_cliente;
   const totale = useMemo(() => items.reduce((s, x) => s + (parseFloat(x.qty || 0) * parseFloat(x.prezzo || 0)), 0), [items]);
   return (
     <div className="bg-white border border-zinc-200 rounded p-5 space-y-3">
+      {isAutoBozza && (
+        <div className="bg-amber-50 border border-amber-300 p-3 rounded text-xs text-amber-900 leading-relaxed" data-testid="mat-auto-bozza-banner">
+          🪄 <strong>Bozza auto-generata</strong> dal preventivo accettato {m.generato_il ? `il ${new Date(m.generato_il).toLocaleDateString("it-IT")}` : ""}. Scegli le <strong>finiture</strong> per ogni voce, modifica quantità/prezzi se serve, poi salva.
+        </div>
+      )}
       <div className="flex items-start justify-between">
         <div>
           <h3 className="font-semibold">Scelta materiali del cliente</h3>
-          <p className="text-xs text-zinc-500 mt-1">Elenca i materiali specifici scelti dal cliente (es. piastrelle, sanitari, rubinetterie). Quando salvi con la firma, il cliente non potrà più chiedere modifiche senza extra.</p>
+          <p className="text-xs text-zinc-500 mt-1">Elenca i materiali specifici scelti dal cliente. Quando salvi con la firma, il cliente non potrà più chiedere modifiche senza extra.</p>
         </div>
-        <Button size="sm" onClick={() => setItems([...items, { voce_id: "", name: "", qty: 1, unit: "pz", prezzo: 0, note: "" }])} data-testid="mat-add"><Plus className="h-4 w-4 mr-1" /> Aggiungi materiale</Button>
+        <Button size="sm" onClick={() => setItems([...items, { voce_id: "", name: "", qty: 1, unit: "pz", prezzo: 0, finitura: "", finiture_disponibili: [], note: "" }])} data-testid="mat-add"><Plus className="h-4 w-4 mr-1" /> Aggiungi materiale</Button>
       </div>
       <table className="w-full text-sm">
         <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
-          <th className="px-2 py-2 text-left w-56" title="Seleziona dal listino backoffice per usare i prezzi già configurati">Da listino interno</th>
-          <th className="px-2 py-2 text-left" title="Modello/colore esatto scelto dal cliente">Descrizione / modello scelto</th>
-          <th className="px-2 py-2 text-right w-20" title="Quantità">Qty</th>
-          <th className="px-2 py-2 text-left w-20" title="Unità di misura (m², pz, ml)">U.M.</th>
-          <th className="px-2 py-2 text-right w-28" title="Prezzo al cliente per unità">Prezzo unit. (€)</th>
-          <th className="px-2 py-2 text-right w-28">Totale</th>
-          <th className="w-10"></th>
+          <th className="px-2 py-2 text-left w-44">Da listino</th>
+          <th className="px-2 py-2 text-left">Descrizione/modello</th>
+          <th className="px-2 py-2 text-left w-44">Finitura</th>
+          <th className="px-2 py-2 text-right w-16">Qty</th>
+          <th className="px-2 py-2 text-left w-14">UM</th>
+          <th className="px-2 py-2 text-right w-24">€/unit</th>
+          <th className="px-2 py-2 text-right w-24">Totale</th>
+          <th className="w-8"></th>
         </tr></thead>
         <tbody className="divide-y divide-zinc-100">
           {items.map((it, i) => {
             const upd = (k, v) => setItems(items.map((x, j) => j === i ? { ...x, [k]: v } : x));
+            const finOpts = it.finiture_disponibili || [];
             return (
-              <tr key={i}>
+              <tr key={i} className={it.from_template ? "bg-emerald-50/40" : (it.from_preventivo ? "bg-blue-50/30" : "")}>
                 <td className="px-2 py-1">
+                  {it.from_template && <div className="text-[9px] uppercase tracking-widest text-emerald-700 font-bold mb-0.5">📋 da template</div>}
+                  {it.from_preventivo && <div className="text-[9px] uppercase tracking-widest text-blue-700 font-bold mb-0.5">💼 da preventivo</div>}
                   <Select value={it.voce_id || ""} onValueChange={v => { const voce = voci.find(x => x.id === v); upd("voce_id", v); if (voce) { upd("name", voce.name); upd("unit", voce.unit || "pz"); upd("prezzo", parseFloat(voce.prezzo_acquisto || 0) * parseFloat(voce.ricarico || 1.8)); } }}>
-                    <SelectTrigger className="h-8 text-xs" data-testid={`mat-voce-${i}`}><SelectValue placeholder="— oppure scrivi a mano —" /></SelectTrigger>
+                    <SelectTrigger className="h-8 text-xs" data-testid={`mat-voce-${i}`}><SelectValue placeholder="— oppure manuale —" /></SelectTrigger>
                     <SelectContent className="max-h-72">{voci.map(v => <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>)}</SelectContent>
                   </Select>
                 </td>
-                <td className="px-2 py-1"><Input value={it.name} onChange={e => upd("name", e.target.value)} placeholder="Es: Piastrella Marazzi 60x60 grigio chiaro" className="h-8 text-xs" /></td>
-                <td className="px-2 py-1"><Input type="number" value={it.qty} onChange={e => upd("qty", e.target.value)} className="h-8 text-xs text-right mono w-20" /></td>
-                <td className="px-2 py-1"><Input value={it.unit} onChange={e => upd("unit", e.target.value)} placeholder="m²" className="h-8 text-xs w-16" /></td>
+                <td className="px-2 py-1"><Input value={it.name} onChange={e => upd("name", e.target.value)} placeholder="Es: Piastrella 60x60" className="h-8 text-xs" /></td>
+                <td className="px-2 py-1">
+                  {finOpts.length > 0 ? (
+                    <Select value={it.finitura || ""} onValueChange={v => upd("finitura", v)}>
+                      <SelectTrigger className={`h-8 text-xs ${!it.finitura ? "border-amber-400 bg-amber-50" : ""}`} data-testid={`mat-fin-${i}`}><SelectValue placeholder="🎨 scegli finitura" /></SelectTrigger>
+                      <SelectContent>{finOpts.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}</SelectContent>
+                    </Select>
+                  ) : (
+                    <Input value={it.finitura || ""} onChange={e => upd("finitura", e.target.value)} placeholder="es. Grigio, Marmo bianco" className="h-8 text-xs" data-testid={`mat-fin-txt-${i}`} />
+                  )}
+                </td>
+                <td className="px-2 py-1"><Input type="number" value={it.qty} onChange={e => upd("qty", e.target.value)} className="h-8 text-xs text-right mono w-16" /></td>
+                <td className="px-2 py-1"><Input value={it.unit} onChange={e => upd("unit", e.target.value)} placeholder="m²" className="h-8 text-xs w-14" /></td>
                 <td className="px-2 py-1"><Input type="number" step="0.01" value={it.prezzo} onChange={e => upd("prezzo", e.target.value)} className="h-8 text-xs text-right mono w-24" /></td>
                 <td className="px-2 py-1 text-right mono font-semibold">{fmtEur((it.qty || 0) * (it.prezzo || 0))}</td>
                 <td><button onClick={() => setItems(items.filter((_, j) => j !== i))} className="text-rose-600 p-1" data-testid={`mat-del-${i}`}><Trash2 className="h-4 w-4" /></button></td>
               </tr>
             );
           })}
-          {!items.length && <tr><td colSpan={7} className="px-3 py-12 text-center text-zinc-500">Nessun materiale ancora aggiunto. Clicca "Aggiungi materiale" per il primo.</td></tr>}
+          {!items.length && <tr><td colSpan={8} className="px-3 py-12 text-center text-zinc-500">Nessun materiale. Crea un <strong>Template Materiali</strong> dall'admin per auto-popolare questa tabella ogni volta che accetti un preventivo.</td></tr>}
         </tbody>
-        {items.length > 0 && <tfoot><tr className="bg-zinc-50"><td colSpan={5} className="px-2 py-2 text-right font-bold uppercase text-xs">Totale materiali</td><td className="px-2 py-2 text-right font-bold mono">{fmtEur(totale)}</td><td></td></tr></tfoot>}
+        {items.length > 0 && <tfoot><tr className="bg-zinc-50"><td colSpan={6} className="px-2 py-2 text-right font-bold uppercase text-xs">Totale materiali</td><td className="px-2 py-2 text-right font-bold mono">{fmtEur(totale)}</td><td></td></tr></tfoot>}
       </table>
       <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-zinc-200">
         <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={firmato} onChange={e => setFirmato(e.target.checked)} data-testid="mat-firmato" /> <span className="text-sm">Confermato/firmato dal cliente (blocca cambi senza extra)</span></label>
@@ -405,6 +425,11 @@ function ComputoTab({ wf, cid, reload }) {
 
   return (
     <div className="space-y-3">
+      {cm.auto_from_preventivo && (
+        <div className="bg-emerald-50 border border-emerald-300 p-3 rounded text-xs text-emerald-900 leading-relaxed" data-testid="cm-auto-banner">
+          ✨ <strong>Computo auto-generato</strong> dal preventivo accettato {cm.generato_il ? `il ${new Date(cm.generato_il).toLocaleDateString("it-IT")}` : ""}. {items.length} voci · totale {fmtEur(stats.totEur)}. Procedi con l'assegnazione (vista "Assegnazioni" qui sotto).
+        </div>
+      )}
       <div className="bg-white border border-zinc-200 rounded">
         <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-zinc-200">
           <div>

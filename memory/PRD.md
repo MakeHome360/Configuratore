@@ -1,5 +1,46 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 60 — Feb 2026 — Bagni multipli + Optional qty universale + Fix Round 59)
+**Richieste utente**:
+1. *"in ogni pacchetto devi darmi la possibilità di aggiungere più bagni... se ho silver incluso e voglio sostituirlo con un gold devi aggiungere solo la differenza ma nel computo metrico le voci silver vengono SOSTITUITE con quelle gold"*
+2. *"le quantità sono già modificabili perché quelle lo sono sempre. devi sistemare la cosa dei prezzi"*
+
+### 🛁 Bagni multipli nei pacchetti
+**Prima**: lo step 4 era un radio button singolo che permetteva di scegliere un solo livello bagno (silver/gold/platinum) come surcharge differenziale.
+
+**Adesso** (`PreventivoPacchetto.jsx` step 4):
+- Nuovo schema dati `prev.bathrooms: [{ id, tier_id, included }]`.
+- Auto-init: appena l'utente entra nello step 4, viene creato automaticamente "Bagno #1 SILVER incluso nel pacchetto" (riflette il bagno base coperto dal pacchetto).
+- L'utente può:
+  - **Cambiare livello del bagno #1** (incluso): paga solo la **differenza** rispetto a SILVER (es. SILVER→GOLD = +2000€, SILVER→PLATINUM = +5500€).
+  - **Aggiungere altri bagni** ("+ Aggiungi un altro bagno"): ognuno paga il **prezzo intero** del livello scelto (SILVER 3500€, GOLD 5500€, PLATINUM 9000€).
+- Per ogni bagno, 3 card tier (SILVER/GOLD/PLATINUM) visibili con prezzo coerente al contesto (upgrade vs intero).
+- Box "Sintesi bagni" in fondo allo step 4 con elenco dei bagni e totale (`bagni-total` testid).
+- Riepilogo (step 6): nuova sezione `riepilogo-bagni` con dettaglio Bagno #N · TIER · (incluso/extra) e costo singolo.
+- **Backward-compat**: preventivi vecchi con `bathroom_tier` (stringa singola) vengono automaticamente convertiti in `bathrooms: [{ tier_id: <legacy>, included: true }]` al load.
+- Backend: `extra="allow"` su `PreventivoIn` consente di salvare/leggere `bathrooms` senza cambiare il modello Pydantic. Test E2E POST/GET ok.
+
+### 💰 Optional con quantità modificabile per TUTTI (forfait/pz/m²) e prezzo coerente
+**Prima**: nello step 3, solo gli optional con `per_m2=true` mostravano un input qty modificabile. Per i forfait e i `pz` la qty era fissa a 1 e cambiare voce non aggiornava il prezzo.
+
+**Adesso**:
+- Tutti gli optional (anche forfait/pz) hanno un input qty visibile quando selezionati (`optional-qty-<id>`).
+- Total ricalcolato in tempo reale: `total = qty × unit_price_scontato` per qualsiasi unità.
+- Es. Portoncino blindato qty=3 → 3 × 1890€ = 5670€ (prima fissato a 1890€).
+- Salva nel payload `optional[]: [{ id, name, qty, unit_price, total, per_m2, unit, descrizione }]`.
+
+### 🐛 Bug fix collaterali
+- **Riepilogo Optional (step 6)**: bug critico — usava `prev.optionals.filter(o.selected)` (campo inesistente, doveva essere `prev.optional`). Ora legge correttamente dalla lista reale degli optional selezionati con qty + total + descrizione.
+- **Totals typo**: `totals.extra` (non esistente) → `totals.extras` nella card "Extra dal configuratore/infissi" nello step 2.
+- **Import API mancante**: `AdminMaterialiTemplate.jsx` usava `import api from "@/lib/api"` (default export inesistente) → corretto in `import { api }` (named). Sbloccava la compilazione del bundle.
+
+### Verifica
+- POST `/api/preventivi` con `bathrooms: [...]` → salvato e ritornato correttamente nel GET. Test E2E con curl ok.
+- Screenshot frontend: Bagno #1 GOLD incluso (+2000€) + Bagno #2 GOLD extra (+5500€) → Sintesi 7500€, IVA inclusa 37.510€ ✓
+- Optional qty=2 condizionatore (5580€) + qty=3 portoncino (5670€) = Optional sidebar 11.250€ ✓
+- Dashboard count e lista preventivi allineati (48 = 48 per admin scope=all).
+
+
 ## Recent Updates (Round 51 — Feb 2026 — Stanze curve & Muri ad arco)
 **Problema utente**: "se voglio disegnare una stanza tonda o a mezza luna non posso perchè posso solo fare linee rette sia con le stanze che con i muri".
 

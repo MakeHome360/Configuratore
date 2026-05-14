@@ -33,9 +33,10 @@ export default function PreventivoPacchetto() {
     package_id: null,
     mq: 70,
     items: [],       // [{id, name, category, unit, qty_richiesta, included_qty, unit_price, unit_consigliato}]
-    optional: [],    // [{id, name, qty, total}]
-    bathroom_tier: null,
-    bathroom_surcharge: 0,
+    optional: [],    // [{id, name, qty, unit_price, total, per_m2, unit}]
+    bathroom_tier: null, // legacy: kept for backward compat (singolo bagno)
+    bathroom_surcharge: 0, // legacy
+    bathrooms: [],   // NEW: [{ id, tier_id, included, surcharge_eur }] — array bagni multipli
     cliente: { nome: "", cognome: "", indirizzo: "", email: "", telefono: "" },
     note: "",
     sconto_pct: 0,
@@ -78,11 +79,19 @@ export default function PreventivoPacchetto() {
         setPackages(pkgsSorted); setOptionals(op.data); setBathroomTiers(bt.data);
         if (!isNew) {
           const { data } = await api.get(`/preventivi/${id}`);
+          const silverBasePrice = (bt.data && bt.data[0]?.price) || 0;
+          // Backward-compat: se `bathrooms` non esiste, costruiscilo da `bathroom_tier` (singolo legacy)
+          let bathrooms = Array.isArray(data.bathrooms) ? data.bathrooms : [];
+          if (!bathrooms.length && data.bathroom_tier) {
+            const tier = (bt.data || []).find((t) => t.id === data.bathroom_tier);
+            bathrooms = [{ id: `bath-${Date.now()}`, tier_id: data.bathroom_tier, included: true, surcharge_eur: tier ? Math.max(0, (tier.price || 0) - silverBasePrice) : 0 }];
+          }
           setPrev({
             package_id: data.package_id, mq: data.mq,
             items: data.items || [], optional: data.optional || [],
             bathroom_tier: data.bathroom_tier,
-            bathroom_surcharge: data.bathroom_tier ? (((bt.data.find((t) => t.id === data.bathroom_tier)?.price || 0) - (bt.data[0]?.price || 0)) || 0) : 0,
+            bathroom_surcharge: data.bathroom_tier ? (((bt.data.find((t) => t.id === data.bathroom_tier)?.price || 0) - silverBasePrice) || 0) : 0,
+            bathrooms,
             cliente: data.cliente || {}, note: data.note || "",
             sconto_pct: data.sconto_pct || 0, iva_pct: data.iva_pct || 10,
           });
@@ -187,6 +196,14 @@ export default function PreventivoPacchetto() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prev.package_id, prev.mq, packages]);
 
+  // Auto-init: quando l'utente entra nello step 4 (Bagno) per la prima volta E i tier sono caricati,
+  // se la lista bagni è vuota → crea il bagno #1 SILVER incluso (riflette il pacchetto base).
+  useEffect(() => {
+    if (step === 4 && (prev.bathrooms || []).length === 0 && bathroomTiers.length > 0) {
+      setPrev((s) => (s.bathrooms?.length ? s : { ...s, bathrooms: [{ id: `bath-${Date.now()}`, tier_id: bathroomTiers[0].id, included: true }] }));
+    }
+  }, [step, bathroomTiers, prev.bathrooms]);
+
   const pkg = packages.find((p) => p.id === prev.package_id);
 
   const totals = useMemo(() => {
@@ -221,14 +238,32 @@ export default function PreventivoPacchetto() {
       return s + extraVal;
     }, 0);
     const optional = (prev.optional || []).reduce((s, o) => s + (o.total || 0), 0);
-    const bagno = prev.bathroom_surcharge || 0;
+    // Calcolo bagni multipli: per ogni bagno incluso → surcharge = max(0, tier.price - silver.price);
+    // per ogni bagno extra → costo intero del tier scelto
+    const silverBase = (bathroomTiers && bathroomTiers[0]?.price) || 0;
+    let bagno = 0;
+    const bathroomsList = prev.bathrooms || [];
+    if (bathroomsList.length > 0) {
+      bathroomsList.forEach((b) => {
+        const t = bathroomTiers.find((x) => x.id === b.tier_id);
+        if (!t) return;
+        if (b.included) {
+          bagno += Math.max(0, (t.price || 0) - silverBase);
+        } else {
+          bagno += (t.price || 0);
+        }
+      });
+    } else {
+      // Legacy: usa bathroom_surcharge se array vuoto
+      bagno = prev.bathroom_surcharge || 0;
+    }
     const subtotal = base + extras + optional + bagno;
     const sconto = subtotal * (prev.sconto_pct || 0) / 100;
     const afterDisc = subtotal - sconto;
     const iva = afterDisc * (prev.iva_pct || 10) / 100;
     const total = afterDisc + iva;
     return { base, extras, optional, bagno, subtotal, sconto, iva, total };
-  }, [prev, pkg]);
+  }, [prev, pkg, bathroomTiers]);
 
   const save = async () => {
     setSaving(true);
@@ -239,7 +274,8 @@ export default function PreventivoPacchetto() {
       mq: prev.mq,
       items: prev.items,
       optional: prev.optional,
-      bathroom_tier: prev.bathroom_tier,
+      bathroom_tier: prev.bathroom_tier, // legacy
+      bathrooms: prev.bathrooms || [],   // nuovo: bagni multipli
       note: prev.note,
       sconto_pct: prev.sconto_pct,
       iva_pct: prev.iva_pct,
@@ -378,12 +414,12 @@ export default function PreventivoPacchetto() {
                     </div>
                     <div>
                       <div className="text-[10px] uppercase tracking-widest text-amber-700">+ Extra dal configuratore/infissi</div>
-                      <div className="mono text-2xl font-bold text-amber-900" data-testid="pacchetto-extras-tot">{fmtEuro(totals?.extra || 0)}</div>
+                      <div className="mono text-2xl font-bold text-amber-900" data-testid="pacchetto-extras-tot">{fmtEuro(totals?.extras || 0)}</div>
                       <div className="text-[11px] mono text-amber-700">solo le voci aggiuntive</div>
                     </div>
                     <div>
                       <div className="text-[10px] uppercase tracking-widest text-zinc-700">Totale subtotale</div>
-                      <div className="mono text-2xl font-bold text-zinc-900">{fmtEuro((pkg.price_per_m2 * prev.mq) + (totals?.extra || 0) + (totals?.optional || 0))}</div>
+                      <div className="mono text-2xl font-bold text-zinc-900">{fmtEuro((pkg.price_per_m2 * prev.mq) + (totals?.extras || 0) + (totals?.optional || 0))}</div>
                       <div className="text-[11px] mono text-zinc-500">IVA esclusa, prima sconto</div>
                     </div>
                   </div>
@@ -520,13 +556,13 @@ export default function PreventivoPacchetto() {
             {step === 3 && (
               <div>
                 <h2 className="text-2xl font-semibold mb-2" style={{ fontFamily: "Outfit" }}>Optional</h2>
-                <p className="text-sm text-zinc-600 mb-6">Aggiunte non incluse nel pacchetto. Prezzi scontati applicando il pacchetto.</p>
+                <p className="text-sm text-zinc-600 mb-6">Aggiunte non incluse nel pacchetto. Prezzi scontati applicando il pacchetto. La quantità è sempre modificabile.</p>
                 <div className="space-y-3">
                   {optFiltered.map((o) => {
                     const selected = prev.optional.find((x) => x.id === o.id);
                     const qty = selected?.qty ?? 0;
-                    const unitPrice = o.per_m2 ? (o.unit_price_scontato || o.price_scontato) : o.price_scontato;
-                    const total = o.per_m2 ? qty * (o.unit_price_scontato || 0) : (qty ? o.price_scontato : 0);
+                    const unitPriceScontato = o.per_m2 ? (o.unit_price_scontato || 0) : (o.price_scontato || 0);
+                    const total = selected ? (qty * unitPriceScontato) : 0;
                     return (
                       <div key={o.id} className={`border p-4 flex items-start gap-4 ${selected ? "border-zinc-900 bg-zinc-50" : "border-zinc-200"}`} data-testid={`optional-${o.id}`}>
                         <Switch
@@ -534,8 +570,8 @@ export default function PreventivoPacchetto() {
                           onCheckedChange={(v) => {
                             if (v) {
                               const defaultQty = o.per_m2 ? prev.mq : 1;
-                              const t = o.per_m2 ? defaultQty * (o.unit_price_scontato || 0) : o.price_scontato;
-                              setPrev((s) => ({ ...s, optional: [...s.optional, { id: o.id, name: o.name, qty: defaultQty, total: t, per_m2: o.per_m2 }] }));
+                              const t = defaultQty * unitPriceScontato;
+                              setPrev((s) => ({ ...s, optional: [...s.optional, { id: o.id, name: o.name, qty: defaultQty, unit_price: unitPriceScontato, total: t, per_m2: o.per_m2, unit: o.unit || (o.per_m2 ? "m²" : "pz"), descrizione: o.descrizione || o.description || "" }] }));
                             } else {
                               setPrev((s) => ({ ...s, optional: s.optional.filter((x) => x.id !== o.id) }));
                             }
@@ -547,19 +583,27 @@ export default function PreventivoPacchetto() {
                           <div className="mono text-xs text-zinc-500 mt-1">
                             Listino {fmtEuro(o.price_listino)} · Pacchetto {fmtEuro(o.price_scontato)}
                             {o.per_m2 && <> · {fmtEuro(o.unit_price_scontato)}/m²</>}
+                            {!o.per_m2 && <> · {fmtEuro(o.price_scontato)}/{o.unit || "pz"}</>}
                           </div>
                         </div>
-                        {selected && o.per_m2 && (
-                          <Input type="number" min={0} step="0.5" value={qty}
-                            onChange={(e) => {
-                              const v = Math.max(0, parseFloat(e.target.value) || 0);
-                              const t = v * (o.unit_price_scontato || 0);
-                              setPrev((s) => ({ ...s, optional: s.optional.map((x) => x.id === o.id ? { ...x, qty: v, total: t } : x) }));
-                            }}
-                            className="rounded-sm h-9 text-right mono w-24"
-                          />
+                        {selected && (
+                          <div className="flex items-center gap-2">
+                            <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Qty</Label>
+                            <Input
+                              type="number" min={0} step={o.per_m2 ? "0.5" : "1"}
+                              value={qty}
+                              onChange={(e) => {
+                                const v = Math.max(0, parseFloat(e.target.value) || 0);
+                                const t = v * unitPriceScontato;
+                                setPrev((s) => ({ ...s, optional: s.optional.map((x) => x.id === o.id ? { ...x, qty: v, total: t } : x) }));
+                              }}
+                              className="rounded-sm h-9 text-right mono w-24"
+                              data-testid={`optional-qty-${o.id}`}
+                            />
+                            <span className="text-xs text-zinc-500 mono">{o.unit || (o.per_m2 ? "m²" : "pz")}</span>
+                          </div>
                         )}
-                        <div className="mono text-right font-medium min-w-[100px]">
+                        <div className="mono text-right font-medium min-w-[110px]">
                           {selected ? fmtEuro(total) : <span className="text-zinc-400">—</span>}
                         </div>
                       </div>
@@ -571,27 +615,110 @@ export default function PreventivoPacchetto() {
 
             {step === 4 && (
               <div>
-                <h2 className="text-2xl font-semibold mb-2" style={{ fontFamily: "Outfit" }}>Configurazione bagno</h2>
-                <p className="text-sm text-zinc-600 mb-6">Scegli il livello di finitura del bagno principale.</p>
-                <div className="grid sm:grid-cols-3 gap-4">
-                  {bathroomTiers.map((t, idx) => {
-                    const silverPrice = bathroomTiers[0]?.price || 0;
-                    const surcharge = (t.price || 0) - silverPrice;
+                <h2 className="text-2xl font-semibold mb-2" style={{ fontFamily: "Outfit" }}>Configurazione bagni</h2>
+                <p className="text-sm text-zinc-600 mb-4">
+                  Il pacchetto <strong>{pkg?.name || ""}</strong> include <strong>1 bagno SILVER</strong>.
+                  Puoi <strong>cambiare il livello</strong> di quel bagno (paghi solo la differenza) o <strong>aggiungere altri bagni</strong> (paghi il prezzo intero del livello scelto).
+                </p>
+
+                {/* Inizializza primo bagno (incluso) se la lista è vuota — handled by useEffect below */}
+
+                <div className="space-y-3" data-testid="bathrooms-list">
+                  {(prev.bathrooms || []).map((b, idx) => {
+                    const silverBase = bathroomTiers[0]?.price || 0;
+                    const currentTier = bathroomTiers.find((t) => t.id === b.tier_id);
+                    const cost = b.included
+                      ? Math.max(0, (currentTier?.price || 0) - silverBase)
+                      : (currentTier?.price || 0);
                     return (
-                    <button key={t.id}
-                      onClick={() => setPrev((s) => ({ ...s, bathroom_tier: s.bathroom_tier === t.id ? null : t.id, bathroom_surcharge: s.bathroom_tier === t.id ? 0 : surcharge }))}
-                      className={`text-left border p-5 transition-all hover:-translate-y-0.5 ${prev.bathroom_tier === t.id ? "border-zinc-900 bg-zinc-50" : "border-zinc-200"}`}
-                      data-testid={`bagno-${t.id}`}
-                    >
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-xl font-semibold" style={{ fontFamily: "Outfit", color: t.color }}>{t.name}</span>
-                        {surcharge > 0 && <div className="mono text-xs text-orange-600">+{fmtEuro(surcharge)}</div>}
+                      <div key={b.id} className="border-2 border-zinc-200 p-4 bg-white" data-testid={`bath-row-${idx}`}>
+                        <div className="flex items-center justify-between mb-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-lg font-semibold" style={{ fontFamily: "Outfit" }}>Bagno #{idx + 1}</div>
+                              {b.included ? (
+                                <span className="text-[10px] mono uppercase tracking-widest bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">incluso nel pacchetto</span>
+                              ) : (
+                                <span className="text-[10px] mono uppercase tracking-widest bg-amber-100 text-amber-800 px-2 py-0.5 rounded">bagno extra</span>
+                              )}
+                            </div>
+                            <div className="text-xs text-zinc-500 mt-0.5">
+                              {b.included
+                                ? "Paghi solo la differenza rispetto al SILVER incluso."
+                                : "Paghi il prezzo intero del livello scelto (bagno aggiuntivo completo)."}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="mono text-2xl font-bold" style={{ color: currentTier?.color || "#0F172A" }}>
+                              {cost > 0 ? `+ ${fmtEuro(cost)}` : "incluso"}
+                            </div>
+                            {!b.included && (
+                              <button
+                                onClick={() => setPrev((s) => ({ ...s, bathrooms: s.bathrooms.filter((x) => x.id !== b.id) }))}
+                                className="text-xs text-rose-600 hover:text-rose-800 underline mt-1"
+                                data-testid={`bath-remove-${idx}`}
+                              >Rimuovi bagno</button>
+                            )}
+                          </div>
+                        </div>
+                        <div className="grid sm:grid-cols-3 gap-2">
+                          {bathroomTiers.map((t) => (
+                            <button
+                              key={t.id}
+                              onClick={() => setPrev((s) => ({ ...s, bathrooms: s.bathrooms.map((x) => x.id === b.id ? { ...x, tier_id: t.id } : x) }))}
+                              className={`text-left border-2 p-3 transition-all hover:-translate-y-0.5 ${b.tier_id === t.id ? "border-zinc-900 bg-zinc-50" : "border-zinc-200"}`}
+                              data-testid={`bath-${idx}-tier-${t.id}`}
+                            >
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-base font-semibold" style={{ fontFamily: "Outfit", color: t.color }}>{t.name}</span>
+                                {b.tier_id === t.id && <Check size={14} className="text-zinc-900" />}
+                              </div>
+                              <div className="text-[11px] text-zinc-600 leading-snug">{t.description}</div>
+                              <div className="mt-2 mono text-[11px] text-zinc-500">
+                                {b.included
+                                  ? (t.id === bathroomTiers[0]?.id ? "incluso" : `+ ${fmtEuro((t.price || 0) - silverBase)} (upgrade)`)
+                                  : `${fmtEuro(t.price || 0)} (intero)`
+                                }
+                              </div>
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                      <p className="text-xs text-zinc-600 leading-relaxed">{t.description}</p>
-                      {prev.bathroom_tier === t.id && <div className="mt-3 text-xs text-zinc-900 mono flex items-center gap-1"><Check size={12} /> selezionato</div>}
-                    </button>
                     );
                   })}
+                </div>
+
+                <Button
+                  variant="outline"
+                  className="rounded-sm mt-4 h-10"
+                  onClick={() => setPrev((s) => ({
+                    ...s,
+                    bathrooms: [...(s.bathrooms || []), { id: `bath-${Date.now()}`, tier_id: bathroomTiers[0]?.id, included: false }]
+                  }))}
+                  disabled={bathroomTiers.length === 0}
+                  data-testid="add-bathroom-btn"
+                >+ Aggiungi un altro bagno</Button>
+
+                {/* Sintesi finale costi bagni */}
+                <div className="mt-6 bg-zinc-50 border border-zinc-200 p-4">
+                  <div className="text-xs uppercase tracking-widest text-zinc-500 mb-2">Sintesi bagni</div>
+                  <div className="space-y-1.5 text-sm">
+                    {(prev.bathrooms || []).map((b, i) => {
+                      const silverBase = bathroomTiers[0]?.price || 0;
+                      const t = bathroomTiers.find((x) => x.id === b.tier_id);
+                      const cost = b.included ? Math.max(0, (t?.price || 0) - silverBase) : (t?.price || 0);
+                      return (
+                        <div key={b.id} className="flex justify-between">
+                          <span>Bagno #{i + 1} · {t?.name || "—"} {b.included ? "(incluso)" : "(extra)"}</span>
+                          <span className="mono">{cost > 0 ? `+ ${fmtEuro(cost)}` : "incluso"}</span>
+                        </div>
+                      );
+                    })}
+                    <div className="flex justify-between pt-2 mt-2 border-t border-zinc-300 font-semibold">
+                      <span>Totale aggiunte bagni</span>
+                      <span className="mono" data-testid="bagni-total">{fmtEuro(totals.bagno)}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -663,20 +790,43 @@ export default function PreventivoPacchetto() {
                   <Row label="Base pacchetto" value={fmtEuro(totals.base)} />
                   {totals.extras > 0 && <Row label="Extra lavorazioni" value={fmtEuro(totals.extras)} />}
                   {totals.optional > 0 && <Row label="Optional" value={fmtEuro(totals.optional)} />}
-                  {totals.bagno > 0 && <Row label={`Bagno ${bathroomTiers.find(t => t.id === prev.bathroom_tier)?.name || ""}`} value={fmtEuro(totals.bagno)} />}
-                  {/* DETTAGLIO OPTIONAL SELEZIONATI — mostra ognuno con descrizione */}
-                  {(prev.optionals || []).filter(o => o.selected).length > 0 && (
+                  {totals.bagno > 0 && <Row label={`Bagni aggiuntivi (${(prev.bathrooms || []).length || 1})`} value={fmtEuro(totals.bagno)} />}
+                  {/* DETTAGLIO BAGNI MULTIPLI */}
+                  {(prev.bathrooms || []).length > 0 && (
+                    <div className="pt-2" data-testid="riepilogo-bagni">
+                      <div className="label-kicker mb-2">Configurazione bagni</div>
+                      <ul className="text-sm space-y-1.5">
+                        {(prev.bathrooms || []).map((b, i) => {
+                          const silverBase = bathroomTiers[0]?.price || 0;
+                          const t = bathroomTiers.find((x) => x.id === b.tier_id);
+                          const cost = b.included ? Math.max(0, (t?.price || 0) - silverBase) : (t?.price || 0);
+                          return (
+                            <li key={b.id} className="flex justify-between border-b border-zinc-100 pb-1">
+                              <span>
+                                <strong>Bagno #{i + 1}</strong> · {t?.name || "—"}
+                                <span className="text-zinc-500 text-xs ml-1">{b.included ? "(incluso, paga differenza)" : "(extra completo)"}</span>
+                                {t?.description && <div className="text-[11px] text-zinc-500">{t.description}</div>}
+                              </span>
+                              <span className="mono font-semibold">{cost > 0 ? fmtEuro(cost) : <span className="text-zinc-400">incluso</span>}</span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+                  {/* DETTAGLIO OPTIONAL SELEZIONATI — usa prev.optional (lista reale) */}
+                  {(prev.optional || []).length > 0 && (
                     <div className="pt-2" data-testid="riepilogo-optional">
                       <div className="label-kicker mb-2">Optional selezionati</div>
                       <ul className="text-sm space-y-1.5">
-                        {(prev.optionals || []).filter(o => o.selected).map((o) => (
+                        {(prev.optional || []).map((o) => (
                           <li key={o.id} className="flex justify-between border-b border-zinc-100 pb-1">
                             <span>
                               <strong>{o.name}</strong>
                               {o.qty != null && o.qty > 0 && <span className="text-zinc-500"> · {fmtNum(o.qty, 2)} {o.unit || ""}</span>}
                               {o.descrizione && <div className="text-xs text-zinc-500">{o.descrizione}</div>}
                             </span>
-                            <span className="mono font-semibold">{fmtEuro(o.total_price || o.unit_price || 0)}</span>
+                            <span className="mono font-semibold">{fmtEuro(o.total || 0)}</span>
                           </li>
                         ))}
                       </ul>
@@ -906,14 +1056,31 @@ function exportPDF(prev, pkg, totals, numero) {
   (prev.optional || []).forEach((o) => {
     if (y > 275) { doc.addPage(); y = 20; }
     doc.text(o.name, 20, y);
-    doc.text(`${o.qty || 1}`, 110, y, { align: "right" });
-    doc.text("", 140, y);
-    doc.text(fmtEuro(o.total), W - 20, y, { align: "right" });
+    doc.text(`${fmtNum(o.qty || 1, 2)} ${o.unit || ""}`, 110, y, { align: "right" });
+    if (o.unit_price) doc.text(fmtEuro(o.unit_price), 140, y, { align: "right" });
+    doc.text(fmtEuro(o.total || 0), W - 20, y, { align: "right" });
     y += 5;
   });
-  if (totals.bagno > 0) {
+  // Bagni multipli
+  const silverBasePDF = 0; // Non disponibile qui senza tiers; usiamo total da prev.bathrooms.cost
+  if ((prev.bathrooms || []).length > 0) {
+    (prev.bathrooms || []).forEach((b, i) => {
+      if (y > 275) { doc.addPage(); y = 20; }
+      const label = `Bagno #${i + 1} · ${b.tier_id || ""} ${b.included ? "(incluso · paga differenza)" : "(extra completo)"}`;
+      // Recupera costo dal computo principale (totals.bagno) non disponibile per voce — passiamo solo etichetta
+      doc.text(label, 20, y);
+      y += 5;
+    });
+    if (totals.bagno > 0) {
+      doc.setFont("helvetica", "bold");
+      doc.text("Totale bagni aggiuntivi", 140, y, { align: "right" });
+      doc.text(fmtEuro(totals.bagno), W - 20, y, { align: "right" });
+      doc.setFont("helvetica", "normal");
+      y += 5;
+    }
+  } else if (totals.bagno > 0) {
     if (y > 275) { doc.addPage(); y = 20; }
-    doc.text(`Bagno ${prev.bathroom_tier}`, 20, y);
+    doc.text(`Bagno ${prev.bathroom_tier || ""}`, 20, y);
     doc.text(fmtEuro(totals.bagno), W - 20, y, { align: "right" });
     y += 5;
   }

@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState, useCallback, useEffect } from "react";
 import { snap, uid, polygonArea, polygonPerimeter, fmtNum, pointInPolygon, splitRoomByWall } from "./utils";
 
-const GRID = 10;
+const GRID = 0.1; // snap millimetrico (0.1 cm = 1 mm) — precisione richiesta dall'utente
 const INITIAL_VIEW = { x: -300, y: -200, w: 2200, h: 1600 };
 
 // Helper: trova la normale unitaria del muro più vicino al punto (x, y).

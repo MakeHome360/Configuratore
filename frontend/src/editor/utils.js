@@ -1,7 +1,7 @@
 // Geometry + cost helpers (units: cm in DB, pixels via scale)
 
 export const PX_PER_CM = 2;
-export const snap = (v, step = 10) => Math.round(v / step) * step;
+export const snap = (v, step = 0.1) => Math.round(v / step) * step;
 export const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 export const cmToM = (v) => v / 100;
 

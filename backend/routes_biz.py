@@ -142,22 +142,26 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
     @r.get("/stats/dashboard")
     async def dashboard_stats(user=Depends(get_current_user)):
         await ensure_global_seeds()
-        prev_total = await db.preventivi.count_documents({})
-        prev_ok = await db.preventivi.count_documents({"stato": "accettato"})
-        com_attive = await db.commesse.count_documents({"stato": {"$in": ["in_corso", "da_iniziare"]}})
+        # Filtro: admin vede tutto, gli altri ruoli vedono solo i propri dati
+        is_admin = user.get("role") == "admin"
+        prev_q = {} if is_admin else {"user_id": user["id"]}
+        com_q = {} if is_admin else {"venditore_id": user["id"]}
+        prev_total = await db.preventivi.count_documents(prev_q)
+        prev_ok = await db.preventivi.count_documents({**prev_q, "stato": "accettato"})
+        com_attive = await db.commesse.count_documents({**com_q, "stato": {"$in": ["in_corso", "da_iniziare"]}})
         fatturato = 0.0
-        async for c in db.commesse.find({}, {"_id": 0, "fatturato": 1}):
+        async for c in db.commesse.find(com_q, {"_id": 0, "fatturato": 1}):
             fatturato += float(c.get("fatturato") or 0)
         per_pkg = {}
-        async for p in db.preventivi.find({}, {"_id": 0, "package_id": 1, "tipo": 1}):
+        async for p in db.preventivi.find(prev_q, {"_id": 0, "package_id": 1, "tipo": 1}):
             pid = p.get("package_id") or "other"
             per_pkg[pid] = per_pkg.get(pid, 0) + 1
         stati_comm = {}
-        async for c in db.commesse.find({}, {"_id": 0, "stato": 1}):
+        async for c in db.commesse.find(com_q, {"_id": 0, "stato": 1}):
             s = c.get("stato") or "da_iniziare"
             stati_comm[s] = stati_comm.get(s, 0) + 1
-        ultimi_prev = await db.preventivi.find({}, {"_id": 0}).sort("created_at", -1).to_list(5)
-        ultime_com = await db.commesse.find({}, {"_id": 0}).sort("created_at", -1).to_list(5)
+        ultimi_prev = await db.preventivi.find(prev_q, {"_id": 0}).sort("created_at", -1).to_list(5)
+        ultime_com = await db.commesse.find(com_q, {"_id": 0}).sort("created_at", -1).to_list(5)
         return {
             "preventivi_totali": prev_total,
             "preventivi_approvati": prev_ok,
@@ -167,6 +171,7 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
             "stati_commesse": stati_comm,
             "ultimi_preventivi": ultimi_prev,
             "ultime_commesse": ultime_com,
+            "scope": "all" if is_admin else "own",
         }
 
     # ---------- Voci Backoffice (Prezzario) ----------

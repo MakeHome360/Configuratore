@@ -1528,7 +1528,9 @@ async def next_preventivo_number() -> str:
 
 @api.get("/preventivi")
 async def list_preventivi(user: Dict[str, Any] = Depends(get_current_user)):
-    docs = await db.preventivi.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    # Admin vede tutti i preventivi del sistema; gli altri ruoli vedono solo i propri
+    q = {} if user.get("role") == "admin" else {"user_id": user["id"]}
+    docs = await db.preventivi.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
     return docs
 
 

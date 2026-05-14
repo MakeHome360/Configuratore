@@ -4,6 +4,8 @@ import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { Dialog, DialogContent } from "../components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 import { Switch } from "../components/ui/switch";
 import { Separator } from "../components/ui/separator";
@@ -45,6 +47,8 @@ export default function PreventivoPacchetto() {
   // Prefill ref: sopravvive a re-mount (StrictMode dev). Applichiamo extras una sola volta.
   const prefillRef = useRef({ data: null, applied: false, loaded: false });
   const [infissiModalOpen, setInfissiModalOpen] = useState(false);
+  const [extraFreeOpen, setExtraFreeOpen] = useState(false);
+  const [extraFreeForm, setExtraFreeForm] = useState({ name: "", category: "EXTRA", unit: "pz", qty: 1, unit_price: 0, note: "" });
 
   const onInfissiConfirm = ({ items, totale }) => {
     const newRows = items.map((it, i) => ({
@@ -133,7 +137,7 @@ export default function PreventivoPacchetto() {
         return {
           id: it.id, voce_id: it.voce_id || it.id, name: it.name, category: it.category, unit: it.unit,
           qty_mode: it.qty_mode, qty_ratio: it.qty_ratio, qty_value: it.qty_value,
-          unit_price: existing && existing.unit_price != null ? existing.unit_price : (it.unit_price_pkg != null ? it.unit_price_pkg : (it.prezzo_rivendita || 0)),
+          unit_price: existing && existing.unit_price != null ? existing.unit_price : (it.prezzo_rivendita != null ? it.prezzo_rivendita : (it.unit_price_pkg != null ? it.unit_price_pkg : 0)),
           included_qty: parseFloat(included.toFixed(2)),
           qty_richiesta: existing ? existing.qty_richiesta : parseFloat(included.toFixed(2)),
           modificabile_dal_venditore: it.modificabile_dal_venditore !== false, // default true se non specificato
@@ -385,7 +389,8 @@ export default function PreventivoPacchetto() {
                   </div>
                 )}
                 <p className="text-sm text-zinc-600 mb-4">Tutto questo è già <strong>incluso nel prezzo a m² del pacchetto {pkg?.name}</strong>. Se il cliente vuole una quantità superiore a quella inclusa, paga solo la differenza al prezzo del backoffice.</p>
-                <div className="flex justify-end mb-3">
+                <div className="flex justify-end mb-3 gap-2">
+                  <Button variant="outline" size="sm" className="rounded-sm" onClick={() => setExtraFreeOpen(true)} data-testid="add-extra-free-btn">+ Aggiungi extra libero</Button>
                   <Button variant="outline" size="sm" className="rounded-sm" onClick={() => setInfissiModalOpen(true)} data-testid="add-infissi-btn">+ Aggiungi infissi (extra)</Button>
                 </div>
                 {["DEMOLIZIONI", "MURATURA", "IMPIANTI", "INFISSI", "SERVIZI", "EXTRA"].map((cat) => {
@@ -414,7 +419,7 @@ export default function PreventivoPacchetto() {
                             <th className="text-right py-2 px-3 font-medium w-20">U.M.</th>
                             <th className="text-right py-2 px-3 font-medium w-28">Incluse</th>
                             <th className="text-right py-2 px-3 font-medium w-28">Richieste</th>
-                            <th className="text-right py-2 px-3 font-medium w-28">€ / unità</th>
+                            <th className="text-right py-2 px-3 font-medium w-28 hidden" data-testid="th-price">€ / unità</th>
                             <th className="text-right py-2 px-3 font-medium w-32">Extra a pagamento</th>
                           </tr>
                         </thead>
@@ -447,9 +452,6 @@ export default function PreventivoPacchetto() {
                                 </td>
                                 <td className="py-2 px-3">
                                   {it.name}
-                                  {soglia != null && soglia > 0 && (
-                                    <div className="text-[10px] text-emerald-700 mono">Pacchetto copre fino a {fmtEuro(soglia)}/{it.unit}</div>
-                                  )}
                                 </td>
                                 <td className="py-2 px-3 text-right mono text-xs text-zinc-500">{it.unit}</td>
                                 <td className="py-2 px-3 text-right mono text-zinc-500">{fmtNum(it.included_qty, 2)}</td>
@@ -463,21 +465,18 @@ export default function PreventivoPacchetto() {
                                     data-testid={`lav-qty-${it.id}`}
                                   />
                                 </td>
-                                <td className="py-2 px-3 text-right">
+                                <td className="hidden">
                                   {it.modificabile_dal_venditore ? (
                                     <Input type="number" min={0} step="0.01" value={it.unit_price}
                                       onChange={(e) => {
                                         const v = Math.max(0, parseFloat(e.target.value) || 0);
                                         setPrev((s) => ({ ...s, items: s.items.map((x) => x.id === it.id ? { ...x, unit_price: v } : x) }));
                                       }}
-                                      className={`rounded-sm h-7 text-right mono text-xs w-20 ml-auto ${overSoglia ? "border-amber-400 bg-amber-50" : ""}`}
+                                      className={`rounded-sm h-7 text-right mono text-xs w-20 ml-auto`}
                                       data-testid={`lav-price-${it.id}`}
                                     />
                                   ) : (
-                                    <div className="mono text-xs text-zinc-700 inline-flex items-center gap-1" title="Voce NON modificabile dal venditore (impostato in Voci Backoffice)">
-                                      <span className="lock-icon text-zinc-400">🔒</span>
-                                      <span>{fmtEuro(it.unit_price)}</span>
-                                    </div>
+                                    <span>{fmtEuro(it.unit_price)}</span>
                                   )}
                                 </td>
                                 <td className={`py-2 px-3 text-right mono text-xs ${extraCost > 0 ? "text-orange-600 font-semibold" : "text-zinc-400"}`}>
@@ -665,29 +664,44 @@ export default function PreventivoPacchetto() {
                   {totals.extras > 0 && <Row label="Extra lavorazioni" value={fmtEuro(totals.extras)} />}
                   {totals.optional > 0 && <Row label="Optional" value={fmtEuro(totals.optional)} />}
                   {totals.bagno > 0 && <Row label={`Bagno ${bathroomTiers.find(t => t.id === prev.bathroom_tier)?.name || ""}`} value={fmtEuro(totals.bagno)} />}
-                  {/* DETTAGLIO VOCI DEL PREVENTIVO */}
-                  {(prev.items || []).length > 0 && (
+                  {/* DETTAGLIO OPTIONAL SELEZIONATI — mostra ognuno con descrizione */}
+                  {(prev.optionals || []).filter(o => o.selected).length > 0 && (
+                    <div className="pt-2" data-testid="riepilogo-optional">
+                      <div className="label-kicker mb-2">Optional selezionati</div>
+                      <ul className="text-sm space-y-1.5">
+                        {(prev.optionals || []).filter(o => o.selected).map((o) => (
+                          <li key={o.id} className="flex justify-between border-b border-zinc-100 pb-1">
+                            <span>
+                              <strong>{o.name}</strong>
+                              {o.qty != null && o.qty > 0 && <span className="text-zinc-500"> · {fmtNum(o.qty, 2)} {o.unit || ""}</span>}
+                              {o.descrizione && <div className="text-xs text-zinc-500">{o.descrizione}</div>}
+                            </span>
+                            <span className="mono font-semibold">{fmtEuro(o.total_price || o.unit_price || 0)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {/* DETTAGLIO VOCI: solo per preventivi a pacchetto NASCONDIAMO i prezzi unitari (è forfettario) */}
+                  {(prev.items || []).filter(it => (it.qty || it.qty_richiesta) > 0).length > 0 && (
                     <div className="pt-2" data-testid="riepilogo-voci-table">
-                      <div className="label-kicker mb-2">Dettaglio voci</div>
+                      <div className="label-kicker mb-2">Lavorazioni incluse</div>
+                      <p className="text-[10px] text-zinc-500 mb-2">Il prezzo del pacchetto è <strong>forfettario</strong> · queste sono le lavorazioni eseguite.</p>
                       <table className="w-full text-sm">
                         <thead className="text-[10px] uppercase text-zinc-500 border-b border-zinc-200"><tr>
-                          <th className="py-1.5 text-left">Voce</th>
+                          <th className="py-1.5 text-left">Lavorazione</th>
                           <th className="py-1.5 text-right w-20">Qty</th>
                           <th className="py-1.5 text-left w-16">U.M.</th>
-                          <th className="py-1.5 text-right w-24">Prezzo</th>
-                          <th className="py-1.5 text-right w-28">Totale</th>
                         </tr></thead>
                         <tbody className="divide-y divide-zinc-100">
-                          {(prev.items || []).map((it, i) => (
-                            <tr key={i} className={it.from_configuratore ? "bg-amber-50/40" : ""}>
+                          {(prev.items || []).filter(it => (it.qty || it.qty_richiesta) > 0).map((it, i) => (
+                            <tr key={i} className={it.from_configuratore ? "bg-amber-50/40" : (it.is_extra_libero ? "bg-blue-50/30" : "")}>
                               <td className="py-1.5">
-                                <div className="font-medium">{it.name}</div>
+                                <div className="font-medium">{it.name}{it.is_extra_libero && <span className="ml-2 text-[9px] uppercase bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">extra libero</span>}</div>
                                 {it.category && <div className="text-[10px] uppercase text-zinc-500">{it.category}</div>}
                               </td>
-                              <td className="py-1.5 text-right mono">{fmtNum(it.qty || 0, 2)}</td>
+                              <td className="py-1.5 text-right mono">{fmtNum(it.qty || it.qty_richiesta || 0, 2)}</td>
                               <td className="py-1.5 text-xs">{it.unit || "—"}</td>
-                              <td className="py-1.5 text-right mono">{fmtEuro(it.unit_price || 0)}</td>
-                              <td className="py-1.5 text-right mono font-semibold">{fmtEuro(it.total || (it.qty * it.unit_price) || 0)}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -735,6 +749,79 @@ export default function PreventivoPacchetto() {
         </div>
       </main>
       <InfissoQuickConfigurator open={infissiModalOpen} onClose={() => setInfissiModalOpen(false)} onConfirm={onInfissiConfirm} />
+      {/* Modal extra libero — qualsiasi voce extra con tutti i campi editabili */}
+      <Dialog open={extraFreeOpen} onOpenChange={setExtraFreeOpen}>
+        <DialogContent className="max-w-md" data-testid="extra-free-dialog">
+          <div className="space-y-3">
+            <div>
+              <h3 className="text-lg font-semibold">Aggiungi voce extra libera</h3>
+              <p className="text-xs text-zinc-500 mt-1">Aggiungi una qualsiasi lavorazione, materiale o servizio fuori pacchetto. Tutti i campi sono modificabili.</p>
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-widest text-zinc-500">Descrizione</Label>
+              <Input value={extraFreeForm.name} onChange={(e) => setExtraFreeForm(s => ({ ...s, name: e.target.value }))} placeholder="es. Carta da parati salone" className="mt-1" data-testid="extra-free-name" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs uppercase tracking-widest text-zinc-500">Categoria</Label>
+                <Select value={extraFreeForm.category} onValueChange={(v) => setExtraFreeForm(s => ({ ...s, category: v }))}>
+                  <SelectTrigger className="mt-1" data-testid="extra-free-cat"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="DEMOLIZIONI">Demolizioni</SelectItem>
+                    <SelectItem value="MURATURA">Muratura</SelectItem>
+                    <SelectItem value="IMPIANTI">Impianti</SelectItem>
+                    <SelectItem value="INFISSI">Infissi</SelectItem>
+                    <SelectItem value="SERVIZI">Servizi</SelectItem>
+                    <SelectItem value="EXTRA">Extra</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs uppercase tracking-widest text-zinc-500">U.M.</Label>
+                <Input value={extraFreeForm.unit} onChange={(e) => setExtraFreeForm(s => ({ ...s, unit: e.target.value }))} placeholder="pz, m², ml" className="mt-1" data-testid="extra-free-unit" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs uppercase tracking-widest text-zinc-500">Quantità</Label>
+                <Input type="number" min={0} step="0.01" value={extraFreeForm.qty} onChange={(e) => setExtraFreeForm(s => ({ ...s, qty: parseFloat(e.target.value) || 0 }))} className="mt-1 mono" data-testid="extra-free-qty" />
+              </div>
+              <div>
+                <Label className="text-xs uppercase tracking-widest text-zinc-500">€ / unità</Label>
+                <Input type="number" min={0} step="0.01" value={extraFreeForm.unit_price} onChange={(e) => setExtraFreeForm(s => ({ ...s, unit_price: parseFloat(e.target.value) || 0 }))} className="mt-1 mono" data-testid="extra-free-price" />
+              </div>
+            </div>
+            <div className="text-sm mono text-right text-zinc-700">Totale: <strong>{fmtEuro((extraFreeForm.qty || 0) * (extraFreeForm.unit_price || 0))}</strong></div>
+            <div>
+              <Label className="text-xs uppercase tracking-widest text-zinc-500">Note (facoltative)</Label>
+              <Input value={extraFreeForm.note} onChange={(e) => setExtraFreeForm(s => ({ ...s, note: e.target.value }))} className="mt-1 text-xs" data-testid="extra-free-note" />
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-zinc-200">
+              <Button variant="outline" size="sm" onClick={() => setExtraFreeOpen(false)}>Annulla</Button>
+              <Button size="sm" disabled={!extraFreeForm.name || extraFreeForm.qty <= 0} onClick={() => {
+                const newItem = {
+                  id: `extra-${Date.now()}`,
+                  voce_id: null,
+                  name: extraFreeForm.name,
+                  category: extraFreeForm.category,
+                  unit: extraFreeForm.unit || "pz",
+                  included_qty: 0,
+                  qty_richiesta: extraFreeForm.qty,
+                  unit_price: extraFreeForm.unit_price,
+                  unit_price_pkg: 0,
+                  modificabile_dal_venditore: true,
+                  excluded: false,
+                  is_extra_libero: true,
+                  note: extraFreeForm.note,
+                };
+                setPrev(s => ({ ...s, items: [...s.items, newItem] }));
+                setExtraFreeForm({ name: "", category: "EXTRA", unit: "pz", qty: 1, unit_price: 0, note: "" });
+                setExtraFreeOpen(false);
+              }} style={{ background: "var(--brand)", color: "white" }} data-testid="extra-free-save">Aggiungi al preventivo</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

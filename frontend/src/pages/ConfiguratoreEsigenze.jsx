@@ -218,9 +218,25 @@ export default function ConfiguratoreEsigenze() {
     nav(`/preventivopacchetto?prefill=1`);
   };
 
-  const goProgettazione = async (pkgChoice) => {
+  const goProgettazione = async (pkgChoice, mode = "empty") => {
     const lead = await saveLead({ pacchetto_scelto: pkgChoice.id });
-    const seed = buildSeedData(esigenze, dati.mq || 80, pkgChoice);
+    let seed;
+    if (mode === "empty") {
+      // Solo metadati: pacchetto, mq dichiarati, snapshot esigenze. Niente geometria pre-generata.
+      seed = {
+        walls: [], doors: [], windows: [], rooms: [], items: [],
+        electrical: [], plumbing: [], gas: [], hvac: [],
+        demolitions: [], tiling: [], circles: [], measurements: [],
+        packageRef: { package_id: pkgChoice.id, name: pkgChoice.name, mq_inclusi: dati.mq || 80, base_total: pkgChoice.total, seeded_mq: dati.mq || 80, seeded_total: pkgChoice.total },
+        roomHeight: 270, currency: "EUR",
+        seeded_from_configurator: true,
+        seeded_mode: "empty",
+        esigenze_snapshot: esigenze,
+      };
+    } else {
+      // Modalità esempio: genera la stanza dimostrativa con MEP (vecchio comportamento)
+      seed = buildSeedData(esigenze, dati.mq || 80, pkgChoice);
+    }
     try {
       const { data } = await api.post("/projects", {
         name: `Progetto ${dati.nome} ${dati.cognome}`.trim(),
@@ -332,14 +348,14 @@ export default function ConfiguratoreEsigenze() {
               {/* Prima scelta */}
               <PkgCard tier={result.primary} mq={dati.mq} dati={dati} primary
                 onPreventivo={() => goPreventivo(result.primary)}
-                onProgettazione={() => goProgettazione(result.primary)}
+                onProgettazione={(mode) => goProgettazione(result.primary, mode || "empty")}
                 testid="primary-pkg"
               />
               {/* Alternativa */}
               {result.alternative.id !== result.primary.id && (
                 <PkgCard tier={result.alternative} mq={dati.mq} dati={dati}
                   onPreventivo={() => goPreventivo(result.alternative)}
-                  onProgettazione={() => goProgettazione(result.alternative)}
+                  onProgettazione={(mode) => goProgettazione(result.alternative, mode || "empty")}
                   testid="alternative-pkg"
                 />
               )}
@@ -419,8 +435,11 @@ function PkgCard({ tier, mq, dati, primary, onPreventivo, onProgettazione, testi
             📝 Inizia Preventivo
           </Button>
           <Button onClick={onProgettazione} className="h-12 bg-amber-500 hover:bg-amber-600 text-white" data-testid={`${testid}-progettazione-btn`}>
-            ✏️ Progettazione + Preventivo
+            ✏️ Progetta nel CAD
           </Button>
+        </div>
+        <div className="text-[10px] text-zinc-500 leading-snug mt-2 px-1">
+          💡 <strong>Progetta nel CAD</strong>: parte da una <strong>planimetria vuota</strong> con il pacchetto già collegato. Disegnerai tu stanze e impianti — il preventivo si aggiornerà sui m² reali. <button onClick={(e) => { e.preventDefault(); if (window.confirm("Vuoi caricare un esempio dimostrativo? Verrà generata una stanza rettangolare di esempio con porte/finestre/impianti pre-impostati (potrai modificarli liberamente). Se preferisci partire da zero, clicca Annulla.")) onProgettazione("example"); }} className="underline text-zinc-700 hover:text-amber-600" data-testid={`${testid}-progettazione-example`}>Carica esempio dimostrativo</button>
         </div>
       </div>
     </div>

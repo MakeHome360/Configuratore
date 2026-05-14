@@ -205,6 +205,15 @@ export function buildPackageRef(pkg, projectData) {
     });
   }
   mq = round2(mq);
+  // FALLBACK: se la planimetria è ancora vuota (mq < 5) e il pacchetto è stato seedato dal configuratore
+  // con un valore di mq dichiarato dall'utente, usa quel valore come base provvisoria del forfait.
+  // Questo evita che il prezzo crolli a 0€ all'apertura del CAD dopo il configuratore.
+  let used_fallback_mq = false;
+  const seeded_mq = projectData?.packageRef?.seeded_mq || 0;
+  if (mq < 5 && seeded_mq > 0) {
+    mq = seeded_mq;
+    used_fallback_mq = true;
+  }
   const price = pkg.price_per_m2 || 0;
   const package_base_total = round2(price * mq);
   const voci_incluse = [];
@@ -243,6 +252,8 @@ export function buildPackageRef(pkg, projectData) {
     package_base_total,
     voci_incluse,
     package_area_polygon: pa?.polygon || null,
+    seeded_mq,
+    used_fallback_mq,
   };
 }
 

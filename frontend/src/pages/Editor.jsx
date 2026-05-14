@@ -2687,6 +2687,11 @@ function CostPanelV2({ estimate, packageRef, legacy, linkedPreventivo, saveAsPre
           {packageRef.package_base_total > 0 && (
             <div className="mono text-xs text-emerald-800 mt-1">Forfait base: {fmtEuro(packageRef.package_base_total)} ({fmtEuro(packageRef.price_per_m2 || 0)}/mq × {packageRef.mq_inclusi} mq)</div>
           )}
+          {packageRef.used_fallback_mq && (
+            <div className="mt-2 bg-amber-100 border border-amber-300 p-2 text-[11px] text-amber-900 leading-tight rounded" data-testid="fallback-mq-banner">
+              ⚠️ <strong>Stima provvisoria</strong> basata sui <strong>{packageRef.seeded_mq} m² dichiarati</strong> nel configuratore. Disegna le stanze reali nel CAD: il prezzo si aggiornerà automaticamente sui m² effettivi.
+            </div>
+          )}
         </div>
       )}
       <div>

@@ -272,6 +272,29 @@ async def register(body: RegisterReq):
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.users.insert_one(doc)
+    # Email di benvenuto all'utente + notifica admin per approvazione
+    try:
+        from email_service import send_welcome_email, send_email, _wrap, _btn, _cfg
+        await send_welcome_email(email, body.name, requested_role)
+        # Notifica admin
+        admin_users = await db.users.find({"role": "admin"}, {"_id": 0, "email": 1, "name": 1}).to_list(20)
+        if admin_users:
+            cfgv = _cfg()
+            html = _wrap(
+                f"<p>Nuova richiesta di registrazione su Sa di casa:</p>"
+                f"<ul><li><strong>Nome:</strong> {body.name}</li>"
+                f"<li><strong>Email:</strong> {email}</li>"
+                f"<li><strong>Ruolo richiesto:</strong> {requested_role}</li>"
+                f"<li><strong>Telefono:</strong> {body.phone or '—'}</li>"
+                f"<li><strong>Messaggio:</strong> {body.message or '—'}</li></ul>"
+                f"<p style='margin:24px 0;'>{_btn('Approva o rifiuta', cfgv['app_url'] + '/adminutenti')}</p>",
+                "Nuova registrazione da approvare"
+            )
+            for a in admin_users:
+                if a.get("email"):
+                    await send_email(a["email"], f"Nuova registrazione: {body.name} ({requested_role})", html)
+    except Exception as e:
+        logger.warning(f"[EMAIL register] errore: {e}")
     # NON fa auto-login: deve attendere approvazione admin
     return {
         "ok": True,
@@ -1679,6 +1702,27 @@ async def request_sconto(prev_id: str, body: Dict[str, Any], user: Dict[str, Any
     else:
         await db.sconto_richieste.insert_one(dict(doc))
     doc.pop("_id", None)
+    # NOTIFICA ADMIN via email
+    try:
+        from email_service import send_sconto_request_admin_email
+        voci_back = {v["id"]: v for v in await db.voci_backoffice.find({}, {"_id": 0}).to_list(3000)}
+        m_attuale = _calc_marginalita_preventivo(prev, voci_back)
+        m_se = _calc_marginalita_preventivo(prev, voci_back, sconto_simulato_pct=pct)
+        admin_users = await db.users.find({"role": "admin"}, {"_id": 0, "email": 1}).to_list(20)
+        for a in admin_users:
+            if a.get("email"):
+                await send_sconto_request_admin_email(
+                    to=a["email"],
+                    venditore_nome=doc["requested_by_name"] or "Venditore",
+                    preventivo_numero=doc["preventivo_numero"] or "—",
+                    cliente_nome=doc["cliente_nome"] or "Cliente",
+                    pct=pct,
+                    motivo=motivo,
+                    margine_attuale_pct=m_attuale.get("margine_pct") or 0,
+                    margine_se_approvo_pct=m_se.get("margine_pct") or 0,
+                )
+    except Exception as e:
+        logger.warning(f"[EMAIL sconto-request] errore: {e}")
     return doc
 
 
@@ -1730,6 +1774,23 @@ async def decide_sconto(rid: str, body: Dict[str, Any], user: Dict[str, Any] = D
             {"id": r["preventivo_id"]},
             {"$set": {"sconto_pct": pct_finale, "sconto_autorizzato_da": user.get("id"), "sconto_autorizzato_il": update["decided_at"]}},
         )
+    # NOTIFICA EMAIL al venditore con la decisione
+    try:
+        from email_service import send_sconto_decision_email
+        venditore = await db.users.find_one({"id": r.get("requested_by")}, {"_id": 0, "email": 1, "name": 1})
+        if venditore and venditore.get("email"):
+            await send_sconto_decision_email(
+                to=venditore["email"],
+                venditore_nome=venditore.get("name") or r.get("requested_by_name") or "Venditore",
+                preventivo_numero=r.get("preventivo_numero") or "—",
+                cliente_nome=r.get("cliente_nome") or "Cliente",
+                stato=new_stato,
+                pct_approvato=pct_finale if new_stato == "approvato" else None,
+                pct_richiesto=float(r.get("pct_richiesto") or 0),
+                admin_note=update["admin_note"],
+            )
+    except Exception as e:
+        logger.warning(f"[EMAIL sconto-decision] errore: {e}")
     return {"ok": True, **update}
 
 

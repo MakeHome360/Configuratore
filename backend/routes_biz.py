@@ -968,6 +968,18 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
             await seed_user_catalog(uid)
         except Exception:
             pass
+        # Invio email di invito con password temporanea
+        try:
+            from email_service import send_invite_email
+            await send_invite_email(
+                to=email,
+                name=body.name,
+                role=body.role,
+                temp_password=temp_password,
+                custom_message=getattr(body, "custom_message", "") or "",
+            )
+        except Exception as e:
+            logger.warning(f"[EMAIL invite] errore invio: {e}")
         return {
             "ok": True,
             "user_id": uid,

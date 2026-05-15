@@ -1,5 +1,71 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 63 — Feb 2026 — Email reali SMTP Aruba)
+
+**Richiesta utente**: "voglio la notifica e poi va bene. impostiamo le email reali nel senso che serve per la registrazione, inviti, notifiche, reminder ecc ecc"
+
+### 📧 Servizio Email centralizzato (SMTP Aruba)
+**Provider**: SMTP Aruba (server proprio del cliente, no provider esterno terzi).
+**Configurazione** (`/app/backend/.env`):
+- `SMTP_HOST=smtps.aruba.it`
+- `SMTP_PORT=465`
+- `SMTP_USE_SSL=true`
+- `SMTP_USER=noreply@sadicasa.it`
+- `SMTP_PASSWORD=***` (cifrata in .env, mai esposta al FE)
+- `SMTP_FROM_EMAIL=noreply@sadicasa.it`
+- `SMTP_FROM_NAME=Sa di casa`
+- `APP_PUBLIC_URL=https://cad-stima-cantiere.preview.emergentagent.com`
+
+**Libreria**: `aiosmtplib==5.1.0` (async, non blocca FastAPI). Aggiunta a `requirements.txt`.
+
+**Helper** (`/app/backend/email_service.py`):
+- `send_email(to, subject, html, text, reply_to, cc)` — funzione base, errori loggati ma non sollevati (best-effort)
+- `is_email_enabled()` — verifica config
+- Wrapper HTML responsive 600px con header dark, body, footer "non rispondere a questa email"
+- Template specifici già pronti:
+  - `send_welcome_email(to, name, role)` — registrazione
+  - `send_invite_email(to, name, role, temp_password, custom_message)` — invito utente generico (venditore, gestore, cliente, subappaltatore)
+  - `send_otp_email(to, name, otp, documento_nome)` — codice OTP firma documento
+  - `send_sconto_request_admin_email(...)` — notifica admin di nuova richiesta sconto (con marginalità ATTUALE vs SE-APPROVO)
+  - `send_sconto_decision_email(...)` — notifica venditore di approva/rifiuta (con icona, % approvato, nota admin)
+  - `send_reminder_email(to, name, subject, items, cta_label, cta_path)` — reminder generico (lista items + CTA)
+
+### 🔗 Integrazioni nei flussi business
+1. **Registrazione utente** (`server.py POST /auth/register`):
+   - Email di benvenuto all'utente (stato pending)
+   - Email a TUTTI gli admin: "Nuova registrazione da approvare" con nome, email, ruolo richiesto, telefono, messaggio + CTA a /adminutenti
+
+2. **Invito utente admin** (`routes_biz.py POST /users/invite`):
+   - Email all'invitato con password temporanea + CTA al login
+
+3. **Invito Portale Cliente** (`routes_round10.py POST /cliente-portal/invita`):
+   - Email al cliente con password temporanea + nota personalizzata sul portale + scadenza
+
+4. **Invito Subappaltatore** (`routes_round10.py POST /subappaltatori-portal/invita`):
+   - Email al sub con credenziali + nota su capacità del portale (preventivi, commesse, firma)
+
+5. **OTP firma documenti** (`routes_round10.py POST /firma/richiedi-otp`):
+   - Email al firmatario con codice OTP grande, scadenza 10 min
+   - Mantiene `dev_otp_code` nel response solo se `EMERGENT_DEV_MODE=true` (per facilità di test)
+
+6. **Notifica sconto admin** (`server.py POST /preventivi/{id}/sconto-richiesta`):
+   - Email a tutti gli admin con tabella: venditore, preventivo, cliente, % richiesta, margine ATTUALE vs SE-APPROVO (rosso se < 20%), motivo del venditore, CTA "Vai alle richieste sconto"
+
+7. **Notifica decisione sconto venditore** (`server.py PUT /sconto-richieste/{rid}/decide`):
+   - Email al venditore richiedente con icona ✓/✗, percentuale approvata (se diversa dalla richiesta), nota dell'admin
+
+### Test E2E
+- Test SMTP self-send a `noreply@sadicasa.it`: SUCCESS ✓
+- Test POST sconto-richiesta + email admin: `[EMAIL] inviata a ['admin@admin.it'] (subject=⚠ Richiesta sconto 12.0%)` ✓
+- Test PUT sconto/decide + email venditore: `[EMAIL] inviata a ['admin@admin.it'] (subject=✓ Sconto approvato)` ✓
+- Errore atteso solo su email seed `admin@ristruttura.app` (dominio inesistente, è solo seed iniziale dell'admin DB)
+
+### Note pratiche
+- Le email vengono inviate in async via `aiosmtplib` con SSL diretto su porta 465 (standard Aruba).
+- Tutti gli errori SMTP sono loggati ma NON bloccano il flusso business (es. se Aruba è down, la registrazione/sconto procedono comunque).
+- I template usano CSS inline + tabelle HTML compatibili con tutti i client email (Outlook incluso).
+- Reminder schedulato giornaliero: helper `send_reminder_email` pronto, da agganciare a un job APScheduler o cron quando ti serve (es. "Fasi cantiere in scadenza tra 3 giorni").
+
 ## Recent Updates (Round 62 — Feb 2026 — Sconto autorizzato + Maggiorazione mq + Computo tier bagni)
 
 ### 💰 Sconto preventivi con workflow di autorizzazione

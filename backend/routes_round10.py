@@ -448,6 +448,18 @@ def build_round10_router(db, get_current_user, jwt_create_access):
             "invited_by": user["id"],
             "invited_at": now_iso(),
         })
+        # Invio email al cliente con credenziali
+        try:
+            from email_service import send_invite_email
+            await send_invite_email(
+                to=body.email,
+                name=body.nome,
+                role="cliente",
+                temp_password=pwd,
+                custom_message=f"Sei stato invitato al Portale Cliente per la commessa {comm.get('numero','')}. Potrai consultare documenti, foto cantiere, SAL e firmare elettronicamente.",
+            )
+        except Exception as e:
+            logger.warning(f"[EMAIL invita-cliente] errore: {e}")
         # IMPORTANT: la password viene mostrata UNA VOLTA al venditore per essere comunicata al cliente
         return {
             "ok": True,
@@ -455,7 +467,7 @@ def build_round10_router(db, get_current_user, jwt_create_access):
             "password_temporanea": pwd,
             "scadenza": scadenza,
             "url_login": "/portale-cliente/login",
-            "messaggio": f"Comunica al cliente: email={body.email}, pwd={pwd}, scadenza={scadenza[:10]}",
+            "messaggio": f"Email inviata a {body.email}. Credenziali: pwd={pwd}, scadenza={scadenza[:10]}",
         }
 
     @r.get("/cliente-portal/me")
@@ -587,11 +599,21 @@ def build_round10_router(db, get_current_user, jwt_create_access):
             "used": False,
             "created_at": now_iso(),
         })
-        # In prod: invia email con codice. Per dev/test, restituisco il codice solo se DEV_MODE attivo.
+        # Invia email con codice OTP
+        try:
+            from email_service import send_otp_email
+            await send_otp_email(
+                to=user.get("email") or "",
+                name=user.get("name") or "Utente",
+                otp=otp,
+                documento_nome=doc.get("nome") or doc.get("titolo") or "Documento",
+            )
+        except Exception as e:
+            logger.warning(f"[EMAIL OTP] errore invio: {e}")
         dev_mode = os.environ.get("EMERGENT_DEV_MODE", "true").lower() == "true"
-        resp = {"ok": True, "scadenza": scad, "msg": "OTP inviato all'email registrata"}
+        resp = {"ok": True, "scadenza": scad, "msg": f"OTP inviato a {user.get('email','')}"}
         if dev_mode:
-            resp["dev_otp_code"] = otp
+            resp["dev_otp_code"] = otp  # in dev/test ritorna comunque per facilitare i test
         return resp
 
     class FirmaConfermaIn(BaseModel):
@@ -757,13 +779,25 @@ def build_round10_router(db, get_current_user, jwt_create_access):
             {"id": body.subappaltatore_id},
             {"$set": {"portale_email": body.email.lower(), "portale_invitato_il": now_iso(), "updated_at": now_iso()}},
         )
+        # Invio email di invito al subappaltatore
+        try:
+            from email_service import send_invite_email
+            await send_invite_email(
+                to=body.email,
+                name=sub.get("ragione_sociale") or sub.get("nome") or "Subappaltatore",
+                role="subappaltatore",
+                temp_password=pwd,
+                custom_message="Sei stato invitato al Portale Subappaltatori di Sa di casa. Potrai visualizzare le commesse assegnate, caricare preventivi, gestire i lavori e firmare i documenti elettronicamente.",
+            )
+        except Exception as e:
+            logger.warning(f"[EMAIL invita-sub] errore: {e}")
         return {
             "ok": True,
             "user_id": uid_,
             "email": body.email,
             "password_temporanea": pwd,
             "scadenza": expires_at,
-            "messaggio": "Comunica queste credenziali al subappaltatore. La password viene mostrata UNA SOLA VOLTA.",
+            "messaggio": f"Email di invito inviata a {body.email}. La password viene mostrata UNA SOLA VOLTA.",
         }
 
     @r.put("/commesse/{cid}/assegna-gestore")

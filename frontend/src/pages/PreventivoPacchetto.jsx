@@ -22,7 +22,7 @@ const SOGLIA_SCONTO_AUTO = 5; // Venditore può applicare fino a 5% senza autori
 
 export default function PreventivoPacchetto() {
   const { id } = useParams();
-  const isNew = !id;
+  const isNew = !id || id === "new";
   const nav = useNavigate();
   const { user } = useAuth();
   const isAdmin = (user?.role || "").toLowerCase() === "admin";
@@ -351,8 +351,13 @@ export default function PreventivoPacchetto() {
           </button>
           <div className="flex items-center gap-3">
             <div className="mono text-xs text-zinc-500">{numero || "nuovo"}</div>
+            {numero && !isNew && (
+              <Button variant="outline" className="rounded-sm h-9 border-emerald-600 text-emerald-700 hover:bg-emerald-50" onClick={() => nav(`/preventivi/${id}/stampa`)} data-testid="open-stampa-btn">
+                <FileText size={14} className="mr-2" /> Anteprima stampa
+              </Button>
+            )}
             <Button variant="outline" className="rounded-sm h-9" onClick={() => exportPDF(prev, pkg, totals, numero)} data-testid="pdf-preventivo-button">
-              <Download size={14} className="mr-2" /> PDF
+              <Download size={14} className="mr-2" /> PDF rapido
             </Button>
             <Button className="rounded-sm h-9 bg-zinc-900 hover:bg-zinc-800" onClick={save} disabled={saving} data-testid="save-preventivo-button">
               <Save size={14} className="mr-2" /> Salva

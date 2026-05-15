@@ -6,14 +6,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Save, Plus } from "lucide-react";
+import { Save, Plus, ShieldCheck, Clock, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { InfissoQuickConfigurator } from "@/components/InfissoQuickConfigurator";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { useAuth } from "@/contexts/AuthContext";
+
+const SOGLIA_SCONTO_AUTO = 5; // Venditore può applicare fino a 5% senza autorizzazione
 
 export default function PreventivoComposite() {
   const { id } = useParams();
-  const isNew = !id;
+  const isNew = !id || id === "new";
   const nav = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = (user?.role || "").toLowerCase() === "admin";
   const [sections, setSections] = useState([]);
   const [cliente, setCliente] = useState({ nome: "", telefono: "", email: "", indirizzo: "" });
   const [mq, setMq] = useState(0);
@@ -21,11 +27,16 @@ export default function PreventivoComposite() {
   const [sicurezzaPct, setSicurezzaPct] = useState(3);
   const [direzionePct, setDirezionePct] = useState(5);
   const [sconto, setSconto] = useState(0);
+  const [scontoPct, setScontoPct] = useState(0);
   const [ivaPct, setIvaPct] = useState(10);
   const [note, setNote] = useState("");
   const [activeSection, setActiveSection] = useState(null);
   const [infissiExtras, setInfissiExtras] = useState([]); // [{id,name,qty,unit,price,unit_price,infisso_meta}]
   const [infissiModalOpen, setInfissiModalOpen] = useState(false);
+  const [scontoReq, setScontoReq] = useState(null);
+  const [scontoDialog, setScontoDialog] = useState(false);
+  const [scontoForm, setScontoForm] = useState({ pct: 10, motivo: "" });
+  const [savedId, setSavedId] = useState(null);
 
   const onInfissiConfirm = ({ items }) => {
     const rows = items.map((it, i) => ({
@@ -48,7 +59,13 @@ export default function PreventivoComposite() {
       api.get(`/preventivi/${id}`).then((r) => {
         const d = r.data;
         setCliente(d.cliente || {}); setMq(d.mq || 0); setNote(d.note || "");
-        setSconto(d.sconto_eur || 0); setIvaPct(d.iva_pct || 10);
+        setSconto(d.sconto_eur || 0); setScontoPct(d.sconto_pct || 0); setIvaPct(d.iva_pct || 10);
+        setSavedId(d.id);
+        // Carica eventuale richiesta sconto attiva
+        api.get(`/sconto-richieste`).then(sr => {
+          const rows = (sr.data || []).filter(rr => rr.preventivo_id === d.id);
+          if (rows.length) setScontoReq(rows[0]);
+        }).catch(() => {});
         setSicurezzaPct(d.sicurezza_pct ?? 3); setDirezionePct(d.direzione_lavori_pct ?? 5);
         const sel = {};
         (d.composite_selections || []).forEach((s) => { sel[s.voce_id] = { qty: s.qty, price: s.price }; });
@@ -75,7 +92,19 @@ export default function PreventivoComposite() {
 
   const sicurezzaAmt = totaleVoci * (sicurezzaPct / 100);
   const direzioneAmt = totaleVoci * (direzionePct / 100);
-  const imponibile = totaleVoci + infissiTot + sicurezzaAmt + direzioneAmt - (sconto || 0);
+  // Maggiorazione mq piccole: <40 a corpo (×1.15 e mq min 40), <60 +10%
+  const mqAdj = useMemo(() => {
+    const m = parseFloat(mq || 0);
+    if (!m) return { multiplier: 1, mode: "normal" };
+    if (m < 40) return { multiplier: 1.15, mode: "a_corpo" };
+    if (m < 60) return { multiplier: 1.10, mode: "maggiorato" };
+    return { multiplier: 1, mode: "normal" };
+  }, [mq]);
+  // Applica maggiorazione SOLO al totale voci (manodopera/materiali), non a infissi che sono extra fissi
+  const totaleVociMaggiorato = totaleVoci * mqAdj.multiplier;
+  const imponibilePreScontoPct = totaleVociMaggiorato + infissiTot + sicurezzaAmt + direzioneAmt - (sconto || 0);
+  const scontoPctAmt = imponibilePreScontoPct * (scontoPct || 0) / 100;
+  const imponibile = imponibilePreScontoPct - scontoPctAmt;
   const iva = imponibile * (ivaPct / 100);
   const totale = imponibile + iva;
 
@@ -93,12 +122,14 @@ export default function PreventivoComposite() {
       tipo: "composite", cliente, mq, composite_selections: comp,
       infissi_extras: infissiExtras,
       sicurezza_pct: sicurezzaPct, direzione_lavori_pct: direzionePct,
-      sconto_eur: sconto, iva_pct: ivaPct, note,
+      sconto_eur: sconto, sconto_pct: scontoPct, iva_pct: ivaPct, note,
+      mq_adjustment_mode: mqAdj.mode, mq_multiplier: mqAdj.multiplier,
       totale_iva_incl: totale, totale_iva_escl: imponibile,
     };
     try {
       if (isNew) {
         const { data } = await api.post("/preventivi", payload);
+        setSavedId(data.id);
         toast.success("Preventivo salvato"); nav(`/preventivocomposite/${data.id}`, { replace: true });
       } else {
         await api.put(`/preventivi/${id}`, payload); toast.success("Aggiornato");
@@ -163,6 +194,51 @@ export default function PreventivoComposite() {
                 </button>
               </div>
             )}
+            {/* Banner maggiorazione mq piccole */}
+            {mqAdj.mode !== "normal" && (
+              <div className={`mt-3 p-2.5 rounded border-l-4 text-xs ${mqAdj.mode === "a_corpo" ? "bg-rose-50 border-rose-500 text-rose-900" : "bg-amber-50 border-amber-500 text-amber-900"}`} data-testid="comp-mq-banner">
+                <div className="flex items-start gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <strong>{mqAdj.mode === "a_corpo" ? "Modalità A CORPO" : "+10% mq piccole"}</strong>
+                    <div className="mt-0.5 leading-snug">
+                      {mqAdj.mode === "a_corpo" ? "Sotto i 40 m² i costi fissi non scalano: applico +15% sul totale voci." : "Sotto i 60 m² il totale voci è maggiorato del 10%."}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Sezione SCONTO con autorizzazione */}
+            <div className="mt-3 p-2.5 border border-zinc-200 rounded bg-zinc-50">
+              <div className="flex items-center justify-between mb-1">
+                <Label className="text-xs uppercase tracking-widest text-zinc-700">Sconto %</Label>
+                {scontoReq && scontoReq.stato === "pending" && <span className="text-[9px] mono uppercase bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded flex items-center gap-0.5"><Clock className="h-2.5 w-2.5" /> in attesa</span>}
+                {scontoReq && scontoReq.stato === "approvato" && <span className="text-[9px] mono uppercase bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded flex items-center gap-0.5"><ShieldCheck className="h-2.5 w-2.5" /> {scontoReq.pct_approvato || scontoReq.pct_richiesto}% OK</span>}
+              </div>
+              <Input
+                type="number" min={0} max={100} step="0.5" value={scontoPct}
+                onChange={(e) => {
+                  const v = Math.max(0, Math.min(100, parseFloat(e.target.value) || 0));
+                  if (!isAdmin && v > SOGLIA_SCONTO_AUTO) {
+                    setScontoPct(SOGLIA_SCONTO_AUTO);
+                    setScontoForm({ pct: v, motivo: scontoReq?.motivo || "" });
+                    setScontoDialog(true);
+                    toast.info(`Sconto > ${SOGLIA_SCONTO_AUTO}%: serve autorizzazione admin`);
+                    return;
+                  }
+                  setScontoPct(v);
+                }}
+                className="h-8 mono" data-testid="comp-sconto-pct"
+              />
+              <div className="text-[10px] text-zinc-500 mt-1">
+                {isAdmin ? "Admin: libero." : `Venditore: fino al ${SOGLIA_SCONTO_AUTO}% diretto`}
+              </div>
+              {!isAdmin && (
+                <Button variant="outline" size="sm" className="mt-1.5 w-full h-7 text-[11px]" onClick={() => { setScontoForm({ pct: Math.max(scontoPct, SOGLIA_SCONTO_AUTO + 1), motivo: scontoReq?.motivo || "" }); setScontoDialog(true); }} disabled={!savedId && isNew} data-testid="comp-sconto-richiedi">
+                  Richiedi sconto maggiore
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="lg:col-span-3 bg-white border border-zinc-200 rounded-lg p-5">
@@ -264,6 +340,41 @@ export default function PreventivoComposite() {
         <div className="mt-3"><Label className="text-xs">Note</Label><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></div>
       </Page>
       <InfissoQuickConfigurator open={infissiModalOpen} onClose={() => setInfissiModalOpen(false)} onConfirm={onInfissiConfirm} />
+      {/* Dialog: richiesta sconto > 5% per autorizzazione admin */}
+      <Dialog open={scontoDialog} onOpenChange={setScontoDialog}>
+        <DialogContent className="max-w-md" data-testid="comp-sconto-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-amber-600" /> Richiesta sconto maggiore del {SOGLIA_SCONTO_AUTO}%</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="bg-amber-50 border border-amber-200 p-3 rounded text-xs text-amber-900">Per applicare uno sconto superiore al {SOGLIA_SCONTO_AUTO}% serve l'autorizzazione dell'admin. Riceverai notifica appena viene presa una decisione.</div>
+            <div>
+              <Label className="text-xs uppercase tracking-widest text-zinc-500">% sconto richiesta</Label>
+              <Input type="number" min={SOGLIA_SCONTO_AUTO + 0.5} max={100} step="0.5" value={scontoForm.pct} onChange={(e) => setScontoForm(s => ({ ...s, pct: parseFloat(e.target.value) || 0 }))} className="mono mt-1" data-testid="comp-sconto-req-pct" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-widest text-zinc-500">Motivazione (obbligatoria)</Label>
+              <Textarea value={scontoForm.motivo} onChange={(e) => setScontoForm(s => ({ ...s, motivo: e.target.value }))} placeholder="Es: cliente in trattativa, fidelizzazione, opportunità referral..." rows={4} className="mt-1" data-testid="comp-sconto-req-motivo" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScontoDialog(false)}>Annulla</Button>
+            <Button disabled={scontoForm.pct <= SOGLIA_SCONTO_AUTO || !scontoForm.motivo.trim() || (!savedId && isNew)}
+              style={{ background: "#0F172A", color: "white" }}
+              onClick={async () => {
+                try {
+                  const targetId = savedId || id;
+                  const { data } = await api.post(`/preventivi/${targetId}/sconto-richiesta`, { pct: scontoForm.pct, motivo: scontoForm.motivo.trim() });
+                  setScontoReq(data);
+                  setScontoDialog(false);
+                  toast.success(`Richiesta inviata all'admin (${data.pct_richiesto}%)`);
+                } catch (e) { toast.error("Errore: " + (e?.response?.data?.detail || e.message)); }
+              }}
+              data-testid="comp-sconto-req-send"
+            >Invia richiesta all'admin</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1559,7 +1559,9 @@ async def list_preventivi(user: Dict[str, Any] = Depends(get_current_user)):
 
 @api.get("/preventivi/{prev_id}")
 async def get_preventivo(prev_id: str, user: Dict[str, Any] = Depends(get_current_user)):
-    doc = await db.preventivi.find_one({"id": prev_id, "user_id": user["id"]}, {"_id": 0})
+    # Admin può leggere qualsiasi preventivo; gli altri solo i propri
+    q = {"id": prev_id} if (user.get("role") or "").lower() == "admin" else {"id": prev_id, "user_id": user["id"]}
+    doc = await db.preventivi.find_one(q, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Preventivo non trovato")
     return doc

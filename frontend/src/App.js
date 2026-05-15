@@ -46,6 +46,7 @@ import AdminImpostazioni from "@/pages/admin/AdminImpostazioni";
 import AdminDocumentiTemplate from "@/pages/admin/AdminDocumentiTemplate";
 import AdminMaterialiTemplate from "@/pages/admin/AdminMaterialiTemplate";
 import AdminScontoRichieste from "@/pages/admin/AdminScontoRichieste";
+import PreventivoStampa from "@/pages/PreventivoStampa";
 import AdminBlog from "@/pages/admin/AdminBlog";
 import Blog from "@/pages/Blog";
 import BlogPost from "@/pages/BlogPost";
@@ -137,6 +138,7 @@ function App() {
             <Route path="/admindocumentitemplate" element={P(AdminDocumentiTemplate)} />
             <Route path="/adminmaterialitemplate" element={P(AdminMaterialiTemplate)} />
             <Route path="/adminscontorichieste" element={P(AdminScontoRichieste)} />
+            <Route path="/preventivi/:id/stampa" element={P(PreventivoStampa)} />
             <Route path="/adminblog" element={P(AdminBlog)} />
             {/* Round 10: Cantieri / Subappaltatori / Portale Cliente */}
             <Route path="/dashboard-subappaltatori" element={P(DashboardSubappaltatori)} />

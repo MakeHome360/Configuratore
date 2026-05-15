@@ -1,5 +1,75 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 64 — Feb 2026 — Riepilogo stampabile + Composite sconto/maggiorazione)
+
+**Richieste utente** (in ordine):
+1. "il riepilogo del preventivo devi metterlo innanzitutto che si possa stampare e poi deve essere su carta intestata e deve essere figo e costruito per invogliare il cliente a comprare"
+2. "hai sistemato le voci del riepilogo preventivo che riportavano i prezzi di acquisto? e poi li hai proprio tolti?"
+3. "Replicare logica sconto+maggiorazione anche in PreventivoComposite"
+
+### 🖨 PreventivoStampa.jsx — pagina A4 vendor-friendly
+Nuova route `/preventivi/:id/stampa`. Componente standalone che renderizza un foglio A4 pulito, stampabile e accattivante.
+
+**Struttura del documento** (in ordine top-down):
+1. **Carta intestata** — logo azienda (o iniziale stilizzata), ragione sociale + sito, indirizzo, telefono, email, P.IVA. Bordo inferiore colorato col `colore_primario` del brand.
+2. **Titolo** — "Proposta di ristrutturazione" + `Preventivo PRV-XXXX` + date emissione/validità (30 giorni).
+3. **Cliente + Pacchetto** — riquadri side-by-side con dati cliente e icona pacchetto scelto, badge maggiorazione mq se applicabile.
+4. **HERO TOTALE** — banner gradient pieno schermo con il totale evidenziato a 6xl/72px, copy "Investimento totale chiavi in mano" + "IVA inclusa · Nessun costo nascosto". Pill verde sconto se applicato.
+5. **Cosa è incluso** — 6 pill (Manodopera, Impianti, Finiture, Pratiche, Garanzia, Assistenza) + tabella lavorazioni in colonne (qty + unità, NO prezzi singoli forfait).
+6. **Configurazione bagni** — card per ogni bagno con badge Incluso/Aggiuntivo, tier, color dot, descrizione tier.
+7. **Optional** — tabella con descrizione e prezzo totale (qui sì il prezzo è visibile perché non forfait).
+8. **Breakdown totali** — Base / Extra / Optional / Bagni / Subtotale / Sconto / IVA / TOTALE chiavi in mano (bordo nero spesso).
+9. **Perché scegliere noi** — 4 feature di vendita (prezzo bloccato, PM dedicato, materiali, garanzia).
+10. **Termini pagamento** — 30% firma + 40% SAL + 30% saldo, note preventivo, validità.
+11. **CTA non stampabile** — pulsanti telefono + email + conferma.
+12. **Firma cliente + Firma azienda** — riga firma per accettazione cartacea.
+
+**Toolbar non-stampabile** in alto: "Torna al preventivo" + "Stampa o salva come PDF" (window.print()).
+
+**CSS print**:
+```css
+@media print {
+  @page { size: A4; margin: 0; }
+  .print:hidden { display: none !important; }
+}
+```
+
+**Fix gradient hero**: se `colore_primario` non è hex (es. "teal" parola CSS), usa fallback senza alpha per evitare `tealdd` invalido.
+
+### 🚫 Prezzi acquisto: confermato che NON appaiono nel riepilogo
+Verificato `PreventivoPacchetto.jsx`: nessun riferimento a `prezzo_acquisto` nel codice. Nello step 6 (Riepilogo) e nel nuovo `PreventivoStampa.jsx`:
+- Voci del pacchetto: SOLO descrizione + qty + unità (formula forfettaria)
+- Banner esplicito "Il prezzo del pacchetto è forfettario · le singole voci/quantità sono indicative e non determinano un prezzo unitario al cliente"
+- Optional ed extra liberi: prezzo totale visibile (è giusto, sono opzioni aggiuntive non forfait)
+- Bagni: nel riepilogo solo tier/descrizione, nessun prezzo singolo (sono inclusi nel hero totale)
+
+### 💰📐 PreventivoComposite.jsx — replica sconto autorizzato + maggiorazione mq
+Stessa logica già implementata in `PreventivoPacchetto` ora applicata anche al Composite:
+- `useAuth()` → `isAdmin` flag
+- `mqAdj` useMemo: <40 mq = ×1.15 (a corpo), <60 = +10%, else normale. Applicato al `totaleVoci`.
+- Banner mq nella sidebar sezioni (rosso/amber) con icona AlertTriangle + spiegazione concisa
+- Campo `scontoPct` separato da `sconto` EUR pre-esistente (entrambi convivono)
+- Cap automatico a 5% se ruolo venditore + apertura Dialog richiesta autorizzazione (uguale pattern)
+- Caricamento richiesta sconto attiva su `useEffect` (badge in attesa/approvato/rifiutato)
+- Dialog richiesta sconto identico a PreventivoPacchetto (motivo obbligatorio + invio admin)
+
+### 🐛 Bug fix collaterali
+- `isNew = !id || id === "new"` in PreventivoComposite/PreventivoPacchetto/PreventivoBagno: il route `/preventivo*/new` veniva interpretato come `id="new"` e tentava di caricare un preventivo inesistente. Fix uniforme.
+- `GET /preventivi/{id}`: admin ora vede tutti i preventivi (prima 404 per quelli non suoi). Mantiene filter user_id per non-admin.
+- Bottone "PDF rapido" rinominato per chiarezza, accanto al nuovo "Anteprima stampa" (verde, evidenziato).
+
+### File toccati
+- `frontend/src/pages/PreventivoStampa.jsx` (NUOVO, ~280 righe)
+- `frontend/src/pages/PreventivoComposite.jsx` (sconto + maggiorazione + dialog)
+- `frontend/src/pages/PreventivoPacchetto.jsx` (bottone Anteprima stampa, isNew fix)
+- `frontend/src/pages/PreventivoBagno.jsx` (isNew fix)
+- `frontend/src/App.js` (nuova route)
+- `backend/server.py` (admin vede tutti i preventivi singoli)
+
+### Verifica E2E
+- Screenshot PreventivoStampa: carta intestata, hero teal con 35.629€, breakdown, "Perché scegliere noi", termini, CTA, firma — tutto perfetto ✓
+- Composite/new: nessun runtime error 404, sconto-pct input visibile, banner mq compare a mq=30/50 ✓
+
 ## Recent Updates (Round 63 — Feb 2026 — Email reali SMTP Aruba)
 
 **Richiesta utente**: "voglio la notifica e poi va bene. impostiamo le email reali nel senso che serve per la registrazione, inviti, notifiche, reminder ecc ecc"

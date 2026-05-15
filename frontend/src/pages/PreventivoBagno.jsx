@@ -11,7 +11,7 @@ import { toast } from "sonner";
 
 export default function PreventivoBagno() {
   const { id } = useParams();
-  const isNew = !id;
+  const isNew = !id || id === "new";
   const nav = useNavigate();
   const [config, setConfig] = useState({ tiers: [], manodopera_base: 6500 });
   const [cliente, setCliente] = useState({ nome: "", telefono: "", email: "", indirizzo: "" });

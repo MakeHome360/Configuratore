@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Save, Plus, ShieldCheck, Clock, AlertTriangle } from "lucide-react";
+import { Save, Plus, ShieldCheck, Clock, AlertTriangle, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { InfissoQuickConfigurator } from "@/components/InfissoQuickConfigurator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -336,6 +336,11 @@ export default function PreventivoComposite() {
           <div><Label className="text-xs">Sconto €</Label><Input type="number" min={0} step="1" value={sconto} onChange={(e) => setSconto(Math.max(0, Number(e.target.value) || 0))} /></div>
           <div><Label className="text-xs">IVA %</Label><Input type="number" min={0} max={100} step="0.5" value={ivaPct} onChange={(e) => setIvaPct(Math.max(0, Math.min(100, Number(e.target.value) || 10)))} /></div>
           <Button onClick={save} data-testid="comp-save" style={{ background: "var(--brand)", color: "white" }}><Save className="h-4 w-4 mr-2" />Salva Preventivo</Button>
+          {savedId && !isNew && (
+            <Button variant="outline" onClick={() => nav(`/preventivocomposite/${savedId || id}/stampa`)} className="border-emerald-600 text-emerald-700 hover:bg-emerald-50" data-testid="comp-stampa">
+              <FileText className="h-4 w-4 mr-2" />Anteprima stampa
+            </Button>
+          )}
         </div>
         <div className="mt-3"><Label className="text-xs">Note</Label><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></div>
       </Page>

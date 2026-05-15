@@ -2,9 +2,10 @@ import React, { useEffect, useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import { Button } from "../components/ui/button";
-import { ArrowLeft, Printer, Mail, ShieldCheck, Sparkles, CheckCircle2, Award, Hammer, Wrench, FileText } from "lucide-react";
+import { ArrowLeft, Printer, Mail, Sparkles, CheckCircle2, Award, Hammer, Wrench, FileText, Send } from "lucide-react";
 import { fmtEuro, fmtNum } from "../editor/utils";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 /**
  * Pagina di stampa preventivo: A4, carta intestata, design vendor-friendly.
@@ -30,6 +31,9 @@ export default function PreventivoStampa() {
   const [azienda, setAzienda] = useState({});
   const [loading, setLoading] = useState(true);
 
+  const [incaricato, setIncaricato] = useState(null);
+  const [emailSending, setEmailSending] = useState(false);
+
   useEffect(() => {
     (async () => {
       try {
@@ -43,13 +47,40 @@ export default function PreventivoStampa() {
         setPkg((packs.data || []).find(x => x.id === p.data.package_id));
         setBathroomTiers(bt.data || []);
         setAzienda(az.data || {});
+        // Carica anche l'utente "incaricato" che ha creato il preventivo
+        if (p.data.user_id) {
+          try {
+            const u = await api.get(`/users/${p.data.user_id}`);
+            setIncaricato(u.data);
+          } catch {}
+        }
       } catch (e) { console.error(e); }
       setLoading(false);
     })();
   }, [id]);
 
   const totals = useMemo(() => {
-    if (!prev || !pkg) return null;
+    if (!prev) return null;
+    // ---- MODALITÀ COMPOSITE ----
+    if (prev.tipo === "composite" || !pkg) {
+      const compSel = prev.composite_selections || {};
+      const voci_amount = Object.values(compSel).reduce((s, v) => s + (v.qty || 0) * (v.price || 0), 0);
+      const m = parseFloat(prev.mq || 0);
+      let multiplier = 1;
+      if (m > 0 && m < 40) multiplier = 1.15;
+      else if (m > 0 && m < 60) multiplier = 1.10;
+      const voci_magg = voci_amount * multiplier;
+      const infissi = (prev.infissi_extras || []).reduce((s, i) => s + ((i.qty || 0) * (i.unit_price || i.price || 0)), 0);
+      const sic = voci_amount * ((prev.sicurezza_pct || 0) / 100);
+      const dir = voci_amount * ((prev.direzione_lavori_pct || 0) / 100);
+      const pre_sconto = voci_magg + infissi + sic + dir - (prev.sconto_eur || 0);
+      const sconto_pct = pre_sconto * ((prev.sconto_pct || 0) / 100);
+      const imponibile = pre_sconto - sconto_pct;
+      const iva = imponibile * ((prev.iva_pct || 10) / 100);
+      const total = imponibile + iva;
+      return { mode: "composite", voci_amount, voci_magg, infissi, sic, dir, sconto_pct, imponibile, iva, total, multiplier };
+    }
+    // ---- MODALITÀ PACCHETTO (esistente) ----
     const mq = parseFloat(prev.mq || 0);
     let multiplier = 1, mq_eff = mq;
     if (mq < 40) { multiplier = 1.15; mq_eff = 40; }
@@ -85,11 +116,13 @@ export default function PreventivoStampa() {
     const after = subtotal - sconto;
     const iva = after * (prev.iva_pct || 10) / 100;
     const total = after + iva;
-    return { base, extras, optional, bagno, subtotal, sconto, iva, total, multiplier, mq_eff };
+    return { mode: "pacchetto", base, extras, optional, bagno, subtotal, sconto, iva, total, multiplier, mq_eff };
   }, [prev, pkg, bathroomTiers]);
 
   if (loading) return <div className="p-12 text-center text-zinc-500">Caricamento…</div>;
-  if (!prev || !pkg) return <div className="p-12 text-center text-zinc-500">Preventivo non trovato.</div>;
+  if (!prev) return <div className="p-12 text-center text-zinc-500">Preventivo non trovato.</div>;
+  const isComposite = prev.tipo === "composite" || !prev.package_id;
+  if (!isComposite && !pkg) return <div className="p-12 text-center text-zinc-500">Pacchetto non disponibile per questo preventivo.</div>;
 
   const dataDoc = prev.created_at ? new Date(prev.created_at).toLocaleDateString("it-IT", { year: "numeric", month: "long", day: "numeric" }) : new Date().toLocaleDateString("it-IT");
   const dataValidita = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString("it-IT", { year: "numeric", month: "long", day: "numeric" });
@@ -102,12 +135,34 @@ export default function PreventivoStampa() {
   return (
     <div className="min-h-screen bg-zinc-100">
       {/* Toolbar non-stampabile */}
-      <div className="bg-zinc-900 text-white py-3 px-6 flex items-center justify-between sticky top-0 z-10 print:hidden">
+      <div className="bg-zinc-900 text-white py-3 px-6 flex flex-wrap items-center justify-between gap-2 sticky top-0 z-10 print:hidden">
         <Button variant="ghost" className="text-white hover:bg-zinc-800" onClick={() => nav(-1)} data-testid="back-btn"><ArrowLeft className="h-4 w-4 mr-1" /> Torna al preventivo</Button>
         <div className="text-xs mono uppercase tracking-widest text-zinc-400">Anteprima stampa · {prev.numero}</div>
-        <Button onClick={() => window.print()} className="bg-emerald-600 hover:bg-emerald-700" data-testid="print-btn">
-          <Printer className="h-4 w-4 mr-2" /> Stampa o salva come PDF
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            className="border-white/30 text-white bg-transparent hover:bg-white/10"
+            disabled={emailSending || !prev.cliente?.email}
+            onClick={async () => {
+              if (!prev.cliente?.email) { toast.error("Il cliente non ha un indirizzo email"); return; }
+              setEmailSending(true);
+              try {
+                const { data } = await api.post(`/preventivi/${id}/invia-email`, {});
+                if (data?.ok) toast.success(`Email inviata a ${data.sent_to || prev.cliente.email}`);
+                else toast.error(`Invio fallito: l'indirizzo "${data?.sent_to}" è rifiutato dal server SMTP (controlla il dominio)`);
+              } catch (e) { toast.error("Errore invio: " + (e?.response?.data?.detail || e.message)); }
+              setEmailSending(false);
+            }}
+            data-testid="email-send-btn"
+            title={prev.cliente?.email ? `Invia al cliente: ${prev.cliente.email}` : "Inserisci email cliente"}
+          >
+            <Send className="h-4 w-4 mr-2" />
+            {emailSending ? "Invio…" : "Invia al cliente"}
+          </Button>
+          <Button onClick={() => window.print()} className="bg-emerald-600 hover:bg-emerald-700" data-testid="print-btn">
+            <Printer className="h-4 w-4 mr-2" /> Stampa o PDF
+          </Button>
+        </div>
       </div>
 
       {/* Foglio A4 */}
@@ -159,11 +214,17 @@ export default function PreventivoStampa() {
             {prev.cliente?.telefono && <div className="text-xs text-zinc-500 mono">{prev.cliente.telefono}</div>}
           </div>
           <div>
-            <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">Pacchetto scelto</div>
-            <div className="text-lg font-semibold flex items-center gap-2" style={{ fontFamily: "Outfit", color: pkg.color || colorePrimario }}>
-              <Award className="h-5 w-5" /> {pkg.name}
-            </div>
-            <div className="text-sm text-zinc-600">{prev.mq} m² · finitura {pkg.tier || "completa"}</div>
+            <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">{isComposite ? "Tipo di preventivo" : "Pacchetto scelto"}</div>
+            {isComposite ? (
+              <div className="text-lg font-semibold flex items-center gap-2" style={{ fontFamily: "Outfit", color: colorePrimario }}>
+                <Award className="h-5 w-5" /> Preventivo personalizzato
+              </div>
+            ) : (
+              <div className="text-lg font-semibold flex items-center gap-2" style={{ fontFamily: "Outfit", color: pkg.color || colorePrimario }}>
+                <Award className="h-5 w-5" /> {pkg.name}
+              </div>
+            )}
+            <div className="text-sm text-zinc-600">{prev.mq} m²{!isComposite && ` · finitura ${pkg.tier || "completa"}`}</div>
             {(totals.multiplier !== 1) && (
               <div className="text-[10px] mono text-amber-700 mt-1">
                 {prev.mq < 40 ? "Calcolo a corpo (mq < 40)" : "Maggiorazione mq piccole +10%"}
@@ -184,39 +245,118 @@ export default function PreventivoStampa() {
           )}
         </div>
 
-        {/* ===== COSA È INCLUSO (vendor copy) ===== */}
+        {/* ===== COSA È INCLUSO ===== */}
         <div className="px-12 py-8">
-          <h2 className="text-2xl font-semibold mb-1" style={{ fontFamily: "Outfit", color: colorePrimario }}>Cosa è incluso nel pacchetto {pkg.name}</h2>
-          <p className="text-sm text-zinc-600 mb-5">Un'unica formula <strong>chiavi in mano</strong>: progettazione, lavori, materiali, finiture e assistenza durante e dopo i lavori. Trasparenza totale, prezzo bloccato.</p>
+          <h2 className="text-2xl font-semibold mb-1" style={{ fontFamily: "Outfit", color: colorePrimario }}>
+            {isComposite ? "Lavorazioni e voci selezionate" : `Cosa è incluso nel pacchetto ${pkg.name}`}
+          </h2>
+          <p className="text-sm text-zinc-600 mb-5">
+            {isComposite
+              ? "Le voci scelte voce per voce. Massima trasparenza: ogni lavorazione con la sua quantità e prezzo unitario."
+              : <>Un'unica formula <strong>chiavi in mano</strong>: progettazione, lavori, materiali, finiture e assistenza durante e dopo i lavori. Trasparenza totale, prezzo bloccato.</>}
+          </p>
 
+          {!isComposite && (
           <div className="grid grid-cols-3 gap-3 mb-6">
             <Pill icon={<Hammer className="h-4 w-4" />} title="Manodopera" desc="Tutte le lavorazioni edili comprese" />
             <Pill icon={<Wrench className="h-4 w-4" />} title="Impianti" desc="Idraulico, elettrico, riscaldamento" />
             <Pill icon={<Sparkles className="h-4 w-4" />} title="Finiture" desc={pkg.tier === "premium" ? "Premium di gamma alta" : "Di livello professionale"} />
             <Pill icon={<FileText className="h-4 w-4" />} title="Pratiche" desc="CILA/SCIA + capitolato" />
-            <Pill icon={<ShieldCheck className="h-4 w-4" />} title="Garanzia" desc="10 anni decennale postuma" />
             <Pill icon={<CheckCircle2 className="h-4 w-4" />} title="Assistenza" desc="Project manager dedicato" />
+            <Pill icon={<Award className="h-4 w-4" />} title="Chiavi in mano" desc="Un'unica formula completa" />
           </div>
-
-          {/* Lista lavorazioni (no prezzi singoli — forfait) */}
-          {(prev.items || []).filter(it => (it.qty_richiesta || it.qty) > 0).length > 0 && (
-            <div className="border border-zinc-200 rounded mt-4">
-              <div className="px-4 py-2 bg-zinc-50 border-b border-zinc-200 text-[10px] uppercase tracking-widest text-zinc-600 font-semibold">Lavorazioni eseguite (formula forfettaria)</div>
-              <div className="grid grid-cols-2 gap-x-6 px-4 py-3 text-xs">
-                {(prev.items || []).filter(it => (it.qty_richiesta || it.qty) > 0).map((it, i) => (
-                  <div key={i} className="py-1 flex items-baseline gap-2 border-b border-zinc-100 last:border-0">
-                    <CheckCircle2 className="h-3 w-3 text-emerald-600 flex-shrink-0" />
-                    <span className="flex-1">{it.name}</span>
-                    <span className="mono text-[10px] text-zinc-500">{fmtNum(it.qty_richiesta || it.qty || 0, 1)} {it.unit || ""}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
           )}
+
+          {/* LISTA LAVORAZIONI PER COMPOSITE */}
+          {isComposite && (() => {
+            const sel = prev.composite_selections || {};
+            const voci = Object.values(sel).filter(v => v.qty > 0);
+            const infissi = prev.infissi_extras || [];
+            if (!voci.length && !infissi.length) return <p className="text-xs text-zinc-500 italic">Nessuna voce selezionata.</p>;
+            return (
+              <div className="border border-zinc-200 rounded">
+                <div className="px-4 py-2 bg-zinc-50 border-b border-zinc-200 text-[10px] uppercase tracking-widest text-zinc-600 font-semibold">Lavorazioni e materiali</div>
+                <table className="w-full text-xs">
+                  <thead className="bg-zinc-50 border-b border-zinc-200 text-[10px] uppercase tracking-widest text-zinc-500">
+                    <tr><th className="text-left px-4 py-2">Voce</th><th className="text-right px-4 py-2">Qty</th><th className="text-right px-4 py-2">Prezzo</th><th className="text-right px-4 py-2">Totale</th></tr>
+                  </thead>
+                  <tbody>
+                    {voci.map((v, i) => (
+                      <tr key={i} className="border-b border-zinc-100 last:border-0">
+                        <td className="px-4 py-1.5">{v.name || v.voce_name || v.id}</td>
+                        <td className="px-4 py-1.5 text-right mono">{fmtNum(v.qty, 2)} {v.unit || ""}</td>
+                        <td className="px-4 py-1.5 text-right mono text-zinc-500">{fmtEuro(v.price || 0)}</td>
+                        <td className="px-4 py-1.5 text-right mono font-semibold">{fmtEuro((v.qty || 0) * (v.price || 0))}</td>
+                      </tr>
+                    ))}
+                    {infissi.map((inf, i) => (
+                      <tr key={`inf-${i}`} className="border-b border-zinc-100 last:border-0 bg-amber-50/30">
+                        <td className="px-4 py-1.5">{inf.name || "Infisso"}</td>
+                        <td className="px-4 py-1.5 text-right mono">{fmtNum(inf.qty || 1, 0)} {inf.unit || "pz"}</td>
+                        <td className="px-4 py-1.5 text-right mono text-zinc-500">{fmtEuro(inf.unit_price || inf.price || 0)}</td>
+                        <td className="px-4 py-1.5 text-right mono font-semibold">{fmtEuro((inf.qty || 1) * (inf.unit_price || inf.price || 0))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+
+          {/* LISTA LAVORAZIONI PER PACCHETTO: prendi le voci dal PACCHETTO (template admin), poi sovrascrivi con quelle del preventivo se contengono name valido */}
+          {!isComposite && (() => {
+            const prevByVoce = {};
+            (prev.items || []).forEach(it => { if (it.voce_id) prevByVoce[it.voce_id] = it; });
+            const lavorazioni = (pkg.items || []).map(pi => {
+              const fromPrev = prevByVoce[pi.voce_id];
+              const name = pi.name || (fromPrev?.name && fromPrev.name !== "—" ? fromPrev.name : "Lavorazione");
+              const mq = parseFloat(prev.mq || 0);
+              const qty = fromPrev?.qty_richiesta != null ? fromPrev.qty_richiesta
+                        : fromPrev?.qty != null ? fromPrev.qty
+                        : (pi.qty_ratio ? Math.round(pi.qty_ratio * mq * 10) / 10 : null);
+              const unit = pi.unit_consigliato || pi.unit || fromPrev?.unit || "";
+              const excluded = fromPrev?.excluded;
+              return { name, qty, unit, excluded, category: pi.category || "" };
+            }).filter(x => !x.excluded);
+            // Aggiungi anche eventuali "extra liberi" presenti nel preventivo che NON sono nel pacchetto
+            (prev.items || []).filter(it => it.is_extra_free && !it.excluded).forEach(it => {
+              lavorazioni.push({
+                name: it.name || "Extra",
+                qty: it.qty_richiesta || it.qty || 1,
+                unit: it.unit || "pz",
+                excluded: false,
+                category: "EXTRA"
+              });
+            });
+            // Estrae le categorie ordinate
+            const cats = [...new Set(lavorazioni.map(l => l.category))];
+            if (!lavorazioni.length) return null;
+            return (
+              <div className="border border-zinc-200 rounded mt-4">
+                <div className="px-4 py-2 bg-zinc-50 border-b border-zinc-200 text-[10px] uppercase tracking-widest text-zinc-600 font-semibold">Lavorazioni eseguite (formula forfettaria)</div>
+                <div className="px-4 py-3">
+                  {cats.map(cat => (
+                    <div key={cat} className="mb-3 last:mb-0">
+                      {cat && <div className="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">{cat}</div>}
+                      <div className="grid grid-cols-2 gap-x-6 text-xs">
+                        {lavorazioni.filter(l => l.category === cat).map((l, i) => (
+                          <div key={i} className="py-1 flex items-baseline gap-2 border-b border-zinc-100 last:border-0">
+                            <CheckCircle2 className="h-3 w-3 text-emerald-600 flex-shrink-0" />
+                            <span className="flex-1">{l.name}</span>
+                            {l.qty != null && <span className="mono text-[10px] text-zinc-500">{fmtNum(l.qty, 1)} {l.unit}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* ===== BAGNI ===== */}
-        {(prev.bathrooms || []).length > 0 && (
+        {!isComposite && (prev.bathrooms || []).length > 0 && (
           <div className="px-12 pb-8">
             <h3 className="text-lg font-semibold mb-3" style={{ fontFamily: "Outfit", color: colorePrimario }}>Configurazione bagni</h3>
             <div className="space-y-2">
@@ -262,13 +402,28 @@ export default function PreventivoStampa() {
         <div className="px-12 pb-6">
           <div className="bg-zinc-50 border border-zinc-200 rounded p-5">
             <div className="space-y-2 text-sm">
-              <Row label={`Base pacchetto ${pkg.name}`} value={fmtEuro(totals.base)} />
-              {totals.extras > 0 && <Row label="Extra lavorazioni" value={fmtEuro(totals.extras)} />}
-              {totals.optional > 0 && <Row label="Optional aggiuntivi" value={fmtEuro(totals.optional)} />}
-              {totals.bagno > 0 && <Row label={`Bagni aggiuntivi (${prev.bathrooms?.length || 0})`} value={fmtEuro(totals.bagno)} />}
-              <div className="border-t border-zinc-300 pt-2 mt-2"><Row label="Subtotale" value={fmtEuro(totals.subtotal)} bold /></div>
-              {totals.sconto > 0 && <Row label={`Sconto ${prev.sconto_pct}%`} value={`− ${fmtEuro(totals.sconto)}`} className="text-emerald-700" />}
-              <Row label={`IVA ${prev.iva_pct || 10}%`} value={fmtEuro(totals.iva)} />
+              {isComposite ? (
+                <>
+                  <Row label="Voci selezionate" value={fmtEuro(totals.voci_amount)} />
+                  {totals.multiplier !== 1 && <Row label={`Maggiorazione mq (×${totals.multiplier.toFixed(2)})`} value={`+ ${fmtEuro(totals.voci_magg - totals.voci_amount)}`} className="text-amber-700" />}
+                  {totals.infissi > 0 && <Row label="Infissi" value={fmtEuro(totals.infissi)} />}
+                  {totals.sic > 0 && <Row label={`Oneri sicurezza (${prev.sicurezza_pct || 0}%)`} value={fmtEuro(totals.sic)} />}
+                  {totals.dir > 0 && <Row label={`Direzione lavori (${prev.direzione_lavori_pct || 0}%)`} value={fmtEuro(totals.dir)} />}
+                  <div className="border-t border-zinc-300 pt-2 mt-2"><Row label="Imponibile" value={fmtEuro(totals.imponibile)} bold /></div>
+                  {totals.sconto_pct > 0 && <Row label={`Sconto ${prev.sconto_pct}%`} value={`− ${fmtEuro(totals.sconto_pct)}`} className="text-emerald-700" />}
+                  <Row label={`IVA ${prev.iva_pct || 10}%`} value={fmtEuro(totals.iva)} />
+                </>
+              ) : (
+                <>
+                  <Row label={`Base pacchetto ${pkg.name}`} value={fmtEuro(totals.base)} />
+                  {totals.extras > 0 && <Row label="Extra lavorazioni" value={fmtEuro(totals.extras)} />}
+                  {totals.optional > 0 && <Row label="Optional aggiuntivi" value={fmtEuro(totals.optional)} />}
+                  {totals.bagno > 0 && <Row label={`Bagni aggiuntivi (${prev.bathrooms?.length || 0})`} value={fmtEuro(totals.bagno)} />}
+                  <div className="border-t border-zinc-300 pt-2 mt-2"><Row label="Subtotale" value={fmtEuro(totals.subtotal)} bold /></div>
+                  {totals.sconto > 0 && <Row label={`Sconto ${prev.sconto_pct}%`} value={`− ${fmtEuro(totals.sconto)}`} className="text-emerald-700" />}
+                  <Row label={`IVA ${prev.iva_pct || 10}%`} value={fmtEuro(totals.iva)} />
+                </>
+              )}
               <div className="border-t-2 border-zinc-900 pt-3 mt-2">
                 <div className="flex items-baseline justify-between">
                   <div className="text-base font-semibold uppercase tracking-widest" style={{ color: colorePrimario }}>Totale chiavi in mano</div>
@@ -286,18 +441,33 @@ export default function PreventivoStampa() {
             <Feature title="Prezzo bloccato" desc="Nessuna brutta sorpresa: il prezzo offerto è quello finale, IVA inclusa." />
             <Feature title="Project manager dedicato" desc="Un unico referente che segue il cantiere dall'inizio alla fine." />
             <Feature title="Materiali selezionati" desc="Forniture controllate e certificate dei nostri partner di fiducia." />
-            <Feature title="Garanzia 10 anni" desc="Decennale postuma su opere strutturali e impianti come da legge." />
+            <Feature title="Trasparenza totale" desc="Computo metrico dettagliato, SAL condivisi e foto cantiere in tempo reale." />
           </div>
         </div>
 
         {/* ===== TERMINI + NOTE ===== */}
         <div className="px-12 py-6 text-[10px] text-zinc-600 leading-relaxed">
-          <h4 className="text-xs uppercase tracking-widest text-zinc-800 font-semibold mb-2">Termini di pagamento</h4>
-          <ul className="space-y-1 list-disc list-inside">
-            <li><strong>30%</strong> alla firma del contratto, come acconto e conferma incarico</li>
-            <li><strong>40%</strong> in stati di avanzamento concordati durante i lavori</li>
-            <li><strong>30%</strong> a saldo, all'ultimazione dei lavori e collaudo</li>
-          </ul>
+          {(() => {
+            const cp = (azienda.condizioni_pagamento || "").trim();
+            if (cp) {
+              const rows = cp.split(/\r?\n/).map(r => r.trim()).filter(Boolean);
+              return (
+                <>
+                  <h4 className="text-xs uppercase tracking-widest text-zinc-800 font-semibold mb-2">Termini di pagamento</h4>
+                  <ul className="space-y-1 list-disc list-inside">
+                    {rows.map((r, i) => <li key={i}>{r}</li>)}
+                  </ul>
+                  <div className="mt-2 text-[10px] text-zinc-500 italic">Le condizioni di pagamento possono essere ridefinite di comune accordo con il cliente in sede di firma del contratto.</div>
+                </>
+              );
+            }
+            return (
+              <>
+                <h4 className="text-xs uppercase tracking-widest text-zinc-800 font-semibold mb-2">Termini di pagamento</h4>
+                <div className="italic text-zinc-500">Le condizioni e le scadenze di pagamento verranno concordate direttamente con il cliente in fase di firma del contratto.</div>
+              </>
+            );
+          })()}
           {prev.note && (<><h4 className="text-xs uppercase tracking-widest text-zinc-800 font-semibold mt-3 mb-1">Note del preventivo</h4><div className="italic">{prev.note}</div></>)}
           <p className="mt-3 text-zinc-500">Il preventivo ha validità di 30 giorni dalla data di emissione. Eventuali varianti in corso d'opera richiederanno integrazione scritta. Le quantità delle lavorazioni sono indicative e potranno essere riproporzionate in base ai rilievi finali del progetto esecutivo. Il presente documento ha natura di proposta commerciale e non costituisce contratto fino alla sottoscrizione delle parti.</p>
         </div>
@@ -310,8 +480,16 @@ export default function PreventivoStampa() {
             <p className="text-sm text-zinc-600 max-w-lg mx-auto mb-4">Conferma questo preventivo e fissiamo subito il sopralluogo tecnico per partire con il progetto esecutivo.</p>
             <div className="flex justify-center gap-3 flex-wrap">
               {azienda.telefono && <a href={`tel:${azienda.telefono}`} className="inline-block px-6 py-2.5 border-2 rounded text-sm font-semibold" style={{ borderColor: colorePrimario, color: colorePrimario }}>📞 {azienda.telefono}</a>}
-              {azienda.email && <a href={`mailto:${azienda.email}`} className="inline-block px-6 py-2.5 rounded text-sm font-semibold text-white" style={{ background: colorePrimario }}><Mail className="inline h-4 w-4 mr-1" /> Conferma via email</a>}
+              {azienda.email && (
+                <a
+                  href={`mailto:${azienda.email}?subject=Conferma preventivo ${prev.numero}&body=Buongiorno,%0D%0A%0D%0Aconfermo la mia accettazione del preventivo ${prev.numero}. Restiamo in attesa di vostre indicazioni per il sopralluogo e la firma del contratto.%0D%0A%0D%0ACordiali saluti,%0D%0A${encodeURIComponent((prev.cliente?.nome || "") + " " + (prev.cliente?.cognome || "")).trim()}`}
+                  className="inline-block px-6 py-2.5 rounded text-sm font-semibold text-white" style={{ background: colorePrimario }}
+                >
+                  <Mail className="inline h-4 w-4 mr-1" /> Conferma via email
+                </a>
+              )}
             </div>
+            <p className="text-[11px] text-zinc-500 mt-3 italic">"Conferma via email" apre il tuo client di posta con un messaggio pre-compilato di accettazione. Puoi anche rispondere semplicemente alla nostra email allegando questo preventivo firmato.</p>
           </div>
         </div>
 
@@ -326,7 +504,9 @@ export default function PreventivoStampa() {
           <div>
             <div className="border-b-2 border-zinc-300 pb-1 mb-1 h-12"></div>
             <div className="text-zinc-500">Per {azienda.nome || "Azienda"}</div>
-            <div className="font-semibold mt-1">L'incaricato</div>
+            <div className="font-semibold mt-1">{incaricato ? `${incaricato.name || ""}${incaricato.cognome ? " " + incaricato.cognome : ""}`.trim() || "L'incaricato" : "L'incaricato"}</div>
+            {incaricato?.qualifica && <div className="text-[10px] text-zinc-500">{incaricato.qualifica}</div>}
+            {incaricato?.email && <div className="text-[10px] mono text-zinc-500">{incaricato.email}</div>}
             <div className="text-zinc-400 text-[10px] mt-1">Timbro e firma</div>
           </div>
         </div>

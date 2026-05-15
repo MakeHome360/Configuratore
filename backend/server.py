@@ -1796,6 +1796,59 @@ async def decide_sconto(rid: str, body: Dict[str, Any], user: Dict[str, Any] = D
     return {"ok": True, **update}
 
 
+@api.post("/preventivi/{prev_id}/invia-email")
+async def invia_preventivo_email(prev_id: str, body: Optional[Dict[str, Any]] = None, user: Dict[str, Any] = Depends(get_current_user)):
+    """Invia al cliente il link al riepilogo stampabile del preventivo con un messaggio personalizzato."""
+    q = {"id": prev_id} if (user.get("role") or "").lower() == "admin" else {"id": prev_id, "user_id": user["id"]}
+    prev = await db.preventivi.find_one(q, {"_id": 0})
+    if not prev:
+        raise HTTPException(404, "Preventivo non trovato")
+    cliente = prev.get("cliente") or {}
+    to_email = (cliente.get("email") or "").strip()
+    if not to_email:
+        raise HTTPException(400, "Il cliente non ha un indirizzo email")
+    azienda = await db.dati_azienda.find_one({}, {"_id": 0}) or {}
+    incaricato = await db.users.find_one({"id": prev.get("user_id")}, {"_id": 0, "name": 1, "cognome": 1, "email": 1, "telefono": 1}) or {}
+    app_url = os.environ.get("APP_PUBLIC_URL", "")
+    link = f"{app_url}/preventivi/{prev_id}/stampa"
+    nome_cliente = (cliente.get("nome") or "") + (" " + cliente.get("cognome") if cliente.get("cognome") else "")
+    totale = prev.get("totale_iva_incl") or 0
+    custom = (body or {}).get("messaggio") or ""
+    try:
+        from email_service import send_email, _wrap, _btn
+        html = _wrap(
+            f"""<p style="font-size:16px;margin:0 0 16px;">Gentile <strong>{nome_cliente.strip() or 'Cliente'}</strong>,</p>
+            <p>le inviamo il riepilogo del preventivo <strong>{prev.get('numero')}</strong> per la ristrutturazione discussa.</p>
+            {f'<p style="background:#f4f4f5;padding:12px 16px;border-left:4px solid #0f172a;font-style:italic;">{custom}</p>' if custom else ''}
+            <table cellpadding="8" cellspacing="0" style="width:100%;border-collapse:collapse;margin:16px 0;">
+              <tr><td style="background:#f4f4f5;font-weight:600;width:45%;">Pacchetto</td><td>{(prev.get('package_name') or prev.get('tipo') or '').upper()}</td></tr>
+              <tr><td style="background:#f4f4f5;font-weight:600;">Metri quadri</td><td>{prev.get('mq') or '—'} m²</td></tr>
+              <tr><td style="background:#f4f4f5;font-weight:600;">Totale IVA inclusa</td><td><strong style="font-size:20px;color:#0f172a;">€ {totale:,.2f}</strong></td></tr>
+            </table>
+            <p>Può consultare il dettaglio completo (lavorazioni, optional, bagni, termini) al link qui sotto. È stampabile in formato A4 ed è valido 30 giorni.</p>
+            <p style="margin:24px 0;">{_btn("Apri il preventivo completo", link)}</p>
+            <p>Per qualsiasi domanda o per fissare un appuntamento per il sopralluogo tecnico, può rispondere a questa email oppure contattarci ai recapiti in calce.</p>
+            <p style="margin-top:24px;color:#71717a;font-size:13px;">Cordiali saluti,<br>{(incaricato.get('name') or '')}{(' ' + incaricato.get('cognome')) if incaricato.get('cognome') else ''}<br>{(incaricato.get('email') or azienda.get('email') or '')}{('<br>Tel: ' + incaricato.get('telefono')) if incaricato.get('telefono') else ''}</p>
+            """.replace("{", "{").replace("}", "}"),  # safe escape
+            f"Preventivo {prev.get('numero')}"
+        )
+        ok = await send_email(
+            to=to_email,
+            subject=f"Preventivo {prev.get('numero')} — {azienda.get('nome') or 'Sa di casa'}",
+            html=html,
+            reply_to=incaricato.get("email") or azienda.get("email"),
+        )
+        # Traccia invio
+        await db.preventivi.update_one(
+            {"id": prev_id},
+            {"$set": {"email_inviata_a": to_email, "email_inviata_il": datetime.now(timezone.utc).isoformat()}},
+        )
+        return {"ok": ok, "sent_to": to_email}
+    except Exception as e:
+        logger.exception(f"[invia-preventivo-email] errore: {e}")
+        raise HTTPException(500, f"Errore invio email: {e}")
+
+
 async def _auto_populate_commessa_from_preventivo(prev_id: str, user: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Quando un preventivo viene accettato, crea (se non esiste) una commessa collegata
     e ne pre-compila Computo Metrico + bozza Tabella Materiali dalle righe del preventivo.

@@ -833,6 +833,24 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
     class UserRoleUpdate(BaseModel):
         role: str
 
+    @r.get("/users/{user_id}")
+    async def get_user(user_id: str, user=Depends(get_current_user)):
+        # Restituisce dati pubblici di un utente (per mostrare "incaricato" sui preventivi)
+        u = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0, "password": 0})
+        if not u:
+            raise HTTPException(404, "Utente non trovato")
+        # Filtra campi sensibili
+        return {
+            "id": u.get("id"),
+            "name": u.get("name") or u.get("nome") or "",
+            "cognome": u.get("cognome") or "",
+            "email": u.get("email"),
+            "telefono": u.get("telefono") or u.get("phone") or "",
+            "role": u.get("role"),
+            "avatar": u.get("avatar"),
+            "qualifica": u.get("qualifica") or "",
+        }
+
     @r.put("/users/{user_id}/role")
     async def set_role(user_id: str, body: UserRoleUpdate, user=Depends(get_current_user)):
         if user.get("role") != "admin":

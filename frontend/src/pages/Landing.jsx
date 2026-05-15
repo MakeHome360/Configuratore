@@ -44,7 +44,7 @@ const SERVIZI = [
 const VALORI = [
   { icon: FileText, title: "Preventivi chiari", text: "Voce per voce, materiale per materiale. Niente formule magiche, niente 'circa'." },
   { icon: Lock, title: "Prezzo bloccato", text: "Quello che firmi è quello che paghi. Eventuali variazioni concordate per iscritto, sempre." },
-  { icon: BadgeCheck, title: "Qualità garantita", text: "Artigiani selezionati, marchi certificati, garanzia 5 anni sui lavori realizzati." },
+  { icon: BadgeCheck, title: "Qualità garantita", text: "Artigiani selezionati e marchi certificati per ogni lavorazione." },
   { icon: ShieldCheck, title: "Processo trasparente", text: "Ogni fase tracciata, documenti firmabili online, accesso sempre attivo al tuo cantiere." },
 ];
 
@@ -75,7 +75,7 @@ const PROCESSO = [
   { n: "01", title: "Sopralluogo gratuito", text: "Un tecnico viene a casa tua, prende le misure e ascolta le tue esigenze. Senza impegno." },
   { n: "02", title: "Progetto + preventivo", text: "Riceverai un progetto su misura con preventivo dettagliato voce per voce. Bloccato per 30 giorni." },
   { n: "03", title: "Cantiere monitorato", text: "Avanzamenti documentati, foto settimanali, accesso al portale cliente per vedere ogni dettaglio." },
-  { n: "04", title: "Consegna e garanzia", text: "Ti consegniamo casa pulita e collaudata. Garanzia 5 anni e assistenza post-cantiere inclusa." },
+  { n: "04", title: "Consegna e collaudo", text: "Ti consegniamo casa pulita e collaudata. Assistenza post-cantiere inclusa per i primi 12 mesi." },
 ];
 
 const PROGETTI = [
@@ -100,7 +100,7 @@ const FAQ = [
   { q: "Posso sfruttare i bonus fiscali?", a: "Certo. Ti aiutiamo a ottenere ristrutturazione 50%, ecobonus, sismabonus e bonus mobili dove applicabili. Forniamo tutta la documentazione fiscale necessaria." },
   { q: "Quanto dura un cantiere medio?", a: "Per un appartamento di 80 m² stimiamo 8-10 settimane lavorative. Per ristrutturazioni importanti (oltre 150 m²) 12-16 settimane. La data di consegna è contrattualmente vincolante." },
   { q: "Cosa succede se trovate problemi imprevisti?", a: "Ti chiamiamo subito, fotografiamo, ti spieghiamo le opzioni con i relativi costi e tempi. Tu decidi. Mai lavori extra non autorizzati." },
-  { q: "Avete una garanzia?", a: "5 anni sui lavori edili, oltre alle garanzie di legge dei produttori sui materiali e sugli elettrodomestici. Assistenza post-cantiere inclusa per i primi 12 mesi." },
+  { q: "Come funziona l'assistenza post-cantiere?", a: "Per i primi 12 mesi dalla consegna siamo a disposizione per qualsiasi piccolo intervento o regolazione necessaria. Restano valide le garanzie di legge dei produttori sui materiali e sugli elettrodomestici." },
   { q: "Come posso seguire il cantiere?", a: "Hai accesso al tuo Portale Cliente: SAL aggiornato, foto settimanali, documenti, fatture e firme online via OTP. Sempre attivo, sempre disponibile." },
 ];
 
@@ -231,7 +231,7 @@ export default function Landing() {
             <div className="flex flex-wrap items-center gap-x-6 sm:gap-x-8 gap-y-3 pt-5 sm:pt-6 border-t border-zinc-300 text-[12px] sm:text-[13px] text-zinc-700">
               <div className="flex items-center gap-2">
                 <ShieldCheck size={15} className="text-[#1FAE52] flex-shrink-0" />
-                <span><strong>Garanzia 5 anni</strong></span>
+                <span><strong>Cantiere tracciato</strong></span>
               </div>
               <div className="flex items-center gap-2">
                 <Lock size={15} className="text-[#1FAE52] flex-shrink-0" />
@@ -264,8 +264,8 @@ export default function Landing() {
                   <ShieldCheck size={18} />
                 </div>
                 <div>
-                  <div className="text-[11px] tracking-widest text-zinc-400 font-bold">GARANZIA</div>
-                  <div className="text-[15px] font-bold">5 anni sui lavori</div>
+                  <div className="text-[11px] tracking-widest text-zinc-400 font-bold">QUALITÀ</div>
+                  <div className="text-[15px] font-bold">Artigiani selezionati</div>
                 </div>
               </div>
             </div>
@@ -455,8 +455,8 @@ export default function Landing() {
                   <div className="text-[12px] text-zinc-400 mt-1">ritardi medi sulla<br/>consegna negli ultimi 12 mesi</div>
                 </div>
                 <div>
-                  <div className="text-3xl font-black text-[#1FAE52]" style={{ fontFamily: "Outfit" }}>5y</div>
-                  <div className="text-[12px] text-zinc-400 mt-1">garanzia post-cantiere<br/>su lavori e finiture</div>
+                  <div className="text-3xl font-black text-[#1FAE52]" style={{ fontFamily: "Outfit" }}>12m</div>
+                  <div className="text-[12px] text-zinc-400 mt-1">assistenza<br/>post-cantiere inclusa</div>
                 </div>
                 <div>
                   <div className="text-3xl font-black text-[#1FAE52]" style={{ fontFamily: "Outfit" }}>100%</div>
@@ -772,7 +772,7 @@ export default function Landing() {
               Ristrutturazioni chiavi in mano, arredamento su misura e servizi per la casa. Dal 2014 trasformiamo le case dei nostri clienti con preventivi chiari e prezzi bloccati.
             </p>
             <div className="flex items-center gap-2 text-[12px] text-zinc-500">
-              <ShieldCheck size={14} className="text-[#1FAE52]" /> Garanzia 5 anni · IVA 10% inclusa
+              <ShieldCheck size={14} className="text-[#1FAE52]" /> Cantiere tracciato · IVA 10% inclusa
             </div>
           </div>
           <div>

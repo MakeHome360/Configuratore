@@ -1,5 +1,74 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 65 — Feb 2026 — Riepilogo pro: voci, logo, pagamenti dinamici, garanzia rimossa, invio email)
+
+**Richieste utente**:
+- "togli garanzia 10 anni — togli proprio la garanzia dal preventivo e anche dal sito"
+- "la conferma via mail come funziona?" (chiarire UX)
+- "l'incaricato come lo vedi? quando si registra deve mettere i suoi dati"
+- "il logo è lo stesso che c'è nella home quindi puoi metterlo"
+- "i pagamenti devono essere concordati e nei documenti aziendali c'è anche quello dove si stabiliscono i pagamenti"
+- "le voci del preventivo devono essere quelle del pacchetto o lavorazioni scelte e gli eventuali extra"
+- "questo si deve poter stampare e inviare via mail"
+- "Pagina stampabile anche per Composite (oggi è solo Pacchetto)"
+
+### 🚫 "Garanzia 10 anni" rimossa ovunque
+- `PreventivoStampa.jsx`: Pill "Garanzia decennale postuma" → "Chiavi in mano"; Feature "Garanzia 10 anni" → "Trasparenza totale" (computo dettagliato, SAL, foto cantiere)
+- `Landing.jsx`: 6 occorrenze rimosse/sostituite (hero badge, KPI "5y garanzia" → "12m assistenza post-cantiere", FAQ, footer, processo step 04)
+
+### 🏷 Logo home applicato al preventivo
+- `dati_azienda.logo` valorizzato con `/brand/sadicasa-light.png` (logo Sa di casa pulito per sfondi chiari, mentre dark per footer scuro)
+- `AdminDatiAzienda.jsx` gestisce ora il logo + nuovo campo `condizioni_pagamento` (textarea libero)
+
+### 💳 Termini pagamento dinamici (no più 30/40/30 hardcoded)
+- Nuovo campo `condizioni_pagamento` in `dati_azienda` (testo libero multi-riga)
+- `PreventivoStampa` legge il campo, splitta per newline e renderizza una lista puntata
+- Se vuoto: mostra "Le condizioni saranno concordate in sede di firma del contratto"
+- Footer chiarisce "Le condizioni possono essere ridefinite di comune accordo"
+
+### 👤 Incaricato visibile nella firma del preventivo
+- Nuovo endpoint `GET /api/users/{user_id}` che restituisce dati pubblici (name, cognome, email, telefono, qualifica) senza password
+- `PreventivoStampa` carica `prev.user_id` → user → mostra nome + email + qualifica nella firma azienda
+
+### 🧾 Lista voci dal pacchetto + extra liberi (NON più "—")
+- Le voci nel riepilogo ora vengono dal **pacchetto template** (`pkg.items`), con `name` corretto + `qty_richiesta` calcolata
+- Raggruppate per categoria (MURATURA, IMPIANTI, SERVIZI, FINITURE…)
+- Aggiunte anche `extra_free` (extra liberi che l'utente aggiunge nel preventivo)
+- Voci escluse (`excluded=true`) filtrate
+
+### 📧 Bottone "Invia al cliente" + endpoint backend
+- Nuova toolbar bottone: "Invia al cliente" (con icona Send)
+- `POST /api/preventivi/{id}/invia-email` → invia HTML wrap con:
+  - Saluto al cliente
+  - Tabella: pacchetto, mq, totale evidenziato
+  - Link diretto al `/preventivi/:id/stampa` (vista completa, stampabile)
+  - Firma incaricato + recapiti
+  - `Reply-To` = email incaricato (così il cliente risponde direttamente)
+- Test E2E: `{'ok': True, 'sent_to': 'noreply@sadicasa.it'}` ✓
+- Aggiorna `preventivo.email_inviata_a` e `email_inviata_il`
+
+### 💡 "Conferma via email" chiarito
+- Mailto pre-compilato: subject="Conferma preventivo PRV-XXXX", body con accettazione standard precompilata
+- Caption sotto il bottone: "apre il tuo client di posta con un messaggio pre-compilato di accettazione. Puoi anche rispondere alla nostra email allegando questo preventivo firmato"
+
+### 🖨 Pagina stampabile estesa al Composite
+- `PreventivoStampa` ora supporta `tipo === "composite"` con layout dedicato:
+  - Box "Tipo di preventivo" → "Preventivo personalizzato"
+  - Tabella lavorazioni da `composite_selections` (Voce + Qty + Prezzo + Totale)
+  - Infissi extra come righe separate
+  - Breakdown: Voci · Maggiorazione mq · Infissi · Oneri sicurezza · Direzione lavori · Sconto · IVA · Totale
+- Bottone "Anteprima stampa" aggiunto a `PreventivoComposite.jsx` (visibile solo dopo Save)
+- Route `/preventivocomposite/:id/stampa` → punta allo stesso componente
+
+### File toccati (riepilogo)
+- `frontend/src/pages/PreventivoStampa.jsx` (esteso composite + voci pacchetto + pagamenti dinamici)
+- `frontend/src/pages/PreventivoComposite.jsx` (bottone Anteprima stampa)
+- `frontend/src/pages/Landing.jsx` (rimossa garanzia)
+- `frontend/src/pages/admin/AdminDatiAzienda.jsx` (campo condizioni_pagamento)
+- `frontend/src/App.js` (route composite stampa)
+- `backend/server.py` (endpoint /preventivi/{id}/invia-email)
+- `backend/routes_biz.py` (endpoint GET /users/{user_id})
+
 ## Recent Updates (Round 64 — Feb 2026 — Riepilogo stampabile + Composite sconto/maggiorazione)
 
 **Richieste utente** (in ordine):

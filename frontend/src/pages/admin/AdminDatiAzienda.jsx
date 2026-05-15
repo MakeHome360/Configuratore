@@ -66,6 +66,19 @@ export default function AdminDatiAzienda() {
             </div>
           </div>
         </div>
+        {/* Condizioni di pagamento: testo libero usato nel riepilogo preventivo stampabile */}
+        <div className="bg-white border border-zinc-200 rounded-lg p-5 space-y-3 mt-4">
+          <h3 className="font-semibold">Condizioni di pagamento (mostrate nel preventivo stampato)</h3>
+          <p className="text-xs text-zinc-500">Inserisci una riga per ogni step. Esempio: <em>"30% alla firma del contratto"</em>. Lasciare vuoto per ometterle del tutto. Possono essere comunque concordate caso per caso.</p>
+          <textarea
+            value={dati.condizioni_pagamento || ""}
+            onChange={(e) => setDati({ ...dati, condizioni_pagamento: e.target.value })}
+            rows={6}
+            className="w-full border border-zinc-300 rounded p-2 text-sm mono"
+            placeholder={"Es:\n30% alla firma del contratto come acconto\n20% all'inizio dei lavori\n30% durante i lavori (SAL)\n20% a saldo alla consegna"}
+            data-testid="dati-condizioni-pagamento"
+          />
+        </div>
       </Page>
     </div>
   );

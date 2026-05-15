@@ -139,6 +139,7 @@ function App() {
             <Route path="/adminmaterialitemplate" element={P(AdminMaterialiTemplate)} />
             <Route path="/adminscontorichieste" element={P(AdminScontoRichieste)} />
             <Route path="/preventivi/:id/stampa" element={P(PreventivoStampa)} />
+            <Route path="/preventivocomposite/:id/stampa" element={P(PreventivoStampa)} />
             <Route path="/adminblog" element={P(AdminBlog)} />
             {/* Round 10: Cantieri / Subappaltatori / Portale Cliente */}
             <Route path="/dashboard-subappaltatori" element={P(DashboardSubappaltatori)} />

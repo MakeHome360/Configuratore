@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileSignature, Files, ListChecks, Calculator, Hammer, CalendarRange, Wallet, FileBarChart2, Plus, Trash2, ShieldCheck, AlertTriangle, Sparkles, CheckCircle2, Clock, ClipboardCheck } from "lucide-react";
+import { FileSignature, Files, ListChecks, Calculator, Hammer, CalendarRange, Wallet, FileBarChart2, Plus, Trash2, ShieldCheck, AlertTriangle, Sparkles, CheckCircle2, Clock, ClipboardCheck, Camera, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 
 const STATO_ART_BADGE = {
@@ -62,9 +62,10 @@ export default function CommessaWorkflow() {
             <TabsTrigger value="computo" data-testid="tab-computo"><Calculator className="h-4 w-4 mr-1.5" /> 5. Computo</TabsTrigger>
             <TabsTrigger value="artigiani" data-testid="tab-artigiani"><Hammer className="h-4 w-4 mr-1.5" /> 6. Artigiani / Sub</TabsTrigger>
             <TabsTrigger value="fasi" data-testid="tab-fasi"><CalendarRange className="h-4 w-4 mr-1.5" /> 7. Fasi cantiere (calendario)</TabsTrigger>
-            <TabsTrigger value="voci-acquisti" data-testid="tab-voci-acquisti"><Wallet className="h-4 w-4 mr-1.5" /> 8. Voci e Acquisti</TabsTrigger>
-            <TabsTrigger value="cassa" data-testid="tab-cassa"><Wallet className="h-4 w-4 mr-1.5" /> 9. Cassa & Pagamenti</TabsTrigger>
-            <TabsTrigger value="resoconto" data-testid="tab-resoconto"><FileBarChart2 className="h-4 w-4 mr-1.5" /> 10. Resoconto</TabsTrigger>
+            <TabsTrigger value="foto-cantiere" data-testid="tab-foto-cantiere"><Camera className="h-4 w-4 mr-1.5" /> 8. Foto Cantiere</TabsTrigger>
+            <TabsTrigger value="voci-acquisti" data-testid="tab-voci-acquisti"><Wallet className="h-4 w-4 mr-1.5" /> 9. Voci e Acquisti</TabsTrigger>
+            <TabsTrigger value="cassa" data-testid="tab-cassa"><Wallet className="h-4 w-4 mr-1.5" /> 10. Cassa & Pagamenti</TabsTrigger>
+            <TabsTrigger value="resoconto" data-testid="tab-resoconto"><FileBarChart2 className="h-4 w-4 mr-1.5" /> 11. Resoconto</TabsTrigger>
           </TabsList>
 
           {/* 1. CONTRATTO */}
@@ -81,7 +82,9 @@ export default function CommessaWorkflow() {
           <TabsContent value="artigiani" className="mt-4"><Artigiani wf={wf} cid={cid} reload={reload} /></TabsContent>
           {/* 7. FASI Cantiere (con calendario + template + assegnatari) */}
           <TabsContent value="fasi" className="mt-4"><Fasi wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 8. VOCI E ACQUISTI */}
+          {/* 8. FOTO CANTIERE — raggruppate per giorno con titolo */}
+          <TabsContent value="foto-cantiere" className="mt-4"><FotoCantiere wf={wf} cid={cid} reload={reload} /></TabsContent>
+          {/* 9. VOCI E ACQUISTI */}
           <TabsContent value="voci-acquisti" className="mt-4"><VociAcquistiTab wf={wf} cid={cid} reload={reload} /></TabsContent>
           {/* 9. CASSA */}
           <TabsContent value="cassa" className="mt-4"><Cassa wf={wf} cid={cid} reload={reload} /></TabsContent>
@@ -151,20 +154,97 @@ function ChecklistVenditore({ wf, cid, reload }) {
   const cassaItems = wf.cassa || [];
   const cliente = cm.cliente || {};
 
-  // Build dynamic checklist
+  // Helper popup
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpItem, setHelpItem] = useState(null);
+  const openHelp = (it) => { setHelpItem(it); setHelpOpen(true); };
+
+  // Ordine workflow: cliente → contratto → acconto → pratica → progetto → materiali → computo → preventivi sub → fasi → data inizio → foto → privacy
   const items = [
-    { id: "ct-cliente", label: "Dati cliente completi (nome, telefono, email, indirizzo)", done: !!(cliente.nome && cliente.email && cliente.telefono), critico: true },
-    { id: "ct-contratto", label: "Contratto caricato e firmato dal cliente", done: !!contratto.firmato, critico: true },
-    { id: "ct-acconto", label: "Acconto iniziale registrato (cassa)", done: cassaItems.some(m => m.tipo === "incasso"), critico: true },
-    { id: "ct-doc-pratica", label: "Documenti pratica edilizia (CILA/SCIA/permesso) caricati", done: docs.some(d => /cila|scia|permesso|pratica|edilizia/i.test(d.tipo || d.name || "")), critico: false },
-    { id: "ct-progetto", label: "Progetto / planimetria CAD caricata", done: docs.some(d => /progetto|planimetria|cad|dwg/i.test(d.tipo || d.name || "")) || !!cm.project_id, critico: false },
-    { id: "ct-materiali", label: "Scelta materiali principali (pavimenti, sanitari, ecc.)", done: materiali.length > 0, critico: true },
-    { id: "ct-computo", label: "Computo metrico generato dal preventivo accettato", done: computoOk, critico: true },
-    { id: "ct-preventivi-art", label: "Preventivi artigiani caricati e analizzati", done: artPrev.length > 0, critico: false },
-    { id: "ct-fasi", label: "Fasi cantiere pianificate (Gantt)", done: fasi.length > 0, critico: false },
-    { id: "ct-foto-rilievo", label: "Foto / rilievo pre-cantiere caricato", done: docs.some(d => /foto|rilievo/i.test(d.tipo || d.name || "")), critico: false },
-    { id: "ct-privacy", label: "Modulo privacy/GDPR firmato dal cliente", done: docs.some(d => /privacy|gdpr/i.test(d.tipo || d.name || "")), critico: true },
-    { id: "ct-data-inizio", label: "Data inizio lavori concordata con il cliente", done: !!cm.data_inizio_prevista || fasi.some(f => f.data_inizio), critico: true },
+    {
+      id: "ct-cliente",
+      label: "Dati cliente completi (nome, telefono, email, indirizzo)",
+      done: !!(cliente.nome && cliente.email && cliente.telefono),
+      critico: true,
+      helper: "Apri la scheda della commessa e compila TUTTI i dati cliente: nome, cognome, email, telefono, indirizzo cantiere.\n\n✓ Condizione automatica: la spunta diventa verde quando sono presenti nome + email + telefono.",
+    },
+    {
+      id: "ct-contratto",
+      label: "Contratto caricato e firmato dal cliente",
+      done: !!contratto.firmato,
+      critico: true,
+      helper: "Vai alla tab 1 — Contratto. Carica il PDF del contratto firmato e spunta 'Firmato dal cliente' inserendo la data firma.\n\n✓ Condizione automatica: spunta verde quando contratto.firmato = true.",
+    },
+    {
+      id: "ct-acconto",
+      label: "Acconto iniziale registrato (cassa)",
+      done: cassaItems.some(m => m.tipo === "incasso"),
+      critico: true,
+      helper: "Vai alla tab 10 — Cassa & Pagamenti. Aggiungi un movimento di tipo INCASSO con la cifra ricevuta dal cliente come acconto iniziale.\n\n✓ Condizione automatica: spunta verde quando in cassa esiste almeno un movimento con tipo='incasso'.",
+    },
+    {
+      id: "ct-doc-pratica",
+      label: "Documenti pratica edilizia (CILA/SCIA/permesso) caricati",
+      done: docs.some(d => /cila|scia|permesso|pratica|edilizia/i.test(d.tipo || d.name || "")),
+      critico: false,
+      helper: "Vai alla tab 3 — Documenti. Aggiungi un documento con tipo o nome contenente 'CILA', 'SCIA', 'Permesso' o 'Pratica edilizia'.\n\n✓ Condizione automatica: spunta verde quando esiste un documento il cui tipo/nome contiene una di quelle parole chiave.",
+    },
+    {
+      id: "ct-progetto",
+      label: "Progetto / planimetria CAD caricata",
+      done: docs.some(d => /progetto|planimetria|cad|dwg/i.test(d.tipo || d.name || "")) || !!cm.project_id,
+      critico: false,
+      helper: "Due strade:\n1. Apri la tab 'Progetti CAD' della sidebar e crea/collega il progetto CAD del cliente (consigliato)\n2. Oppure tab 3 — Documenti → carica un documento con tipo/nome 'Progetto', 'Planimetria', 'CAD' o 'DWG'.\n\n✓ Condizione automatica: presente un project_id collegato OPPURE un documento corrispondente.",
+    },
+    {
+      id: "ct-materiali",
+      label: "Scelta materiali principali (pavimenti, sanitari, ecc.)",
+      done: materiali.length > 0,
+      critico: true,
+      helper: "Vai alla tab 4 — Materiali. Aggiungi le scelte del cliente per pavimenti, rivestimenti, sanitari, rubinetterie, porte interne, ecc. con quantità e prezzo.\n\n✓ Condizione automatica: spunta verde quando esiste almeno una voce materiale.",
+    },
+    {
+      id: "ct-computo",
+      label: "Computo metrico generato dal preventivo accettato",
+      done: computoOk,
+      critico: true,
+      helper: "Il computo metrico viene generato AUTOMATICAMENTE quando il preventivo passa a stato 'accettato'. Se manca, vai a tab 5 — Computo e clicca 'Rigenera dal preventivo'.\n\n✓ Condizione automatica: spunta verde quando il computo metrico ha almeno una voce.",
+    },
+    {
+      id: "ct-preventivi-art",
+      label: "Preventivi artigiani caricati e analizzati",
+      done: artPrev.length > 0,
+      critico: false,
+      helper: "Vai alla tab 6 — Artigiani/Sub. Carica i preventivi degli artigiani con importo offerto. Il sistema confronta automaticamente con il listino interno.\n\n✓ Condizione automatica: almeno un preventivo artigiano salvato.",
+    },
+    {
+      id: "ct-fasi",
+      label: "Fasi cantiere pianificate (calendario)",
+      done: fasi.length > 0,
+      critico: false,
+      helper: "Vai alla tab 7 — Fasi cantiere. Clicca 'Nuova fase' e scegli da una delle fasi che hai gestito nel menu 'Fasi Commessa' (admin).\n\n✓ Condizione automatica: almeno una fase creata.",
+    },
+    {
+      id: "ct-data-inizio",
+      label: "Data inizio lavori concordata con il cliente",
+      done: !!cm.data_inizio_prevista || fasi.some(f => f.data_inizio),
+      critico: true,
+      helper: "Due strade equivalenti:\n1. Modifica la commessa e imposta 'Data inizio prevista'\n2. Oppure pianifica almeno una fase nella tab 7 — Fasi cantiere con data_inizio impostata.\n\n✓ Condizione automatica: commessa.data_inizio_prevista compilata OPPURE almeno una fase con data_inizio.",
+    },
+    {
+      id: "ct-foto-rilievo",
+      label: "Foto / rilievo pre-cantiere caricato",
+      done: (wf.foto_cantiere || []).length > 0 || docs.some(d => /foto|rilievo/i.test(d.tipo || d.name || "")),
+      critico: false,
+      helper: "Vai alla nuova tab 📸 — Foto Cantiere. Carica le foto del sopralluogo iniziale (stato di fatto) raggruppate per giornata con un titolo descrittivo.\n\nIn alternativa: tab 3 — Documenti, carica un file con tipo/nome 'Foto' o 'Rilievo'.\n\n✓ Condizione automatica: almeno una foto cantiere OPPURE documento foto/rilievo.",
+    },
+    {
+      id: "ct-privacy",
+      label: "Modulo privacy/GDPR firmato dal cliente",
+      done: docs.some(d => /privacy|gdpr/i.test(d.tipo || d.name || "")),
+      critico: true,
+      helper: "Vai alla tab 3 — Documenti. Carica il modulo privacy/GDPR firmato dal cliente (PDF). Il nome o il tipo del documento deve contenere 'privacy' o 'GDPR'.\n\n✓ Condizione automatica: documento con tipo/nome 'privacy' o 'GDPR'.",
+    },
   ];
   const totCrit = items.filter(i => i.critico).length;
   const okCrit = items.filter(i => i.critico && i.done).length;
@@ -176,7 +256,7 @@ function ChecklistVenditore({ wf, cid, reload }) {
         <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="font-semibold">Checklist venditore — anti-dimenticanza</h3>
-            <p className="text-xs text-zinc-500">Verifica tutti gli step prima di considerare la pratica chiusa.</p>
+            <p className="text-xs text-zinc-500">Verifica tutti gli step prima di considerare la pratica chiusa. Clicca <strong>"?"</strong> per scoprire come completare ogni voce.</p>
           </div>
           <div className="text-right">
             <div className={`text-3xl font-bold mono ${pct === 100 ? "text-emerald-700" : pct > 60 ? "text-amber-700" : "text-rose-700"}`}>{pct}%</div>
@@ -187,14 +267,22 @@ function ChecklistVenditore({ wf, cid, reload }) {
           <div className={`h-full ${pct === 100 ? "bg-emerald-500" : pct > 60 ? "bg-amber-500" : "bg-rose-500"} transition-all`} style={{ width: `${pct}%` }} />
         </div>
         <div className="space-y-1.5">
-          {items.map(it => (
+          {items.map((it, idx) => (
             <div key={it.id} className={`flex items-center gap-3 p-2.5 rounded border ${it.done ? "bg-emerald-50 border-emerald-200" : it.critico ? "bg-rose-50/40 border-rose-200" : "bg-zinc-50 border-zinc-200"}`} data-testid={`check-${it.id}`}>
+              <span className="text-[10px] mono text-zinc-400 w-5 text-right">{idx + 1}.</span>
               <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${it.done ? "bg-emerald-500 text-white" : "bg-white border-2 border-zinc-300"}`}>
                 {it.done && <CheckCircle2 size={14} />}
               </div>
               <div className="flex-1 text-sm">{it.label}</div>
               {it.critico && !it.done && <span className="text-[10px] px-1.5 py-0.5 bg-rose-200 text-rose-800 rounded uppercase font-bold">Critico</span>}
               {it.done && <span className="text-[10px] text-emerald-700 mono">OK</span>}
+              <button
+                type="button"
+                onClick={() => openHelp(it)}
+                className="w-6 h-6 flex items-center justify-center text-xs font-bold rounded-full bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
+                title="Come completare questa voce"
+                data-testid={`check-help-${it.id}`}
+              >?</button>
             </div>
           ))}
         </div>
@@ -209,6 +297,38 @@ function ChecklistVenditore({ wf, cid, reload }) {
           </div>
         )}
       </div>
+
+      {/* Helper popup: spiega come completare la voce e mostra la condizione automatica */}
+      <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
+        <DialogContent className="max-w-lg" data-testid="check-help-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="w-6 h-6 flex items-center justify-center text-xs font-bold rounded-full bg-blue-100 text-blue-800">?</span>
+              Come completare questa voce
+            </DialogTitle>
+          </DialogHeader>
+          {helpItem && (
+            <div className="space-y-3">
+              <div className="bg-zinc-100 p-3 rounded">
+                <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Step</div>
+                <div className="font-semibold">{helpItem.label}</div>
+                {helpItem.critico && <span className="inline-block mt-1.5 text-[10px] px-1.5 py-0.5 bg-rose-200 text-rose-800 rounded uppercase font-bold">Critico</span>}
+              </div>
+              <div className="bg-blue-50 border border-blue-200 p-3 rounded text-sm whitespace-pre-line text-zinc-800">
+                {helpItem.helper}
+              </div>
+              <div className={`p-2 rounded text-xs ${helpItem.done ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-zinc-50 text-zinc-700 border border-zinc-200"}`}>
+                {helpItem.done
+                  ? <><CheckCircle2 className="inline h-4 w-4 mr-1" /> Stato attuale: <strong>COMPLETATA</strong> — la condizione è già verificata.</>
+                  : <><AlertTriangle className="inline h-4 w-4 mr-1" /> Stato attuale: <strong>DA COMPLETARE</strong> — segui le istruzioni qui sopra.</>}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setHelpOpen(false)} data-testid="check-help-close">Chiudi</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -694,7 +814,24 @@ function Fasi({ wf, cid, reload }) {
   const empty = { titolo: "", template_key: "", color: "#71717A", eseguito_da_tipo: "artigiano", artigiano_id: "", artigiano_nome: "", fornitore_nome: "", data_inizio: "", data_fine: "", stato: "da_iniziare", note: "", categoria: "" };
   const [form, setForm] = useState(empty);
 
-  useEffect(() => { api.get("/fasi-templates").then(r => setTemplates(r.data || [])); }, []);
+  useEffect(() => {
+    // Carica le fasi gestite dall'admin in "Fasi Commessa" (DB persistente) — non i 21 template hardcoded.
+    // Mappa i campi {name, description, order} → {titolo, durata_gg, ordine, color, categoria} attesi dal popup.
+    api.get("/fasi-commessa").then(r => {
+      const list = (r.data || []).map((f, idx) => ({
+        key: f.id,
+        titolo: f.name || f.titolo || "Fase senza nome",
+        durata_gg: f.durata_gg || 1,
+        ordine: f.order || (idx + 1),
+        color: f.color || "#71717A",
+        categoria: f.categoria || "generale",
+        descrizione: f.description || "",
+        obbligatoria: f.obbligatoria !== false,
+      }));
+      list.sort((a, b) => (a.ordine || 0) - (b.ordine || 0));
+      setTemplates(list);
+    }).catch(() => setTemplates([]));
+  }, []);
 
   const openNew = () => { setForm(empty); setEditFase(null); setOpen(true); };
   const openEdit = (f) => { setForm({ ...empty, ...f }); setEditFase(f); setOpen(true); };
@@ -940,6 +1077,211 @@ function Fasi({ wf, cid, reload }) {
             <Button variant="outline" onClick={() => { setOpen(false); setEditFase(null); }}>Annulla</Button>
             <Button onClick={save} style={{ background: "var(--brand)", color: "white" }} data-testid="fase-save">{editFase ? "Aggiorna fase" : "Aggiungi fase"}</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ---- 6b. FOTO CANTIERE — multi-upload raggruppato per giornata con titolo ----
+function FotoCantiere({ wf, cid, reload }) {
+  const groups = wf.foto_cantiere || [];
+  const [open, setOpen] = useState(false);
+  const [edit, setEdit] = useState(null);
+  const emptyForm = { id: null, data: new Date().toISOString().slice(0, 10), titolo: "", foto: [], note: "" };
+  const [form, setForm] = useState(emptyForm);
+  const [uploading, setUploading] = useState(false);
+  const [lightbox, setLightbox] = useState(null); // {url, name}
+
+  const openNew = () => { setForm(emptyForm); setEdit(null); setOpen(true); };
+  const openEdit = (g) => { setForm({ id: g.id, data: g.data, titolo: g.titolo || "", foto: g.foto || [], note: g.note || "" }); setEdit(g); setOpen(true); };
+
+  const uploadFiles = async (files) => {
+    setUploading(true);
+    const uploaded = [];
+    for (const file of files) {
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("commessa_id", cid);
+        fd.append("tipo", "foto-cantiere");
+        const { data } = await api.post("/uploads", fd, { headers: { "Content-Type": "multipart/form-data" } });
+        uploaded.push({ url: data.url, name: data.name, content_type: data.content_type, size: data.size });
+      } catch (e) {
+        toast.error(`Errore upload ${file.name}`);
+      }
+    }
+    setForm(s => ({ ...s, foto: [...s.foto, ...uploaded] }));
+    setUploading(false);
+    if (uploaded.length) toast.success(`${uploaded.length} foto caricate`);
+  };
+
+  const removeFoto = (idx) => setForm(s => ({ ...s, foto: s.foto.filter((_, i) => i !== idx) }));
+
+  const save = async () => {
+    if (!form.data) { toast.error("Inserisci la data del giorno"); return; }
+    if (!form.foto.length) { toast.error("Aggiungi almeno una foto"); return; }
+    try {
+      if (edit) {
+        await api.put(`/commesse/${cid}/foto-cantiere/${edit.id}`, { data: form.data, titolo: form.titolo, foto: form.foto, note: form.note });
+        toast.success("Giornata aggiornata");
+      } else {
+        await api.post(`/commesse/${cid}/foto-cantiere`, { data: form.data, titolo: form.titolo, foto: form.foto, note: form.note });
+        toast.success("Giornata creata");
+      }
+      setOpen(false); setForm(emptyForm); setEdit(null);
+      reload();
+    } catch (e) { toast.error("Errore: " + (e?.response?.data?.detail || e.message)); }
+  };
+
+  const del = async (id) => {
+    if (!window.confirm("Eliminare questa giornata e tutte le sue foto?")) return;
+    await api.delete(`/commesse/${cid}/foto-cantiere/${id}`);
+    toast.success("Eliminata");
+    reload();
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-white border border-zinc-200 rounded">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-zinc-200">
+          <div>
+            <h3 className="font-semibold flex items-center gap-2"><Camera className="h-5 w-5 text-blue-600" /> Foto cantiere</h3>
+            <p className="text-xs text-zinc-500 mt-0.5">Carica più foto per ogni giornata di lavoro, raggruppate per data con titolo descrittivo (es: "Demolizioni cucina").</p>
+          </div>
+          <Button size="sm" onClick={openNew} data-testid="foto-cantiere-add" style={{ background: "var(--brand)", color: "white" }}>
+            <Plus className="h-4 w-4 mr-1" /> Nuova giornata
+          </Button>
+        </div>
+
+        {groups.length === 0 ? (
+          <div className="px-6 py-16 text-center text-zinc-500">
+            <ImageIcon className="h-12 w-12 mx-auto text-zinc-300 mb-2" />
+            <p className="font-medium">Nessuna foto cantiere caricata.</p>
+            <p className="text-xs mt-1">Clicca "Nuova giornata" per documentare lo stato dei lavori.</p>
+          </div>
+        ) : (
+          <div className="p-4 space-y-4">
+            {groups.map((g) => (
+              <div key={g.id} className="border border-zinc-200 rounded bg-zinc-50/30" data-testid={`foto-day-${g.id}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-zinc-200 bg-white">
+                  <div className="flex items-center gap-3">
+                    <div className="text-center min-w-[60px]">
+                      <div className="mono text-[10px] uppercase tracking-widest text-zinc-500">{new Date(g.data).toLocaleDateString("it-IT", { weekday: "short" })}</div>
+                      <div className="text-2xl font-bold text-blue-700 leading-tight">{new Date(g.data).getDate()}</div>
+                      <div className="mono text-[10px] text-zinc-500">{new Date(g.data).toLocaleDateString("it-IT", { month: "short", year: "numeric" })}</div>
+                    </div>
+                    <div>
+                      <div className="font-semibold">{g.titolo || <span className="text-zinc-400 italic">Senza titolo</span>}</div>
+                      {g.note && <div className="text-xs text-zinc-500 mt-0.5">{g.note}</div>}
+                      <div className="text-[10px] mono text-zinc-400 mt-0.5">{(g.foto || []).length} foto · caricate {new Date(g.uploaded_at).toLocaleDateString("it-IT")}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => openEdit(g)} className="p-1.5 text-zinc-600 hover:bg-zinc-100 rounded" title="Modifica" data-testid={`foto-day-edit-${g.id}`}><FileSignature className="h-4 w-4" /></button>
+                    <button onClick={() => del(g.id)} className="p-1.5 text-rose-600 hover:bg-rose-50 rounded" title="Elimina" data-testid={`foto-day-del-${g.id}`}><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                </div>
+                <div className="p-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                  {(g.foto || []).map((f, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setLightbox(f)}
+                      className="aspect-square border border-zinc-200 rounded overflow-hidden bg-zinc-100 hover:ring-2 hover:ring-blue-500 transition"
+                      data-testid={`foto-thumb-${g.id}-${i}`}
+                    >
+                      {(f.content_type || "").startsWith("image/") || /\.(jpg|jpeg|png|webp|heic|heif|gif)$/i.test(f.name || f.url || "") ? (
+                        <img src={f.url} alt={f.name} className="w-full h-full object-cover" loading="lazy" />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-xs text-zinc-500 p-2">
+                          <Files className="h-6 w-6 mb-1" />
+                          <span className="truncate w-full text-center">{f.name}</span>
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Dialog upload/edit giornata */}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="foto-cantiere-dialog">
+          <DialogHeader><DialogTitle>{edit ? "Modifica giornata" : "Nuova giornata di foto"}</DialogTitle></DialogHeader>
+          <div className="space-y-4 text-sm">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Data giornata</Label>
+                <Input type="date" value={form.data} onChange={e => setForm(s => ({ ...s, data: e.target.value }))} data-testid="foto-form-data" />
+              </div>
+              <div>
+                <Label className="text-xs">Titolo / motivo della giornata</Label>
+                <Input value={form.titolo} onChange={e => setForm(s => ({ ...s, titolo: e.target.value }))} placeholder="Es: Demolizione cucina, Posa massetto..." data-testid="foto-form-titolo" />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Note (facoltative)</Label>
+              <Input value={form.note} onChange={e => setForm(s => ({ ...s, note: e.target.value }))} placeholder="Eventuali dettagli sulla giornata" data-testid="foto-form-note" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-widest text-zinc-500 mb-2 block">Foto della giornata (puoi caricarne più di una)</Label>
+              <label className="inline-flex items-center gap-2 px-3 py-2 border-2 border-dashed border-blue-300 rounded text-sm text-blue-700 cursor-pointer hover:bg-blue-50">
+                <Plus className="h-4 w-4" />
+                {uploading ? "Caricamento..." : "Aggiungi foto (multipla)"}
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploading}
+                  onChange={(e) => { const files = Array.from(e.target.files || []); if (files.length) uploadFiles(files); e.target.value = ""; }}
+                  data-testid="foto-form-upload"
+                />
+              </label>
+              {form.foto.length > 0 && (
+                <div className="mt-3 grid grid-cols-3 sm:grid-cols-4 gap-2">
+                  {form.foto.map((f, i) => (
+                    <div key={i} className="relative aspect-square border border-zinc-200 rounded overflow-hidden bg-zinc-100 group">
+                      {(f.content_type || "").startsWith("image/") ? (
+                        <img src={f.url} alt={f.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-xs text-zinc-500 p-1 text-center">{f.name}</div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeFoto(i)}
+                        className="absolute top-1 right-1 w-6 h-6 bg-rose-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                        data-testid={`foto-form-remove-${i}`}
+                      ><Trash2 className="h-3 w-3" /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-[11px] text-zinc-500 mt-2">Formati supportati: JPG, PNG, WEBP, HEIC. Max 20 MB per foto.</p>
+            </div>
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => { setOpen(false); setEdit(null); }}>Annulla</Button>
+            <Button onClick={save} disabled={uploading || !form.foto.length} style={{ background: "var(--brand)", color: "white" }} data-testid="foto-form-save">
+              {uploading ? "Caricamento..." : (edit ? "Aggiorna" : "Salva giornata")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Lightbox full-screen */}
+      <Dialog open={!!lightbox} onOpenChange={() => setLightbox(null)}>
+        <DialogContent className="max-w-5xl bg-black/95 border-0" data-testid="foto-lightbox">
+          {lightbox && (
+            <div className="space-y-2">
+              <img src={lightbox.url} alt={lightbox.name} className="max-h-[80vh] max-w-full mx-auto object-contain" />
+              <div className="text-white text-xs text-center mono">{lightbox.name}</div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

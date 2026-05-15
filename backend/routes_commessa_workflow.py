@@ -13,7 +13,7 @@ import base64
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 UPLOADS_DIR = "/app/backend/uploads"
 os.makedirs(UPLOADS_DIR, exist_ok=True)
@@ -709,6 +709,50 @@ def build_commessa_workflow_router(db, get_current_user):
             raise HTTPException(404, "File non trovato")
         return FileResponse(path)
 
+    # ---------- 12b. FOTO CANTIERE (raggruppate per giorno) ----------
+    class FotoCantiereIn(BaseModel):
+        model_config = ConfigDict(extra="allow")
+        data: str  # YYYY-MM-DD
+        titolo: str = ""
+        foto: List[Dict[str, Any]] = []  # [{url, name, content_type, size}]
+        note: Optional[str] = ""
+
+    @r.get("/commesse/{cid}/foto-cantiere")
+    async def list_foto_cantiere(cid: str, user=Depends(get_current_user)):
+        await _commessa(cid)  # auth check
+        rows = await db.commesse_foto_cantiere.find({"commessa_id": cid}, {"_id": 0}).sort("data", -1).to_list(2000)
+        return rows
+
+    @r.post("/commesse/{cid}/foto-cantiere")
+    async def create_foto_cantiere(cid: str, body: FotoCantiereIn, user=Depends(get_current_user)):
+        await _commessa(cid)
+        doc = {
+            "id": uuid.uuid4().hex,
+            "commessa_id": cid,
+            "data": body.data,
+            "titolo": body.titolo or "",
+            "foto": body.foto or [],
+            "note": body.note or "",
+            "uploaded_at": NOW(),
+            "uploaded_by": user.get("id"),
+        }
+        await db.commesse_foto_cantiere.insert_one(dict(doc))
+        doc.pop("_id", None)
+        return doc
+
+    @r.put("/commesse/{cid}/foto-cantiere/{gid}")
+    async def update_foto_cantiere(cid: str, gid: str, body: Dict[str, Any], user=Depends(get_current_user)):
+        await _commessa(cid)
+        body.pop("_id", None); body.pop("id", None)
+        await db.commesse_foto_cantiere.update_one({"id": gid, "commessa_id": cid}, {"$set": body})
+        return {"ok": True}
+
+    @r.delete("/commesse/{cid}/foto-cantiere/{gid}")
+    async def delete_foto_cantiere(cid: str, gid: str, user=Depends(get_current_user)):
+        await _commessa(cid)
+        await db.commesse_foto_cantiere.delete_one({"id": gid, "commessa_id": cid})
+        return {"ok": True}
+
     # ---------- 11. WORKFLOW STATE (snapshot completo per UI) ----------
     @r.get("/commesse/{cid}/workflow")
     async def get_workflow(cid: str, user=Depends(get_current_user)):
@@ -718,6 +762,7 @@ def build_commessa_workflow_router(db, get_current_user):
         fasi = await db.commesse_fasi.find({"commessa_id": cid}, {"_id": 0}).sort("data_inizio", 1).to_list(500)
         movimenti = await db.commesse_cassa.find({"commessa_id": cid}, {"_id": 0}).sort("data", -1).to_list(2000)
         marg = await get_marginalita(cid, user)
+        foto_cantiere = await db.commesse_foto_cantiere.find({"commessa_id": cid}, {"_id": 0}).sort("data", -1).to_list(2000)
         return {
             "commessa": {**c, "_id": None},
             "contratto": c.get("contratto"),
@@ -728,6 +773,7 @@ def build_commessa_workflow_router(db, get_current_user):
             "fasi": fasi,
             "cassa": movimenti,
             "marginalita": marg,
+            "foto_cantiere": foto_cantiere,
         }
 
     # ---------- 12. DASHBOARD ALERTS — notifiche live cross-cantieri ----------

@@ -1,5 +1,64 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 61 — Feb 2026 — 4 fix workflow + snap millimetrico CAD)
+
+### 📐 Precisione millimetrica CAD
+**Prima**: `GRID = 10` cm — tutti gli elementi (muri/porte/finestre/impianti) snappavano a multipli di 10 cm.
+**Adesso**: `GRID = 0.1` cm (1 mm). Anche `snap()` in `utils.js` ha default `step=0.1`. Render visivo della griglia invariato (linee 10 cm + 1 m). Misure ora precise al millimetro.
+
+### 🔨 Fasi del popup "Nuova fase" — bug fix critico
+**Prima**: `CommessaWorkflow.jsx` chiamava `/api/fasi-templates` (21 fasi HARDCODED in `routes_commessa_workflow.py`) ignorando le fasi che l'admin aveva creato nel menu sidebar "Fasi Commessa" (collection `fasi_commessa`).
+**Adesso**: chiama `/api/fasi-commessa` (database admin-managed). Mappa i campi `{name, description, order}` → `{titolo, durata_gg, ordine, color, categoria}` attesi dal popup. Ordina per `order`.
+
+### ✅ Checklist venditore — popup helper + condizioni + ordine workflow
+**Prima**: lista di 12 voci senza spiegazioni; ordine non logico (privacy in mezzo, data inizio in fondo).
+**Adesso**:
+- **Ordine workflow**: cliente → contratto → acconto → pratica edilizia → progetto → materiali → computo → preventivi sub → fasi → data inizio → foto rilievo → privacy.
+- **Numero progressivo** (1., 2., ...) accanto a ogni step.
+- **Bottone "?" blu** per ogni voce → apre Dialog **"Come completare questa voce"** con:
+  - Step ricapitolato + badge critico
+  - Istruzioni multi-riga su DOVE andare e COSA fare per completarla
+  - **Condizione automatica** documentata (es. "spunta verde quando contratto.firmato = true")
+  - Stato attuale: COMPLETATA (verde) o DA COMPLETARE (zinc)
+- Le voci della checklist sono già "condizionate" automaticamente dal dato sottostante (lettura DB). Nessuna spunta manuale.
+
+### 📸 NUOVA TAB: "8. Foto Cantiere" (multi-upload raggruppato per giorno)
+**Backend** (`routes_commessa_workflow.py`):
+- Modello `FotoCantiereIn` (BaseModel + `extra="allow"`) con `data, titolo, foto[], note`.
+- Endpoint:
+  - `GET /api/commesse/{cid}/foto-cantiere`
+  - `POST /api/commesse/{cid}/foto-cantiere`
+  - `PUT /api/commesse/{cid}/foto-cantiere/{gid}`
+  - `DELETE /api/commesse/{cid}/foto-cantiere/{gid}`
+- Riuso dell'endpoint generico `POST /api/uploads` per il file binario (con `tipo="foto-cantiere"`).
+- Aggiunto `foto_cantiere` nello snapshot `GET /api/commesse/{cid}/workflow`.
+
+**Frontend** (`CommessaWorkflow.jsx > FotoCantiere`):
+- Nuova tab "📸 8. Foto Cantiere" inserita tra Fasi (7) e Voci e Acquisti (rinumerata 9).
+- Bottone "Nuova giornata" → Dialog con:
+  - Input data + Titolo (es: "Demolizioni cucina", "Posa massetto")
+  - Input note facoltative
+  - Multi-upload `<input type="file" multiple accept="image/*">` con caricamento sequenziale all'endpoint `/uploads`
+  - Anteprima foto caricate con bottone Elimina su hover
+- Lista giornate raggruppate per `data` (più recente prima):
+  - Card con data grande in stile calendario + titolo + note + count foto
+  - Griglia thumbnail responsive 2/3/4/6 colonne
+  - Click foto → **Lightbox** full-screen
+  - Edit / Delete per giornata
+- Empty state grafico se nessuna foto
+
+### 💰 Soglie prezzo per pacchetto — sblocco UI
+**Prima**: l'input "Soglia prezzo MAX coperto dal pacchetto" in `AdminPacchetti.jsx` era VISIBILE solo se la voce backoffice aveva `modificabile_dal_venditore=true`. Le voci non modificabili (lavorazioni, impianti) non potevano avere soglie diverse per pacchetto.
+**Adesso**: l'input è SEMPRE VISIBILE per ogni voce dentro al pacchetto. Stile diverso (amber per modificabili, blue per non-modificabili) con helper testo che chiarisce il significato del campo. Così per la stessa voce X puoi impostare soglie diverse in BASIC/SMART/PREMIUM/ELITE.
+- Frontend `PreventivoPacchetto.jsx` già usa `it.unit_price_pkg` come soglia per il calcolo extras → impatto immediato.
+
+### Verifiche E2E
+- Snap millimetrico: `snap(123.47) → 123.5`, `snap(99.95) → 100` ✓
+- Fasi popup: 18 fasi dell'admin visibili (era 21 hardcoded prima ma errate) ✓
+- Checklist help popup: apre con istruzioni e badge stato attuale ✓
+- Foto cantiere: POST/GET/PUT/DELETE backend, FE Dialog con multi-upload + lightbox + raggruppamento per giorno ✓
+- Soglie pacchetto: input visibile per OGNI voce in OGNI pacchetto (Demolizione 15.75€, Decorazione 8€, Muro cartongesso 26€, ecc.) ✓
+
 ## Recent Updates (Round 60 — Feb 2026 — Bagni multipli + Optional qty universale + Fix Round 59)
 **Richieste utente**:
 1. *"in ogni pacchetto devi darmi la possibilità di aggiungere più bagni... se ho silver incluso e voglio sostituirlo con un gold devi aggiungere solo la differenza ma nel computo metrico le voci silver vengono SOSTITUITE con quelle gold"*

@@ -1,5 +1,60 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+## Recent Updates (Round 62 — Feb 2026 — Sconto autorizzato + Maggiorazione mq + Computo tier bagni)
+
+### 💰 Sconto preventivi con workflow di autorizzazione
+**Richiesta utente**: "i venditori hanno un margine di sconto del 5% e solo io posso autorizzare uno sconto maggiore. Devi darmi (nel momento in cui valuto) i numeri della marginalità in quel momento."
+
+**Logica implementata**:
+- **Venditore**: sconto fino al 5% applicabile direttamente. Sopra il 5% l'input viene cappato a 5% e si apre automaticamente un Dialog di richiesta autorizzazione (campo % + motivo obbligatorio).
+- **Admin**: sconto libero senza limiti, nessuna soglia.
+- Bottone "Richiedi sconto maggiore" anche manuale per il venditore.
+
+**Backend** (`server.py`):
+- Costante `SOGLIA_SCONTO_AUTO = 5.0`
+- Funzione `_calc_marginalita_preventivo(prev, voci_back, sconto_simulato_pct)` che calcola live:
+  - Subtotal pre-sconto
+  - Costo netto stimato (prezzo_acquisto × qty per items/extra, optional/1.6, costi netti bagni: silver 2000€, gold 3200€, platinum 5500€)
+  - Margine € e % sia ATTUALE (sconto effettivo) sia SE-APPROVO (sconto richiesto)
+- Endpoints:
+  - `POST /api/preventivi/{id}/sconto-richiesta` — crea/sostituisce richiesta pending (verifica > soglia, motivo obbligatorio)
+  - `GET /api/sconto-richieste?stato=…` — admin vede tutte, venditore solo le sue; arricchisce con `marginalita_live` e `marginalita_senza_sconto_extra`
+  - `PUT /api/sconto-richieste/{rid}/decide` — solo admin; approva (con `pct_approvato` modificabile, default = richiesto) o rifiuta. Su approvazione: aggiorna `preventivi.sconto_pct` + `sconto_autorizzato_da` + `sconto_autorizzato_il`.
+
+**Frontend nuova pagina** (`AdminScontoRichieste.jsx`):
+- Lista richieste filtrabili per stato (pending / approvato / rifiutato / tutte)
+- Card per richiesta con: badge stato, numero preventivo, cliente, % richiesta evidenziata, motivo del venditore in italico
+- **4 KPI box marginalità**: Subtotale | Costo netto stimato | Margine ATTUALE | Margine SE APPROVO (colorato rosso se < 20%)
+- Indicazione delta margine (es. "−4.500€" sotto Margine SE APPROVO)
+- Bottoni "Rifiuta" e "Approva" → Dialog con campo % modificabile e nota per il venditore
+- Sidebar admin: nuovo link "Richieste Sconto" con icona ShieldCheck
+
+### 📐 Maggiorazione automatica mq piccole
+**Richiesta utente**: "sotto i 60 mq devi aumentare di un 10% i prezzi. Sotto i 40 mq vanno calcolati a corpo perché altrimenti la marginalità scende troppo."
+
+**Logica implementata** (`PreventivoPacchetto.jsx` — `useMemo mqAdjustment`):
+- **mq < 40 → modalità A CORPO**: equiparato a 40 m² + 15% di margine sicurezza (`base = price_per_m2 × 40 × 1.15`)
+- **40 ≤ mq < 60 → +10%**: `base = price_per_m2 × mq × 1.10`
+- **mq ≥ 60 → normale**: `base = price_per_m2 × mq`
+- Banner esplicativo nello step "Metri quadri" (rosso per A CORPO, amber per +10%) con icona e descrizione completa del motivo (costi fissi cantiere non scalabili)
+- Preview base ora mostra: "380 €/m² × 40,0 m² · ×1.15 (maggiorazione mq piccole)"
+
+### 🛁 Computo metrico differenziato per tier bagno (P1 risolto)
+**Logica** (`server.py _auto_populate_commessa_from_preventivo`):
+- Lettura collection `bathroom_tiers` (fallback prezzi hardcoded silver/gold/platinum)
+- Per ogni bagno del preventivo:
+  - **Incluso + tier != silver** → voce computo: `"Upgrade Bagno #N → GOLD (differenza vs SILVER)"` con `prezzo_unit = tier.price − silver.price`
+  - **Extra (non incluso)** → voce computo: `"Bagno #N aggiuntivo GOLD (completo, extra)"` con `prezzo_unit = tier.price`
+- Totale computo aggiornato. Granularità voce-per-voce (silver→gold→platinum mapping completo) lasciata a iterazione futura — questa soluzione mantiene la marginalità corretta in fattura.
+
+### Verifica E2E
+- Test backend curl: POST richiesta 15% → marginalità mostra Margine SENZA sconto 80.86% vs Margine SE APPROVO 77.48%. PUT decide approva al 12% → preventivo.sconto_pct = 12 ✓
+- Screenshot UI:
+  - mq=30 → banner rosso "MODALITÀ A CORPO" + preview 17.480€ (380 × 40 × 1.15) ✓
+  - mq=50 → banner amber "MAGGIORAZIONE +10%" + preview 20.900€ (380 × 50 × 1.10) ✓
+  - mq=70 → nessun banner, preview normale ✓
+  - Admin sconto-richieste page: card con badge, marginalità, bottoni approva/rifiuta ✓
+
 ## Recent Updates (Round 61 — Feb 2026 — 4 fix workflow + snap millimetrico CAD)
 
 ### 📐 Precisione millimetrica CAD

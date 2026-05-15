@@ -1578,6 +1578,161 @@ async def update_stato(prev_id: str, body: Dict[str, Any], user: Dict[str, Any] 
     return {"ok": True, "stato": stato, "auto_commessa": auto_commessa_info}
 
 
+# ====================== SCONTO RICHIESTA & AUTORIZZAZIONE ======================
+# Soglia automatica per ruolo "venditore": fino al 5% non serve autorizzazione.
+# Sopra il 5% il venditore deve aprire una richiesta che l'admin approva o rifiuta.
+
+SOGLIA_SCONTO_AUTO = 5.0  # % massima auto-approvata per venditori
+
+
+def _calc_marginalita_preventivo(prev: Dict[str, Any], voci_back: Dict[str, Any], sconto_simulato_pct: float = None) -> Dict[str, Any]:
+    """Calcola marginalità live di un preventivo simulando uno sconto. Considera:
+    - Ricavo: totale_iva_escl (o ricalcolato base + extras + optional + bagni - sconto)
+    - Costo: somma di prezzo_acquisto × qty per ogni voce + costi bagni (silver=2000€, gold=3200€, platinum=5500€ stimati come costo netto interno)
+    """
+    items = prev.get("items") or []
+    extra = prev.get("extra_voci") or []
+    optional = prev.get("optional") or []
+    bathrooms = prev.get("bathrooms") or []
+    # Costi netti
+    costo = 0.0
+    for it in items + extra:
+        vid = it.get("voce_id") or it.get("id")
+        vb = voci_back.get(vid) or {}
+        qty = float(it.get("qty") or it.get("included_qty") or 0)
+        pa = float(vb.get("prezzo_acquisto") or 0)
+        if pa == 0 and (it.get("unit_price") or it.get("prezzo_unit")):
+            # Stima costo dall'unit_price diviso ricarico medio 1.8x
+            pa = float(it.get("unit_price") or it.get("prezzo_unit") or 0) / 1.8
+        costo += qty * pa
+    for o in optional:
+        # Optional: usa il prezzo_listino come ricavo, stima costo come ricavo / 1.6
+        costo += float(o.get("total") or 0) / 1.6
+    # Bagni: costi netti stimati interni (sanitari + posa + materiali)
+    BATH_COSTS = {"bagno-silver": 2000.0, "bagno-gold": 3200.0, "bagno-platinum": 5500.0}
+    for i, b in enumerate(bathrooms):
+        tid = b.get("tier_id")
+        if b.get("included"):
+            # Solo upgrade differenza
+            costo += max(0, BATH_COSTS.get(tid, 0) - BATH_COSTS.get("bagno-silver", 0))
+        else:
+            costo += BATH_COSTS.get(tid, 0)
+    # Ricavo: totale_iva_escl come riferimento (già contiene sconto e maggiorazioni applicate dal frontend)
+    ricavo_attuale = float(prev.get("totale_iva_escl") or 0)
+    sconto_pct_attuale = float(prev.get("sconto_pct") or 0)
+    # Subtotal (pre-sconto)
+    subtotal = ricavo_attuale / max(0.0001, (1 - sconto_pct_attuale / 100)) if sconto_pct_attuale > 0 else ricavo_attuale
+    # Se è stato richiesto uno sconto simulato, ricalcola ricavo
+    if sconto_simulato_pct is not None:
+        ricavo_simulato = subtotal * (1 - sconto_simulato_pct / 100)
+    else:
+        ricavo_simulato = ricavo_attuale
+    margine_eur = ricavo_simulato - costo
+    margine_pct = (margine_eur / ricavo_simulato * 100) if ricavo_simulato else 0
+    return {
+        "subtotal": round(subtotal, 2),
+        "costo_netto_stimato": round(costo, 2),
+        "ricavo_attuale": round(ricavo_attuale, 2),
+        "ricavo_simulato": round(ricavo_simulato, 2),
+        "sconto_pct_attuale": sconto_pct_attuale,
+        "sconto_pct_simulato": sconto_simulato_pct,
+        "margine_eur": round(margine_eur, 2),
+        "margine_pct": round(margine_pct, 2),
+    }
+
+
+@api.post("/preventivi/{prev_id}/sconto-richiesta")
+async def request_sconto(prev_id: str, body: Dict[str, Any], user: Dict[str, Any] = Depends(get_current_user)):
+    """Venditore richiede uno sconto > 5%. Crea record pending.
+    Body: { pct: float, motivo: str }"""
+    pct = float(body.get("pct") or 0)
+    motivo = (body.get("motivo") or "").strip()
+    if pct <= SOGLIA_SCONTO_AUTO:
+        raise HTTPException(400, f"Sconto fino al {SOGLIA_SCONTO_AUTO}% non richiede autorizzazione (puoi applicarlo direttamente).")
+    if pct > 100 or pct < 0:
+        raise HTTPException(400, "Percentuale sconto non valida")
+    if not motivo:
+        raise HTTPException(400, "Inserisci un motivo per la richiesta")
+    prev = await db.preventivi.find_one({"id": prev_id, "user_id": user["id"]}, {"_id": 0}) if (user.get("role") or "").lower() != "admin" else await db.preventivi.find_one({"id": prev_id}, {"_id": 0})
+    if not prev:
+        raise HTTPException(404, "Preventivo non trovato")
+    # Verifica se c'è già una richiesta pending per lo stesso preventivo → la sostituisce
+    existing = await db.sconto_richieste.find_one({"preventivo_id": prev_id, "stato": "pending"}, {"_id": 0})
+    rid = existing["id"] if existing else uuid.uuid4().hex
+    doc = {
+        "id": rid,
+        "preventivo_id": prev_id,
+        "preventivo_numero": prev.get("numero"),
+        "cliente_nome": ((prev.get("cliente") or {}).get("nome") or "") + " " + ((prev.get("cliente") or {}).get("cognome") or ""),
+        "pct_richiesto": pct,
+        "motivo": motivo,
+        "stato": "pending",
+        "requested_by": user.get("id"),
+        "requested_by_name": user.get("name") or user.get("email"),
+        "requested_at": datetime.now(timezone.utc).isoformat(),
+        "decided_at": None,
+        "admin_note": "",
+        "decided_by": None,
+    }
+    if existing:
+        await db.sconto_richieste.update_one({"id": rid}, {"$set": dict(doc)})
+    else:
+        await db.sconto_richieste.insert_one(dict(doc))
+    doc.pop("_id", None)
+    return doc
+
+
+@api.get("/sconto-richieste")
+async def list_sconto_richieste(stato: Optional[str] = None, user: Dict[str, Any] = Depends(get_current_user)):
+    """Admin vede tutte. Venditore vede solo le proprie."""
+    q: Dict[str, Any] = {}
+    if stato:
+        q["stato"] = stato
+    role = (user.get("role") or "").lower()
+    if role != "admin":
+        q["requested_by"] = user.get("id")
+    rows = await db.sconto_richieste.find(q, {"_id": 0}).sort("requested_at", -1).to_list(500)
+    # Per ogni richiesta arricchisce con marginalità live calcolata SUL MOMENTO
+    voci_back = {v["id"]: v for v in await db.voci_backoffice.find({}, {"_id": 0}).to_list(3000)}
+    out = []
+    for r in rows:
+        prev = await db.preventivi.find_one({"id": r["preventivo_id"]}, {"_id": 0})
+        if prev:
+            r["marginalita_live"] = _calc_marginalita_preventivo(prev, voci_back, sconto_simulato_pct=r.get("pct_richiesto"))
+            r["marginalita_senza_sconto_extra"] = _calc_marginalita_preventivo(prev, voci_back)
+        out.append(r)
+    return out
+
+
+@api.put("/sconto-richieste/{rid}/decide")
+async def decide_sconto(rid: str, body: Dict[str, Any], user: Dict[str, Any] = Depends(get_current_user)):
+    """Admin approva o rifiuta. Body: { stato: 'approvato'|'rifiutato', pct_approvato?: float, admin_note?: str }"""
+    if (user.get("role") or "").lower() != "admin":
+        raise HTTPException(403, "Solo l'admin può approvare/rifiutare richieste sconto")
+    new_stato = body.get("stato")
+    if new_stato not in ("approvato", "rifiutato"):
+        raise HTTPException(400, "Stato non valido (approvato/rifiutato)")
+    r = await db.sconto_richieste.find_one({"id": rid}, {"_id": 0})
+    if not r:
+        raise HTTPException(404, "Richiesta non trovata")
+    pct_finale = float(body.get("pct_approvato") if body.get("pct_approvato") is not None else r.get("pct_richiesto") or 0)
+    update = {
+        "stato": new_stato,
+        "decided_at": datetime.now(timezone.utc).isoformat(),
+        "decided_by": user.get("id"),
+        "admin_note": (body.get("admin_note") or "").strip(),
+        "pct_approvato": pct_finale if new_stato == "approvato" else None,
+    }
+    await db.sconto_richieste.update_one({"id": rid}, {"$set": update})
+    # Se approvato → applica il nuovo sconto sul preventivo
+    if new_stato == "approvato":
+        await db.preventivi.update_one(
+            {"id": r["preventivo_id"]},
+            {"$set": {"sconto_pct": pct_finale, "sconto_autorizzato_da": user.get("id"), "sconto_autorizzato_il": update["decided_at"]}},
+        )
+    return {"ok": True, **update}
+
+
 async def _auto_populate_commessa_from_preventivo(prev_id: str, user: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Quando un preventivo viene accettato, crea (se non esiste) una commessa collegata
     e ne pre-compila Computo Metrico + bozza Tabella Materiali dalle righe del preventivo.
@@ -1646,6 +1801,54 @@ async def _auto_populate_commessa_from_preventivo(prev_id: str, user: Dict[str, 
             "auto_from_preventivo": True,
         })
     cm_totale = round(sum(x["totale"] for x in cm_items), 2)
+
+    # 2b) UPGRADE TIER BAGNI: per ogni bagno con tier != silver, aggiungi voce computo con la differenza
+    bathrooms = prev.get("bathrooms") or []
+    if bathrooms:
+        tiers = await db.bathroom_tiers.find({}, {"_id": 0}).sort("price", 1).to_list(20)
+        if not tiers:
+            # Fallback: prezzi default dei tier hardcoded in packages_seed
+            tiers = [{"id": "bagno-silver", "name": "SILVER", "price": 3500.0},
+                     {"id": "bagno-gold", "name": "GOLD", "price": 5500.0},
+                     {"id": "bagno-platinum", "name": "PLATINUM", "price": 9000.0}]
+        tiers_map = {t["id"]: t for t in tiers}
+        silver_price = (tiers[0] or {}).get("price", 0) if tiers else 0
+        for i, b in enumerate(bathrooms):
+            tier = tiers_map.get(b.get("tier_id"))
+            if not tier:
+                continue
+            if b.get("included"):
+                diff = max(0, (tier.get("price", 0) - silver_price))
+                if diff > 0:
+                    cm_items.append({
+                        "id": f"cm-{uuid.uuid4().hex[:8]}",
+                        "voce_id": "",
+                        "name": f"Upgrade Bagno #{i+1} → {tier.get('name')} (differenza vs SILVER)",
+                        "qty": 1,
+                        "unit": "forfait",
+                        "prezzo_unit": diff,
+                        "totale": diff,
+                        "category": "bagno",
+                        "stato_assegnazione": "da_assegnare",
+                        "auto_from_preventivo": True,
+                        "tier_bagno": tier.get("id"),
+                    })
+            else:
+                price = tier.get("price", 0)
+                cm_items.append({
+                    "id": f"cm-{uuid.uuid4().hex[:8]}",
+                    "voce_id": "",
+                    "name": f"Bagno #{i+1} aggiuntivo {tier.get('name')} (completo, extra)",
+                    "qty": 1,
+                    "unit": "forfait",
+                    "prezzo_unit": price,
+                    "totale": price,
+                    "category": "bagno",
+                    "stato_assegnazione": "da_assegnare",
+                    "auto_from_preventivo": True,
+                    "tier_bagno": tier.get("id"),
+                })
+        cm_totale = round(sum(x["totale"] for x in cm_items), 2)
     # 3) Tabella Materiali bozza: usa template attivo se esiste, altrimenti estrai voci "materiali"
     mat_items = []
     template_doc = await db.materiali_template.find_one({"is_default": True}, {"_id": 0})

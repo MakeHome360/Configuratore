@@ -4,23 +4,28 @@ import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { Dialog, DialogContent } from "../components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 import { Switch } from "../components/ui/switch";
 import { Separator } from "../components/ui/separator";
 import { toast } from "sonner";
 import {
-  ArrowLeft, Save, Download, ChevronRight, ChevronLeft, Check, Sparkles, FileText, Send,
+  ArrowLeft, Save, Download, ChevronRight, ChevronLeft, Check, Sparkles, FileText, Send, AlertTriangle, ShieldCheck, Clock,
 } from "lucide-react";
 import { fmtEuro, fmtNum } from "../editor/utils";
 import jsPDF from "jspdf";
 import { InfissoQuickConfigurator } from "../components/InfissoQuickConfigurator";
+import { useAuth } from "@/contexts/AuthContext";
+
+const SOGLIA_SCONTO_AUTO = 5; // Venditore può applicare fino a 5% senza autorizzazione
 
 export default function PreventivoPacchetto() {
   const { id } = useParams();
   const isNew = !id;
   const nav = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = (user?.role || "").toLowerCase() === "admin";
 
   const [step, setStep] = useState(0); // 0 package, 1 mq, 2 items, 3 optional, 4 bagno, 5 cliente, 6 result
   const [packages, setPackages] = useState([]);
@@ -28,6 +33,9 @@ export default function PreventivoPacchetto() {
   const [bathroomTiers, setBathroomTiers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [scontoReq, setScontoReq] = useState(null); // richiesta sconto attiva (pending/approvato/rifiutato)
+  const [scontoDialog, setScontoDialog] = useState(false);
+  const [scontoForm, setScontoForm] = useState({ pct: 10, motivo: "" });
 
   const [prev, setPrev] = useState({
     package_id: null,
@@ -97,6 +105,12 @@ export default function PreventivoPacchetto() {
           });
           setNumero(data.numero); setStato(data.stato);
           setStep(6);
+          // Carica richiesta sconto attiva (pending o ultima decisa) per questo preventivo
+          try {
+            const sr = await api.get(`/sconto-richieste`);
+            const rows = (sr.data || []).filter(r => r.preventivo_id === data.id);
+            if (rows.length) setScontoReq(rows[0]);
+          } catch {}
         } else {
           // Prefill dal configuratore esigenze (sessionStorage + URL ?prefill=1)
           // NON rimuoviamo subito sessionStorage: StrictMode (dev) può causare doppio mount,
@@ -206,13 +220,24 @@ export default function PreventivoPacchetto() {
 
   const pkg = packages.find((p) => p.id === prev.package_id);
 
+  // Maggiorazione mq piccole:
+  // mq < 40 → modalità "a corpo": equivalente a 40 mq + 15% margine sicurezza
+  // 40 ≤ mq < 60 → +10% sul base
+  // ≥60 → normale
+  const mqAdjustment = useMemo(() => {
+    const m = parseFloat(prev.mq || 0);
+    if (!m || m <= 0) return { mode: "normal", multiplier: 1, mq_effettivi: m, note: "" };
+    if (m < 40) return { mode: "a_corpo", multiplier: 1.15, mq_effettivi: 40, note: `Sotto i 40 m² il preventivo è calcolato A CORPO (forfait fisso): equiparato a 40 m² + 15% di margine sicurezza. È necessario per mantenere la marginalità su lavori piccoli (i costi fissi non scalano col m²).` };
+    if (m < 60) return { mode: "maggiorato", multiplier: 1.10, mq_effettivi: m, note: `Sotto i 60 m² i prezzi base sono maggiorati del +10% per coprire i costi fissi di cantiere.` };
+    return { mode: "normal", multiplier: 1, mq_effettivi: m, note: "" };
+  }, [prev.mq]);
+
   const totals = useMemo(() => {
-    if (!pkg) return { base: 0, extras: 0, optional: 0, bagno: 0, subtotal: 0, sconto: 0, iva: 0, total: 0 };
+    if (!pkg) return { base: 0, extras: 0, optional: 0, bagno: 0, subtotal: 0, sconto: 0, iva: 0, total: 0, mqAdjustment };
     // Voci ESCLUSE dal preventivo (rimosse dall'utente): non contano né come base né come extras
     const activeItems = (prev.items || []).filter((it) => !it.excluded);
-    // Il forfait viene RIDOTTO proporzionalmente se l'utente ha escluso voci incluse (è giusto: ha tolto prestazioni)
-    // Semplificazione: il base resta al prezzo a m² del pacchetto intero (il pacchetto è un'offerta unica). Le esclusioni si riflettono SOLO in meno extras.
-    const base = pkg.price_per_m2 * (prev.mq || 0);
+    // BASE: applica multiplier mq adjustment usando mq_effettivi (forfait per <40mq, mq reali per gli altri)
+    const base = pkg.price_per_m2 * mqAdjustment.mq_effettivi * mqAdjustment.multiplier;
     const extras = activeItems.reduce((s, it) => {
       const incl = it.included_qty || 0;
       const reqs = Math.max(0, it.qty_richiesta || 0);
@@ -262,8 +287,8 @@ export default function PreventivoPacchetto() {
     const afterDisc = subtotal - sconto;
     const iva = afterDisc * (prev.iva_pct || 10) / 100;
     const total = afterDisc + iva;
-    return { base, extras, optional, bagno, subtotal, sconto, iva, total };
-  }, [prev, pkg, bathroomTiers]);
+    return { base, extras, optional, bagno, subtotal, sconto, iva, total, mqAdjustment };
+  }, [prev, pkg, bathroomTiers, mqAdjustment]);
 
   const save = async () => {
     setSaving(true);
@@ -395,8 +420,25 @@ export default function PreventivoPacchetto() {
                 {pkg && prev.mq > 0 && (
                   <div className="mt-8 border border-zinc-200 p-6 max-w-md">
                     <div className="label-kicker mb-2">Preview base</div>
-                    <div className="mono text-3xl">{fmtEuro(pkg.price_per_m2 * prev.mq)}</div>
-                    <div className="text-xs text-zinc-500 mono mt-1">{pkg.name} · {fmtNum(pkg.price_per_m2, 0)} €/m² × {prev.mq} m²</div>
+                    <div className="mono text-3xl">{fmtEuro(pkg.price_per_m2 * mqAdjustment.mq_effettivi * mqAdjustment.multiplier)}</div>
+                    <div className="text-xs text-zinc-500 mono mt-1">
+                      {pkg.name} · {fmtNum(pkg.price_per_m2, 0)} €/m² × {fmtNum(mqAdjustment.mq_effettivi, 1)} m²
+                      {mqAdjustment.multiplier !== 1 && <> · <span className="text-amber-700 font-semibold">×{mqAdjustment.multiplier.toFixed(2)} (maggiorazione mq piccole)</span></>}
+                    </div>
+                  </div>
+                )}
+                {/* Banner maggiorazione mq piccole */}
+                {prev.mq > 0 && mqAdjustment.mode !== "normal" && (
+                  <div className={`mt-4 max-w-md border-l-4 p-4 text-sm ${mqAdjustment.mode === "a_corpo" ? "bg-rose-50 border-rose-500 text-rose-900" : "bg-amber-50 border-amber-500 text-amber-900"}`} data-testid="mq-adjustment-banner">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-semibold uppercase text-xs tracking-widest mb-1">
+                          {mqAdjustment.mode === "a_corpo" ? "Modalità A CORPO" : "Maggiorazione +10%"}
+                        </div>
+                        <div className="leading-relaxed">{mqAdjustment.note}</div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -751,9 +793,72 @@ export default function PreventivoPacchetto() {
                     <Label className="label-kicker">Note</Label>
                     <Textarea value={prev.note || ""} onChange={(e) => setPrev((s) => ({ ...s, note: e.target.value }))} rows={4} className="rounded-sm mt-1" />
                   </div>
-                  <div>
-                    <Label className="label-kicker">Sconto %</Label>
-                    <Input type="number" min={0} max={100} step="0.5" value={prev.sconto_pct} onChange={(e) => setPrev((s) => ({ ...s, sconto_pct: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) }))} className="rounded-sm h-10 mt-1 mono" />
+                  <div className="sm:col-span-2 border-t border-zinc-200 pt-4 mt-2">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <Label className="label-kicker">Sconto %</Label>
+                        <div className="text-[11px] text-zinc-500 mt-0.5">
+                          {isAdmin
+                            ? "Admin: sconto libero senza limiti."
+                            : `Venditore: fino al ${SOGLIA_SCONTO_AUTO}% applicabile direttamente. Oltre serve autorizzazione admin.`}
+                        </div>
+                      </div>
+                      {scontoReq && scontoReq.stato === "pending" && (
+                        <span className="text-[10px] mono uppercase tracking-widest bg-amber-100 text-amber-800 px-2 py-1 rounded flex items-center gap-1">
+                          <Clock className="h-3 w-3" /> richiesta {scontoReq.pct_richiesto}% in attesa
+                        </span>
+                      )}
+                      {scontoReq && scontoReq.stato === "approvato" && (
+                        <span className="text-[10px] mono uppercase tracking-widest bg-emerald-100 text-emerald-800 px-2 py-1 rounded flex items-center gap-1">
+                          <ShieldCheck className="h-3 w-3" /> {scontoReq.pct_approvato || scontoReq.pct_richiesto}% autorizzato
+                        </span>
+                      )}
+                      {scontoReq && scontoReq.stato === "rifiutato" && (
+                        <span className="text-[10px] mono uppercase tracking-widest bg-rose-100 text-rose-800 px-2 py-1 rounded">
+                          {scontoReq.pct_richiesto}% rifiutato
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-end gap-3">
+                      <div className="flex-1 max-w-[180px]">
+                        <Input
+                          type="number" min={0} max={100} step="0.5"
+                          value={prev.sconto_pct}
+                          onChange={(e) => {
+                            const v = Math.max(0, Math.min(100, parseFloat(e.target.value) || 0));
+                            // Venditore: cap a SOGLIA. Per sconti maggiori deve richiedere autorizzazione.
+                            if (!isAdmin && v > SOGLIA_SCONTO_AUTO) {
+                              setPrev((s) => ({ ...s, sconto_pct: SOGLIA_SCONTO_AUTO }));
+                              setScontoForm((sf) => ({ ...sf, pct: v }));
+                              setScontoDialog(true);
+                              toast.info(`Sconto > ${SOGLIA_SCONTO_AUTO}%: serve autorizzazione admin`);
+                              return;
+                            }
+                            setPrev((s) => ({ ...s, sconto_pct: v }));
+                          }}
+                          className="rounded-sm h-10 mt-1 mono"
+                          data-testid="sconto-input"
+                        />
+                      </div>
+                      {!isAdmin && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="rounded-sm h-10"
+                          onClick={() => {
+                            setScontoForm({ pct: Math.max(prev.sconto_pct, SOGLIA_SCONTO_AUTO + 1), motivo: scontoReq?.motivo || "" });
+                            setScontoDialog(true);
+                          }}
+                          disabled={!numero || isNew}
+                          data-testid="sconto-richiedi-btn"
+                        >Richiedi sconto maggiore</Button>
+                      )}
+                    </div>
+                    {scontoReq && scontoReq.stato === "rifiutato" && scontoReq.admin_note && (
+                      <div className="mt-2 text-xs text-rose-700 bg-rose-50 border border-rose-200 p-2 rounded">
+                        <strong>Admin:</strong> {scontoReq.admin_note}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <Label className="label-kicker">IVA %</Label>
@@ -970,6 +1075,60 @@ export default function PreventivoPacchetto() {
               }} style={{ background: "var(--brand)", color: "white" }} data-testid="extra-free-save">Aggiungi al preventivo</Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: richiesta sconto > 5% per autorizzazione admin */}
+      <Dialog open={scontoDialog} onOpenChange={setScontoDialog}>
+        <DialogContent className="max-w-md" data-testid="sconto-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-amber-600" /> Richiesta sconto maggiore del {SOGLIA_SCONTO_AUTO}%
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 text-sm">
+            <div className="bg-amber-50 border border-amber-200 p-3 rounded text-xs text-amber-900">
+              Per applicare uno sconto superiore al {SOGLIA_SCONTO_AUTO}% serve l'autorizzazione dell'admin. La tua richiesta verrà inoltrata immediatamente. Riceverai una notifica appena viene presa una decisione.
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-widest text-zinc-500">% sconto richiesta</Label>
+              <Input type="number" min={SOGLIA_SCONTO_AUTO + 0.5} max={100} step="0.5" value={scontoForm.pct} onChange={(e) => setScontoForm(s => ({ ...s, pct: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) }))} className="mono mt-1" data-testid="sconto-req-pct" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-widest text-zinc-500">Motivazione (obbligatoria)</Label>
+              <Textarea
+                value={scontoForm.motivo}
+                onChange={(e) => setScontoForm(s => ({ ...s, motivo: e.target.value }))}
+                placeholder="Es: cliente in trattativa con concorrente, fidelizzazione, opportunità di referral, lavori extra futuri..."
+                rows={4}
+                className="mt-1"
+                data-testid="sconto-req-motivo"
+              />
+            </div>
+            {scontoReq && scontoReq.stato === "pending" && (
+              <div className="text-xs text-zinc-500">
+                Esiste già una richiesta pending del <strong>{scontoReq.pct_richiesto}%</strong>. Inviando ne crei una aggiornata che la sostituisce.
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScontoDialog(false)} data-testid="sconto-req-cancel">Annulla</Button>
+            <Button
+              style={{ background: "var(--brand)", color: "white" }}
+              disabled={scontoForm.pct <= SOGLIA_SCONTO_AUTO || !scontoForm.motivo.trim() || !numero}
+              onClick={async () => {
+                try {
+                  const { data } = await api.post(`/preventivi/${id}/sconto-richiesta`, { pct: scontoForm.pct, motivo: scontoForm.motivo.trim() });
+                  setScontoReq(data);
+                  setScontoDialog(false);
+                  toast.success(`Richiesta inviata all'admin (${data.pct_richiesto}%)`);
+                } catch (e) {
+                  toast.error("Errore: " + (e?.response?.data?.detail || e.message));
+                }
+              }}
+              data-testid="sconto-req-send"
+            >Invia richiesta all'admin</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

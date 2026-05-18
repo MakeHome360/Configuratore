@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { Page, PageHeader } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -56,11 +57,13 @@ export default function AdminMaterialiTemplate() {
   const delRow = (i) => setEdit(e => ({ ...e, voci: e.voci.filter((_, j) => j !== i) }));
 
   return (
-    <div className="space-y-5" data-testid="admin-materiali-template-page">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Template Tabella Materiali</h1>
-          <p className="text-sm text-zinc-500 mt-1">Crea bozze pre-impostate di tabelle materiali. Quando un preventivo viene <strong>accettato</strong>, la commessa generata erediterà automaticamente il template impostato come <strong>predefinito</strong> (★). Il venditore dovrà solo scegliere le finiture.</p>
-        </div>
+    <div data-testid="admin-materiali-template-page">
+      <PageHeader
+        title="Template Tabella Materiali"
+        subtitle="Crea bozze pre-impostate di tabelle materiali. Quando un preventivo viene accettato, la commessa generata erediterà automaticamente il template impostato come predefinito (★). Il venditore dovrà solo scegliere le finiture."
+      />
+      <Page>
+        <div className="space-y-5">
 
         <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-5">
           {/* lista template */}
@@ -139,6 +142,8 @@ export default function AdminMaterialiTemplate() {
             </div>
           )}
         </div>
-      </div>
+        </div>
+      </Page>
+    </div>
   );
 }

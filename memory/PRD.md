@@ -1,5 +1,77 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
+
+## Recent Updates (Round 66 — Feb 2026 — Cluster A/B/C: fix rapidi, pagamenti+Allegato A, voci differenziate+lock CAD)
+
+**Richieste utente (13 punti raggruppati in 3 cluster)**:
+- **Cluster A (Fix Rapidi)**: doppio menù Materiali Template, separare bottone "Occhio" dashboard in Apri Preventivo / Apri CAD, logo mancante in preventivo stampabile, import voci computo→acquisti non salva, computo metrico vuoto per composite.
+- **Cluster B (Pagamenti & Documenti)**: configurazione preset di pagamento da admin (default + custom), Allegato "A" strutturato in commessa (rate/percentuali/date), unificare contratto + documenti in lista unica scaricabile.
+- **Cluster C (Acquisti & Subappalti)**: voci backoffice con tipo (manodopera/acquisto/misto) + fornitore default, KPI separati manodopera vs acquisti in commessa, sezione "Voci Extra Commessa", lock CAD post-approvazione tavole.
+
+### 🔴 Cluster A — Fix Rapidi
+- **Doppio menù `AdminMaterialiTemplate`**: rimosso wrap `<AppLayout>` duplicato (era già wrappato dal router via `P()` helper). Successivamente avvolto in `<PageHeader>`/`<Page>` per uniformità con altre pagine admin.
+- **Bottoni Dashboard split**: `Dashboard.jsx` e `DashboardVenditore.jsx` ora mostrano DUE bottoni distinti per ogni preventivo:
+  - `dash-open-prev-{id}` / `vend-open-prev-{id}` → icona `FileText` blu, apre `/preventivo{tipo}/{id}`
+  - `dash-open-cad-{id}` / `vend-open-cad-{id}` → icona `Hammer` (verde se `project_id`, grigio altrimenti), apre `/editor/{project_id}` o crea via `POST /preventivi/{id}/create-project`
+- **Logo preventivo stampa**: `PreventivoStampa.jsx` ora ha fallback a 2 livelli — primo onError tenta `/brand/sadicasa-light.png`, se anche quello fallisce mostra avatar circolare con iniziale azienda. Testid `prev-stampa-logo`/`prev-stampa-logo-default`/`prev-stampa-logo-fallback`.
+- **Import voci da Computo non salvava in UI**: `VociAcquistiTab` in `CommessaWorkflow.jsx` non sincronizzava lo stato locale `items` dopo il reload del parent. Aggiunto `useEffect` su `JSON.stringify(c.voci_acquisti)` che re-popola lo stato. Backend già funzionante.
+- **Computo metrico auto-gen per COMPOSITE**: `routes_biz.py:create_commessa` ora deriva computo_metrico anche dai `composite_selections` (dict {voce_id: {qty, price, name, unit, category}}) + `infissi_extras`. Prima funzionava solo per pacchetto/items.
+
+### 🟠 Cluster B — Pagamenti & Documenti
+- **Preset di pagamento Admin** (`AdminDatiAzienda.jsx`):
+  - Nuova sezione "Modalità di pagamento (preset)" con bottone "+ Nuovo preset"
+  - Ogni preset: nome editabile + lista rate (descrizione + %) + flag default (☆/★)
+  - Validazione visiva: totale rate verde se = 100%, rosso altrimenti
+  - Salvato in `dati_azienda.payment_presets[]` via PUT esistente
+- **Allegato A strutturato in commessa** (`Contratto` component in CommessaWorkflow):
+  - Nuova sezione `allegato-a-section` sotto il blocco Contratto
+  - Selettore preset → applica le rate convertendo % in € su `totale_preventivo` della commessa
+  - Tabella editabile rate: descrizione + % + importo (sync bidirezionale pct↔importo) + data prevista + stato (previsto/incassato/scaduto)
+  - Totali in tfoot con warning rosso se ≠ 100%
+  - Note libero + checkbox firma + data
+  - Bottone "Stampa / PDF" che genera HTML A4 stampabile con intestazione cliente + tabella + riquadri firma
+  - Salvato in `commessa.allegato_a` via PUT
+- **Documenti unificati**: `Documenti` tab ora mostra lista virtuale combinata:
+  - `_contratto_` (riga SYS verde se firmato / amber se non firmato)
+  - `_allegato_a_` (riga SYS, con stato firma)
+  - Tutti i documenti caricati
+  - Bottone "Scarica tutti" apre i link in nuove tab con stagger 150ms
+  - Bottone "Indice PDF" genera elenco stampabile
+
+### 🟡 Cluster C — Acquisti, Subappalti, Lock CAD
+- **Voci backoffice arricchite** (`AdminVociBackoffice.jsx`):
+  - Nuovo campo `tipo`: `acquisto` (🛒) | `manodopera` (🔨) | `misto` (🔧)
+  - Nuovo campo `fornitore_id` (Select da `/subappaltatori?tipo=fornitore`) — default per le commesse
+- **Voci e Acquisti potenziato** (`VociAcquistiTab`):
+  - 4 KPI cards: Manodopera stima + effettivo, Acquisti stima + effettivo, Totale, Δ vs stima
+  - Nuova colonna "Tipo" editabile per riga (testid `va-tipo-{i}`)
+  - `linkVoce()` propaga `voce.tipo` e `voce.fornitore_id` quando si seleziona dal listino
+- **Voci Extra Commessa**: nuova sezione `voci-extra-section` (sfondo amber) sotto Voci Acquisti:
+  - Lavori EXTRA fuori preventivo originale, da autorizzare per iscritto
+  - Tabella: descrizione + qty + prezzo unit + importo (calc auto) + data + checkbox `autorizzato_cliente`
+  - Tfoot con totale extra (testid `extra-total`)
+  - Salvato in `commessa.voci_extra[]`
+- **Lock CAD post-approvazione tavole** (`Editor.jsx:confirmaTavoleInCommessa`):
+  - Conferma tavole su commessa → set `project.data.cad_locked = true` + `commessa.tavole_approvate = true`
+  - Banner rosso "🔒 CAD bloccato — Tavole approvate" sempre visibile in Editor quando lockato
+  - Bottone admin "🔓 Sblocca modifiche" → resetta `cad_locked` + `commessa.tavole_approvate = false`
+
+### File toccati
+- `frontend/src/pages/admin/AdminMaterialiTemplate.jsx` (rimosso double AppLayout + PageHeader)
+- `frontend/src/pages/Dashboard.jsx` (split FileText/Hammer)
+- `frontend/src/pages/DashboardVenditore.jsx` (split FileText/Hammer)
+- `frontend/src/pages/PreventivoStampa.jsx` (logo fallback)
+- `frontend/src/pages/CommessaWorkflow.jsx` (Contratto+AllegatoA, Documenti unificati, VociAcquisti KPI+Voci Extra)
+- `frontend/src/pages/admin/AdminDatiAzienda.jsx` (payment_presets editor)
+- `frontend/src/pages/admin/AdminVociBackoffice.jsx` (tipo+fornitore_id fields)
+- `frontend/src/pages/Editor.jsx` (cad_locked banner + unlockCad)
+- `backend/routes_biz.py` (composite computo auto-gen)
+
+### Test E2E
+- Testing agent iteration_17.json: **5/5 backend tests PASSED · 12/12 frontend testid checks PASSED**
+- Lint: nessun nuovo errore introdotto (errori stilistici pre-esistenti su routes_biz.py)
+- Backend riavviato OK
+
 ## Recent Updates (Round 65 — Feb 2026 — Riepilogo pro: voci, logo, pagamenti dinamici, garanzia rimossa, invio email)
 
 **Richieste utente**:

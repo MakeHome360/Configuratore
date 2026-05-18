@@ -1,6 +1,45 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 67 — Major refactor (Feb 2026, in risposta a critica utente)
+L'utente ha lamentato che alcune feature del Round 66 non si vedevano/non funzionavano. Round 67 riorganizza la UI seguendo ESATTAMENTE il suo messaggio:
+
+1. **Preventivi.jsx — icone bottone**: Eye blu = **Apri Preventivo** (PRIMA apriva CAD), PenTool grigio/verde = **Apri CAD**, Hammer arancio = **Crea Commessa**.
+2. **AdminMaterialiTemplate**: layout single-sidebar definitivo con `<PageHeader>/<Page>`.
+3. **CommessaWorkflow — Contratto e Documenti UNIFICATI**: rimosso il tab Contratto. Ora c'è un solo tab "1. Documenti & Contratto" che contiene:
+   - Blocco upload contratto (link + PDF + firmato)
+   - Sezione Allegato A inline con nuova **colonna "Fase Cantiere"** (Select con: alla firma / inizio lavori / [fasi specifiche commessa] / fine lavori)
+   - **Lista 8 documenti obbligatori** con stato (Contratto firmato, Allegato A firmato, CI cliente, Codice fiscale, Privacy/GDPR, Pratica edilizia CILA/SCIA, Preventivo PDF, Tavole CAD firmate). Ogni riga con badge "Obbligatorio" + CheckCircle2 verde quando completata
+   - Tabella unificata "Tutti i documenti caricati" con bottone "Scarica tutti"
+4. **VociAcquistiTab — dropdown da voci preventivo**: il select `va-voce-link-{i}` ora pesca da `wf.computo_metrico.items` (cioè dalle voci del preventivo), NON più da `/voci-backoffice`. Placeholder: "Scegli dalle voci del preventivo…".
+5. **Modalità di pagamento nel Preventivo** — NUOVO componente `ModalitaPagamentoPicker`:
+   - Carica i preset da `/dati-azienda.payment_presets`
+   - Dropdown nel Riepilogo (step 6) di **PreventivoPacchetto** e dopo Note in **PreventivoComposite**
+   - Auto-seleziona preset di default ★
+   - Opzione "✏️ Personalizzata" che permette di editare rate libere
+   - Mostra tabella con descrizione + % + importo calcolato live sul totale
+   - Salvato in `preventivo.modalita_pagamento = { preset_id, label, rate: [{descrizione, pct}] }`
+6. **Backend — Allegato A auto-popolato** (`routes_biz.py:_build_allegato_a_from_preventivo`): quando si crea una commessa, l'Allegato A nasce già pre-compilato con le rate del preventivo, percentuali tradotte in importi €. Il venditore deve solo aggiungere date e fasi cantiere.
+
+### File modificati
+- `frontend/src/pages/Preventivi.jsx` — Eye/PenTool icons swap
+- `frontend/src/pages/CommessaWorkflow.jsx` — tab merged, DocumentiList nested, Allegato A column Fase
+- `frontend/src/pages/PreventivoPacchetto.jsx` — ModalitaPagamentoPicker import
+- `frontend/src/pages/PreventivoComposite.jsx` — ModalitaPagamentoPicker import + state modalitaPagamento
+- `frontend/src/components/ModalitaPagamentoPicker.jsx` — NUOVO componente
+- `backend/routes_biz.py` — helper `_build_allegato_a_from_preventivo` + integrazione in `create_commessa`
+
+### Testing
+- `iteration_18.json`: 8/8 backend pytest PASS, 13/14 frontend testid PASS, 0 issue critici, 0 issue minor.
+- E2E: login → preventivo composite → set modalità pagamento → crea commessa → verifica allegato_a.rate pre-popolato.
+
+### Cose richieste dall'utente NON in questo round (per il prossimo)
+- ⏳ **Costi fissi commessa** integrati nella marginalità dei pacchetti
+- ⏳ **Workflow CAD → Commessa con re-firma dopo modifiche tavole** (oggi solo lock; manca flusso di re-approvazione)
+- ⏳ **Voci extra con multi-fornitore** (es. piastrelle + trasporto come 2 forniture separate per la stessa voce)
+
+
+
 ## Recent Updates (Round 66 — Feb 2026 — Cluster A/B/C: fix rapidi, pagamenti+Allegato A, voci differenziate+lock CAD)
 
 **Richieste utente (13 punti raggruppati in 3 cluster)**:

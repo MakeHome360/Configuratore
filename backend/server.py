@@ -2121,6 +2121,13 @@ from routes_commessa_workflow import build_commessa_workflow_router
 _cwf = build_commessa_workflow_router(db, get_current_user)
 app.include_router(_cwf, prefix="/api")
 
+# Listini fornitori (catalogo prezzi netti porte/infissi/piastrelle/ecc + import Excel)
+from fastapi import APIRouter as _APIRouterListini
+import routes_listini_fornitori as _lf_mod
+_lf_router = _APIRouterListini()
+_lf_mod.register(_lf_router, db, get_current_user)
+app.include_router(_lf_router, prefix="/api")
+
 
 # ============ BLOG (pubblico + admin) ============
 @app.get("/api/blog/posts")

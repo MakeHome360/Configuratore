@@ -1,0 +1,42 @@
+{
+  "summary": "Round 69 — Listini Fornitori. Backend pytest: 15/15 PASS (CRUD listini, CRUD prodotti con calcolo prezzo_rivendita e fascia low/medium/high, import xlsx 4 righe in mode=replace, import CSV con separator ; e normalizzazione prezzo €/virgola/punto, ricerca categoria+q+fascia, 14 categorie con n_listini, clear prodotti, RBAC no-auth → 401/403). Frontend: pagina /adminlistinifornitori carica PageHeader, 14 categorie (lf-cat-*), filtro categoria, dialog nuovo listino con tutti i 5 campi testid, creazione apre detail, dialog edit prodotto mostra live-calc 'Prezzo rivendita calcolato: € 180.00' (100×1.8), dialog import con mode+file, navigazione back, delete listino confermato.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_round69_listini_fornitori.py",
+    "/app/test_reports/pytest/round69_results.xml"
+  ],
+  "action_items": [
+    "(Minor) routes_listini_fornitori.py: import_listino — quando un valore di prezzo è una cella Excel numerica vuota (None) viene trattato come 0; OK ma considerare skip della riga se nome è presente ma prezzo è 0/None (al momento è importato con prezzo 0). Non bloccante.",
+    "(Minor) cerca_prodotti: il filtro listino è sui campi categoria/attivo, ma il flag attivo è SOLO sul livello listino (filt['attivo']=True). Se un listino è disattivato, nessuno dei suoi prodotti compare — corretto. Considerare di documentarlo.",
+    "(Info) RBAC test 'venditore→403' non eseguibile end-to-end senza utente non-admin preesistente; testato solo il caso no-auth (401/403). A livello codice il check 'role != admin' è presente su tutte le mutation routes (verificato manualmente).",
+    "(Enhancement) AdminListiniFornitori.jsx ~370 LOC — leggibile, ma il sub-componente <ListinoDetail/> potrebbe essere estratto in file separato per coerenza con il resto della codebase."
+  ],
+  "critical_code_review_comments": [
+    "routes_listini_fornitori.py _fascia_prezzo (58-66): soglie low<50, medium<200, high>=200 sono hardcoded. Per future tunability sarebbe meglio in config DB (settings_fasce_prezzo). Non bloccante.",
+    "import_listino (203-309): la pulizia stringa prezzo gestisce €/spazi/virgole correttamente. Edge case: prezzo negativo viene accettato (es. -50) e produce prezzo_rivendita negativo. Considerare clamp a max(0, prezzo).",
+    "import_listino: openpyxl load_workbook viene importato dentro la funzione (lazy import OK), ma in caso di file corrotto/protetto l'errore generico viene wrapped in HTTPException(400) — accettabile, ma sarebbe utile log.warning con traceback per debug admin.",
+    "Pydantic ConfigDict(extra='allow') sui modelli Prodotto/Listino: permette inquinamento del documento con campi sconosciuti. OK per estensibilità, ma documentare i campi 'speciali' (default_unit, ultimo_import) che il backend usa internamente.",
+    "_normalize_prodotto (69-76): in update_listino (118-134) il ricalcolo prezzi rivendita solo per prodotti con ricarico==None o ricarico==vecchio_default. Il confronto con abs() float ha tolleranza 0.0001 — robusto. Buona implementazione.",
+    "Frontend AdminListiniFornitori.jsx: nessun loading state visibile su load() iniziale (categorie+listini) — utenza con DB lento potrebbe vedere tabella vuota brevemente. Aggiungere skeleton/spinner.",
+    "Frontend onFileImport: in caso di file >5MB o timeout non c'è progress bar — UX migliorabile con upload progress per file Excel grandi (>1000 righe).",
+    "Frontend ListinoDetail Edit ricarico: campo accetta empty=null (default listino), ma se utente inserisce 0 il prezzo_rivendita diventa 0 — confusione potenziale. Validare min=0.1."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_round69_listini_fornitori.py (NEW)"
+  ],
+  "success_rate": {
+    "backend": "100% (15/15 pytest)",
+    "frontend": "100% (tutti i testid principali presenti e funzionanti: lf-cat-*, lf-filter-categoria, lf-new, lf-new-dialog, lf-new-{fornitore,categoria,nome,ricarico,submit}, lf-search, lf-import-open, lf-add-prodotto, lf-back, lf-edit-dialog, lf-edit-{nome,netto,ricarico}, lf-import-dialog, lf-import-{mode,file}, lf-row-*, lf-del-*; live-calc prezzo verificato)"
+  },
+  "test_credentials": "admin@admin.it / admin (Bearer JWT working)",
+  "seed_data_creation": "Test listino TEST_R69 creato e cancellato in fixture pytest (scope=module). Test_UI Listino R69 creato via frontend e cancellato. Listino esistente 'Test Porte SRL' (id 601dead375aa4b20927d82a29ea5f3ef, 4 prodotti) preservato — usato come baseline.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Round 69 Listini Fornitori PASS completo. Endpoint testati: GET/POST/PUT/DELETE /api/fornitori-listini, /api/fornitori-listini/{lid}/prodotti, /api/fornitori-listini/{lid}/import (xlsx+csv con normalizzazione), /api/fornitori-listini/{lid}/clear, /api/fornitori-listini-categorie (14 cat), /api/fornitori-listini-prodotti/cerca (categoria+q+fascia). Frontend route /adminlistinifornitori (lowercase, no trailing slash) raggiungibile da sidebar 'Listini Fornitori'. openpyxl installato e funzionante. RBAC: solo admin per mutation, GET visibile a utenti autenticati. Per Round 70 considerare: integrazione prodotti listini nei pacchetti e nel preventivo composite (selector di prodotto da listino con ricarico modificabile per venditore).",
+  "rca of the issue": "N/A — nessun bug trovato. Feature completa e funzionante. Solo suggerimenti di enhancement/code-review (skeleton loader, progress upload, validazione ricarico>0, estrazione sub-component ListinoDetail in file separato)."
+}

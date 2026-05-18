@@ -6,7 +6,7 @@ import {
   LayoutDashboard, FilePlus2, Files, Briefcase, Users2, Building2,
   Settings, Package, Sparkles, UserCircle2, LogOut, Store,
   ClipboardList, BarChart3, Mail, Layers, Hammer, Target, Pencil, Receipt,
-  Wallet, FileText, Newspaper, ListChecks, ShieldCheck,
+  Wallet, FileText, Newspaper, ListChecks, ShieldCheck, FileSpreadsheet,
   ChevronLeft, ChevronRight, Menu
 } from "lucide-react";
 
@@ -39,6 +39,7 @@ const NAV = [
     { to: "/adminpacchetti", label: "Pacchetti & Voci", icon: Layers, roles: ["admin"] },
     { to: "/adminoptional", label: "Optional", icon: Sparkles, roles: ["admin"] },
     { to: "/adminvocibackoffice", label: "Voci Backoffice", icon: ClipboardList, roles: ["admin"] },
+    { to: "/adminlistinifornitori", label: "Listini Fornitori", icon: FileSpreadsheet, roles: ["admin"] },
     { to: "/adminfasicommessa", label: "Fasi Commessa", icon: Hammer, roles: ["admin"] },
     { to: "/adminvenditori", label: "Venditori", icon: Users2, roles: ["admin"] },
     { to: "/adminsubappaltatori", label: "Subappaltatori", icon: Users2, roles: ["admin"] },

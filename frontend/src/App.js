@@ -46,6 +46,7 @@ import AdminImpostazioni from "@/pages/admin/AdminImpostazioni";
 import AdminDocumentiTemplate from "@/pages/admin/AdminDocumentiTemplate";
 import AdminMaterialiTemplate from "@/pages/admin/AdminMaterialiTemplate";
 import AdminScontoRichieste from "@/pages/admin/AdminScontoRichieste";
+import AdminListiniFornitori from "@/pages/admin/AdminListiniFornitori";
 import PreventivoStampa from "@/pages/PreventivoStampa";
 import AdminBlog from "@/pages/admin/AdminBlog";
 import Blog from "@/pages/Blog";
@@ -138,6 +139,7 @@ function App() {
             <Route path="/admindocumentitemplate" element={P(AdminDocumentiTemplate)} />
             <Route path="/adminmaterialitemplate" element={P(AdminMaterialiTemplate)} />
             <Route path="/adminscontorichieste" element={P(AdminScontoRichieste)} />
+            <Route path="/adminlistinifornitori" element={P(AdminListiniFornitori)} />
             <Route path="/preventivi/:id/stampa" element={P(PreventivoStampa)} />
             <Route path="/preventivocomposite/:id/stampa" element={P(PreventivoStampa)} />
             <Route path="/adminblog" element={P(AdminBlog)} />

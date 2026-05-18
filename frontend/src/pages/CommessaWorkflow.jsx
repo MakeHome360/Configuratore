@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FileSignature, Files, ListChecks, Calculator, Hammer, CalendarRange, Wallet, FileBarChart2, Plus, Trash2, ShieldCheck, AlertTriangle, Sparkles, CheckCircle2, Clock, ClipboardCheck, Camera, Image as ImageIcon, Save, Download } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 const STATO_ART_BADGE = {
   ok:               { txt: "OK",                cls: "bg-emerald-100 text-emerald-700" },
@@ -1841,6 +1842,94 @@ function VociAcquistiTab({ wf, cid, reload }) {
     setItems(items.map((x, j) => j === i ? { ...x, qty, stima_backoffice: stima } : x));
   };
 
+  // Stato preventivi fornitori (artigiani) per linkare visivamente alle voci
+  const prevArt = wf.artigiani_preventivi || [];
+  const findPrevByComputoId = (cidRef) => prevArt.find(p => (p.voci_riferite || []).includes(cidRef));
+  const { user } = useAuth();
+  const isAdmin = (user?.role || "").toLowerCase() === "admin";
+
+  // Toggle pagato → endpoint dedicato che crea/elimina movimento cassa
+  const togglePagato = async (i, currentlyPaid) => {
+    const v = items[i];
+    if (currentlyPaid) {
+      // Annulla pagamento
+      if (!window.confirm("Annullare il pagamento? Il movimento di cassa verrà eliminato.")) return;
+      try {
+        await api.post(`/commesse/${cid}/workflow/voci-acquisti/annulla-pagamento`, { idx: i });
+        toast.success("Pagamento annullato, movimento cassa rimosso");
+        reload();
+      } catch (e) { toast.error("Errore: " + (e?.response?.data?.detail || e.message)); }
+      return;
+    }
+    // Registra pagamento
+    const eff = parseFloat(v.effettivo) || 0;
+    if (eff <= 0) {
+      toast.error("Inserisci prima l'importo effettivo (>0) per registrare il pagamento.");
+      return;
+    }
+    // Salva prima eventuali modifiche locali
+    try { await save(); } catch {}
+    try {
+      await api.post(`/commesse/${cid}/workflow/voci-acquisti/paga`, { idx: i });
+      toast.success(`Pagamento di € ${eff.toFixed(2)} registrato in cassa`);
+      reload();
+    } catch (e) { toast.error("Errore: " + (e?.response?.data?.detail || e.message)); }
+  };
+
+  // Carica preventivo fornitore (dialog)
+  const [prevDlgOpen, setPrevDlgOpen] = useState(false);
+  const [prevDlgVoceIdx, setPrevDlgVoceIdx] = useState(null);
+  const [prevForm, setPrevForm] = useState({ artigiano_nome: "", importo_offerto: 0, url_pdf: "", note: "", modalita: "artigiano" });
+  const openPrevDialog = (idx) => {
+    setPrevDlgVoceIdx(idx);
+    const v = items[idx];
+    setPrevForm({
+      artigiano_nome: v.subappaltatore || "",
+      importo_offerto: parseFloat(v.preventivato) || 0,
+      url_pdf: "",
+      note: `Voce: ${v.voce || ""}`,
+      modalita: v.tipo === "manodopera" ? "artigiano" : "artigiano",
+    });
+    setPrevDlgOpen(true);
+  };
+  const submitPreventivoFornitore = async () => {
+    if (!prevForm.artigiano_nome) { toast.error("Inserisci il nome del fornitore/sub"); return; }
+    if (!prevForm.importo_offerto || prevForm.importo_offerto <= 0) { toast.error("Importo > 0 richiesto"); return; }
+    const v = items[prevDlgVoceIdx];
+    const computoId = v?.computo_item_id || v?.voce_id;
+    if (!computoId) { toast.error("Voce non collegata al computo: collega prima la voce dal dropdown"); return; }
+    try {
+      await api.post(`/commesse/${cid}/workflow/artigiani-preventivi`, {
+        artigiano_nome: prevForm.artigiano_nome,
+        importo_offerto: parseFloat(prevForm.importo_offerto),
+        url_pdf: prevForm.url_pdf || null,
+        note: prevForm.note || null,
+        modalita: prevForm.modalita,
+        voci_riferite: [computoId],
+      });
+      toast.success("Preventivo fornitore caricato. In attesa di analisi/approvazione.");
+      setPrevDlgOpen(false);
+      reload();
+    } catch (e) { toast.error("Errore: " + (e?.response?.data?.detail || e.message)); }
+  };
+  const approvaPreventivo = async (pid) => {
+    if (!window.confirm("Approvare il preventivo del fornitore? Verrà segnato come autorizzato e l'importo aggiornerà la voce in commessa.")) return;
+    try {
+      await api.post(`/commesse/${cid}/workflow/artigiani-preventivi/${pid}/autorizza`);
+      toast.success("Preventivo approvato");
+      reload();
+    } catch (e) { toast.error("Errore: " + (e?.response?.data?.detail || e.message)); }
+  };
+  const rifiutaPreventivo = async (pid) => {
+    const motivo = window.prompt("Motivo del rifiuto (sarà visibile al venditore):", "");
+    if (motivo === null) return;
+    try {
+      await api.post(`/commesse/${cid}/workflow/artigiani-preventivi/${pid}/rifiuta`, null, { params: { motivo } });
+      toast.success("Preventivo rifiutato");
+      reload();
+    } catch (e) { toast.error("Errore: " + (e?.response?.data?.detail || e.message)); }
+  };
+
   // VOCI EXTRA: voci aggiunte fuori dal preventivo originale (lavori extra concordati col cliente)
   const [extraItems, setExtraItems] = useState(c.voci_extra || []);
   useEffect(() => { setExtraItems(c.voci_extra || []); /* eslint-disable-next-line */ }, [JSON.stringify(c.voci_extra)]);
@@ -1905,15 +1994,15 @@ function VociAcquistiTab({ wf, cid, reload }) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
-              <th className="px-2 py-2 text-left min-w-[200px]">Voce (catalogo)</th>
+              <th className="px-2 py-2 text-left min-w-[200px]">Voce (dal preventivo)</th>
               <th className="px-2 py-2 text-left w-24">Tipo</th>
-              <th className="px-2 py-2 text-left min-w-[160px]">Sub-appaltatore / Fornitore</th>
+              <th className="px-2 py-2 text-left min-w-[150px]">Sub/Fornitore</th>
               <th className="px-2 py-2 text-right w-20">Qty</th>
-              <th className="px-2 py-2 text-right w-28">Stima nostra</th>
-              <th className="px-2 py-2 text-right w-28">Preventivato sub</th>
-              <th className="px-2 py-2 text-right w-24">Δ vs stima</th>
-              <th className="px-2 py-2 text-right w-28">Effettivo</th>
-              <th className="px-2 py-2 text-center w-16">Pagato</th>
+              <th className="px-2 py-2 text-right w-24">Stima</th>
+              <th className="px-2 py-2 text-right w-24">Preventivato</th>
+              <th className="px-2 py-2 text-left w-40">Preventivo fornitore</th>
+              <th className="px-2 py-2 text-right w-24">Effettivo</th>
+              <th className="px-2 py-2 text-center w-24">Pagato</th>
               <th className="w-10"></th>
             </tr></thead>
             <tbody className="divide-y divide-zinc-100">
@@ -1922,7 +2011,17 @@ function VociAcquistiTab({ wf, cid, reload }) {
                 const prev = parseFloat(v.preventivato) || 0;
                 const eff = parseFloat(v.effettivo) || 0;
                 const deltaStima = prev - stima;
-                const tipoIcon = v.tipo === "manodopera" ? "🔨" : v.tipo === "misto" ? "🔧" : "🛒";
+                const computoId = v.computo_item_id || v.voce_id;
+                const linkedPrev = computoId ? findPrevByComputoId(computoId) : null;
+                const stato = linkedPrev?.stato || null; // ok | warning | da_autorizzare | autorizzato | rifiutato
+                const statoBadge = {
+                  ok: { c: "bg-emerald-100 text-emerald-800", t: "✓ OK" },
+                  autorizzato: { c: "bg-emerald-100 text-emerald-800", t: "✓ Approvato" },
+                  warning: { c: "bg-amber-100 text-amber-800", t: "⚠ Warning" },
+                  da_autorizzare: { c: "bg-rose-100 text-rose-800", t: "⏳ Da approvare" },
+                  rifiutato: { c: "bg-rose-100 text-rose-800 line-through", t: "✗ Rifiutato" },
+                  interno: { c: "bg-blue-100 text-blue-800", t: "🏢 Interno" },
+                }[stato] || null;
                 return (
                   <tr key={i} className={v.from_computo ? "bg-blue-50/30" : ""}>
                     <td className="px-2 py-1.5">
@@ -1945,13 +2044,48 @@ function VociAcquistiTab({ wf, cid, reload }) {
                         </SelectContent>
                       </Select>
                     </td>
-                    <td className="px-2 py-1.5"><Input value={v.subappaltatore} onChange={(e) => upd(i, "subappaltatore", e.target.value)} placeholder="Nome sub/fornitore" className="h-8 text-xs" /></td>
+                    <td className="px-2 py-1.5"><Input value={v.subappaltatore} onChange={(e) => upd(i, "subappaltatore", e.target.value)} placeholder="Nome sub/fornitore" className="h-8 text-xs" data-testid={`va-sub-${i}`} /></td>
                     <td className="px-2 py-1.5"><Input type="number" min={0} step="0.1" value={v.qty ?? 1} onChange={(e) => updQty(i, e.target.value)} className="h-8 text-xs text-right mono" data-testid={`va-qty-${i}`} /></td>
-                    <td className="px-2 py-1.5 text-right mono text-blue-700 font-semibold" data-testid={`va-stima-${i}`}>{fmtEur(stima)}</td>
-                    <td className="px-2 py-1.5"><Input type="number" value={prev} onChange={(e) => upd(i, "preventivato", parseFloat(e.target.value) || 0)} className="h-8 text-xs text-right mono" /></td>
-                    <td className={`px-2 py-1.5 text-right mono text-xs ${deltaStima > 0 ? "text-rose-600" : deltaStima < 0 ? "text-emerald-600" : "text-zinc-400"}`} title="Sub vs nostra stima">{stima > 0 ? `${deltaStima > 0 ? "+" : ""}${fmtEur(deltaStima)}` : "—"}</td>
-                    <td className="px-2 py-1.5"><Input type="number" value={eff} onChange={(e) => upd(i, "effettivo", parseFloat(e.target.value) || 0)} className="h-8 text-xs text-right mono" /></td>
-                    <td className="px-2 py-1.5 text-center"><input type="checkbox" checked={!!v.pagato} onChange={(e) => upd(i, "pagato", e.target.checked)} className="h-4 w-4" data-testid={`va-pagato-${i}`} /></td>
+                    <td className="px-2 py-1.5 text-right mono text-blue-700 font-semibold text-xs" data-testid={`va-stima-${i}`}>{fmtEur(stima)}</td>
+                    <td className="px-2 py-1.5"><Input type="number" value={prev} onChange={(e) => upd(i, "preventivato", parseFloat(e.target.value) || 0)} className="h-8 text-xs text-right mono" data-testid={`va-prev-${i}`} /></td>
+                    {/* Preventivo fornitore: stato + azione */}
+                    <td className="px-2 py-1.5 text-xs">
+                      {linkedPrev ? (
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {statoBadge && <span className={`text-[9px] px-1.5 py-0.5 rounded uppercase font-bold ${statoBadge.c}`}>{statoBadge.t}</span>}
+                            <span className="text-zinc-700 font-mono text-[10px]" data-testid={`va-prev-fornitore-importo-${i}`}>€ {(linkedPrev.importo_offerto || 0).toFixed(2)}</span>
+                          </div>
+                          <div className="text-[10px] text-zinc-500 truncate" title={linkedPrev.artigiano_nome}>{linkedPrev.artigiano_nome}</div>
+                          {linkedPrev.url_pdf && <a href={linkedPrev.url_pdf} target="_blank" rel="noreferrer" className="text-[10px] text-blue-600 hover:underline">PDF ↗</a>}
+                          {isAdmin && (stato === "warning" || stato === "da_autorizzare") && (
+                            <div className="flex gap-1">
+                              <button onClick={() => approvaPreventivo(linkedPrev.id)} className="text-[10px] px-1.5 py-0.5 bg-emerald-600 text-white rounded hover:bg-emerald-700" data-testid={`va-prev-approva-${i}`}>Approva</button>
+                              <button onClick={() => rifiutaPreventivo(linkedPrev.id)} className="text-[10px] px-1.5 py-0.5 bg-rose-600 text-white rounded hover:bg-rose-700" data-testid={`va-prev-rifiuta-${i}`}>Rifiuta</button>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <button onClick={() => openPrevDialog(i)} className="text-[10px] text-blue-600 hover:underline flex items-center gap-1" data-testid={`va-prev-upload-${i}`} disabled={!computoId} title={!computoId ? "Collega prima la voce al computo" : "Carica preventivo fornitore"}>
+                          <Plus className="h-3 w-3" /> Carica preventivo
+                        </button>
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5"><Input type="number" value={eff} onChange={(e) => upd(i, "effettivo", parseFloat(e.target.value) || 0)} className="h-8 text-xs text-right mono" data-testid={`va-eff-${i}`} /></td>
+                    <td className="px-2 py-1.5 text-center">
+                      <label className="inline-flex items-center gap-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!v.pagato}
+                          onChange={() => togglePagato(i, !!v.pagato)}
+                          className="h-4 w-4"
+                          data-testid={`va-pagato-${i}`}
+                          disabled={!v.pagato && (!eff || eff <= 0)}
+                          title={!v.pagato && (!eff || eff <= 0) ? "Inserisci prima Effettivo > 0" : (v.pagato ? "Pagamento registrato in cassa — clicca per annullare" : "Click per registrare pagamento e creare movimento cassa")}
+                        />
+                        {v.pagato && v.pagamento_id && <span className="text-[9px] text-emerald-700" title="Movimento cassa creato">€✓</span>}
+                      </label>
+                    </td>
                     <td className="px-2 py-1.5"><button onClick={() => setItems(items.filter((_, j) => j !== i))} className="text-rose-600 p-1"><Trash2 className="h-4 w-4" /></button></td>
                   </tr>
                 );
@@ -1976,7 +2110,7 @@ function VociAcquistiTab({ wf, cid, reload }) {
                   <td colSpan={4} className="px-2 py-2 text-right uppercase text-xs">Totali</td>
                   <td className="px-2 py-2 text-right mono text-blue-700">{fmtEur(tot.stima)}</td>
                   <td className="px-2 py-2 text-right mono">{fmtEur(tot.prev)}</td>
-                  <td className={`px-2 py-2 text-right mono ${tot.prev - tot.stima > 0 ? "text-rose-600" : "text-emerald-600"}`}>{tot.prev - tot.stima > 0 ? "+" : ""}{fmtEur(tot.prev - tot.stima)}</td>
+                  <td></td>
                   <td className="px-2 py-2 text-right mono">{fmtEur(tot.eff)}</td>
                   <td className="px-2 py-2 text-right mono text-emerald-700">{fmtEur(tot.pag)}</td>
                   <td></td>
@@ -1986,6 +2120,44 @@ function VociAcquistiTab({ wf, cid, reload }) {
           </table>
         </div>
       </div>
+
+      {/* Dialog upload preventivo fornitore per voce specifica */}
+      <Dialog open={prevDlgOpen} onOpenChange={setPrevDlgOpen}>
+        <DialogContent className="max-w-lg" data-testid="va-prev-dialog">
+          <DialogHeader><DialogTitle>Carica preventivo fornitore</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            {prevDlgVoceIdx !== null && items[prevDlgVoceIdx] && (
+              <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs">
+                <div className="text-blue-900"><strong>Voce commessa:</strong> {items[prevDlgVoceIdx].voce || "—"}</div>
+                <div className="text-blue-700">Qty: {items[prevDlgVoceIdx].qty || 1} · Stima nostra: € {(items[prevDlgVoceIdx].stima_backoffice || 0).toFixed(2)}</div>
+              </div>
+            )}
+            <div>
+              <Label className="text-xs">Modalità *</Label>
+              <Select value={prevForm.modalita} onValueChange={v => setPrevForm({ ...prevForm, modalita: v })}>
+                <SelectTrigger data-testid="va-prev-modalita"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="artigiano">Sub-appaltatore / Fornitore esterno</SelectItem>
+                  <SelectItem value="interno">Lavoro interno (operai propri)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div><Label className="text-xs">Nome fornitore/sub *</Label><Input value={prevForm.artigiano_nome} onChange={e => setPrevForm({ ...prevForm, artigiano_nome: e.target.value })} placeholder="Es. Idraulica Rossi srl" data-testid="va-prev-nome" /></div>
+            <div><Label className="text-xs">Importo offerto € *</Label><Input type="number" step="0.01" value={prevForm.importo_offerto} onChange={e => setPrevForm({ ...prevForm, importo_offerto: parseFloat(e.target.value) || 0 })} className="mono text-right" data-testid="va-prev-importo" /></div>
+            <div><Label className="text-xs">Link PDF preventivo</Label><Input value={prevForm.url_pdf} onChange={e => setPrevForm({ ...prevForm, url_pdf: e.target.value })} placeholder="https://drive.google.com/..." data-testid="va-prev-pdf" /></div>
+            <div><UploadField label="Oppure carica PDF dal PC" onUploaded={(meta) => setPrevForm(p => ({ ...p, url_pdf: window.location.origin + meta.url }))} commessaId={cid} accept=".pdf,.doc,.docx,.png,.jpg" testid="upload-prev-fornitore" /></div>
+            <div><Label className="text-xs">Note</Label><Input value={prevForm.note} onChange={e => setPrevForm({ ...prevForm, note: e.target.value })} data-testid="va-prev-note" /></div>
+            <div className="bg-amber-50 border border-amber-200 rounded p-2 text-[11px] text-amber-900 flex gap-2">
+              <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+              <div>Il sistema confronta l'importo offerto con la stima e il preventivato del cliente. Se eccede del +25% richiederà <strong>approvazione admin</strong>. {!isAdmin && "I preventivi >25% vengono inviati in approvazione."}</div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPrevDlgOpen(false)}>Annulla</Button>
+            <Button onClick={submitPreventivoFornitore} style={{ background: "var(--brand)", color: "white" }} data-testid="va-prev-submit">Carica preventivo</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* VOCI EXTRA — lavori extra concordati con il cliente in corso d'opera */}
       <div className="bg-white border border-amber-200 rounded" data-testid="voci-extra-section">

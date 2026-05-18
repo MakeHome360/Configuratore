@@ -1,0 +1,41 @@
+{
+  "summary": "Round 68 — Fix pagato→cassa + workflow preventivi fornitori. Backend pytest: 9/9 PASS, 1 SKIP (RBAC venditore — register endpoint richiede admin nel sistema; comportamento corretto, ma non testabile end-to-end senza un utente non-admin preesistente). Frontend: tabella Voci Acquisti renderizza correttamente la nuova colonna 'Preventivo fornitore' con badge APPROVATO/DA APPROVARE e bottoni Approva/Rifiuta; dialog testid completi. Marginalità riflette correttamente costo_confermato dopo autorizzazione.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "CommessaWorkflow KPI bar", "issues": ["Cella 'MARGINE ATTUALE' colorata in ROSSO anche quando il margine è positivo e sano (66,5%) — il rosso dovrebbe scattare solo se margine_pct_attuale<soglia (es. <15%). Cosmetico."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_round68_pagato_preventivi.py",
+    "/app/test_reports/pytest/round68_results.xml"
+  ],
+  "action_items": [
+    "(Minor) Colorazione condizionale del badge MARGINE ATTUALE (rosso solo se pct sotto soglia, verde altrimenti).",
+    "(Info) RBAC su autorizza/rifiuta verificato a livello di codice (routes_commessa_workflow.py:512,544): role!=admin AND venditore_level NOT IN (responsabile,area_manager) → 403. Non c'è un endpoint pubblico per creare un venditore di test (auth/register richiede admin), quindi il test E2E è stato saltato. Suggerisco a E1 di creare seed-fixture admin/venditore per consentire regression RBAC."
+  ],
+  "critical_code_review_comments": [
+    "routes_commessa_workflow.py paga_voce_acquisto (336-380): idempotenza basata su (pagato && pagamento_id esistente in commesse_cassa). Robusto. beneficiario_nome = subappaltatore || fornitore_nome || voce. Correttamente distingue manodopera/fornitura. NOTE: se admin annulla manualmente il movimento cassa ma voce.pagato resta True con pagamento_id orfano, la prossima paga ritorna duplicato=True con movimento=None (esistente=None). Il check should fallback a ricreare il movimento. Caso edge raro ma da gestire.",
+    "annulla_pagamento_voce (382-395): usa PagaVoceIn come body model, accetta solo idx — OK. Cancella solo se pid valido, ma non valida che voce sia effettivamente pagata. Idempotente. Non emette nessun audit log → considerare logging per tracciabilità.",
+    "autorizza_prev_artigiano (510-540): SOLO admin OR venditore_level in (responsabile,area_manager). importo_per_voce = totale/n_voci → suddivisione lineare. ATTENZIONE: se voci_riferite contiene voci con qty/prezzi molto diversi, la suddivisione lineare distorce il preventivato per voce. Considerare suddivisione proporzionale per qty*prezzo_unit del computo.",
+    "rifiuta_prev_artigiano (542-550): motivo come query param (non body). Inconsistente con autorizza che non ha body. OK ma documentare; meglio body Pydantic.",
+    "list_pending_preventivi_fornitori (552-567): include stato 'warning' insieme a 'da_autorizzare'. Buono per UX (admin vede anche border-line). Nessun filtro su commessa stato (es. completata) → potrebbe mostrare preventivi vecchi su commesse archiviate. Aggiungere filtro `c.stato NOT IN ('completata','sospesa')`.",
+    "CommessaWorkflow.jsx 2229 LOC: ancora monolitico. Già flagged in iter17/18. Il nuovo blocco preventivi fornitori (~150 LOC) peggiora la situazione. Da spezzare in <VociAcquistiTab/>, <PrevFornitoreCell/>, <PrevFornitoreDialog/>.",
+    "Margine_attuale = ricavo - max(costo_confermato, costo_previsionale): scelta conservativa, ma se costo_confermato cresce oltre il previsionale, l'UI dovrebbe segnalare lo splittato (mostrare anche overshoot)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_round68_pagato_preventivi.py (NEW)"
+  ],
+  "success_rate": {
+    "backend": "100% (9/9 eseguiti, 1 RBAC skip non-bloccante)",
+    "frontend": "100% (testid colonna preventivo fornitore + dialog + checkbox pagato verificati)"
+  },
+  "test_credentials": "admin@admin.it / admin (cookie JWT OK)",
+  "seed_data_creation": "Seed via PUT su commessa esistente c0fc72dd-cac1-43c3-9c1d-dcde64d90061: computo_metrico {cmitem-1-r68 €500, cmitem-2-r68 €100} + voci_acquisti corrispondenti (eff 450, 0). Stale movimenti cassa eliminati prima di ogni run. Preventivi TEST_R68_* creati e left-in-place (idempotente alla riesecuzione).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Round 68 PASS. Endpoint critici: POST /api/commesse/{cid}/workflow/voci-acquisti/{paga|annulla-pagamento}, POST /api/commesse/{cid}/workflow/artigiani-preventivi[/{pid}/{autorizza|rifiuta}], GET /api/preventivi-fornitori/da-approvare. Test pytest in test_round68_pagato_preventivi.py. RBAC test skippato — se serve, creare manualmente un utente venditore in DB e ri-eseguire TestRBAC.",
+  "rca of the issue": "N/A — entrambi i fix funzionano. Solo 2 setup-issue minori scoperti durante test: (1) /api/clienti e POST /api/commesse non esistono come endpoint pubblici (commesse si creano via 'crea da preventivo' biz flow), quindi i test usano una commessa esistente; (2) ai run successivi i movimenti cassa orfani su idx=0 facevano fallire l'asserzione di unicità — risolto pulendo i movimenti per voce_acquisto_idx in fixture setup."
+}

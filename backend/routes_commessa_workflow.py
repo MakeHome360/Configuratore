@@ -325,6 +325,75 @@ def build_commessa_workflow_router(db, get_current_user):
         await db.commesse.update_one({"id": cid}, {"$set": {"voci_acquisti": out_items}})
         return {"ok": True, "added": added, "skipped": skipped, "total": len(out_items)}
 
+    # ---------- Paga voce_acquisto → crea movimento cassa automatico ----------
+    class PagaVoceIn(BaseModel):
+        idx: int                                # indice voce in voci_acquisti
+        importo: Optional[float] = None         # se None usa effettivo
+        metodo: str = "bonifico"
+        data: Optional[str] = None              # YYYY-MM-DD
+        note: Optional[str] = None
+
+    @r.post("/commesse/{cid}/workflow/voci-acquisti/paga")
+    async def paga_voce_acquisto(cid: str, body: PagaVoceIn, user=Depends(get_current_user)):
+        """Marca pagata la voce con indice `idx` e crea un movimento di uscita in cassa.
+        Idempotente: se la voce ha già `pagamento_id`, restituisce quello esistente."""
+        c = await _commessa(cid)
+        voci = list(c.get("voci_acquisti") or [])
+        if body.idx < 0 or body.idx >= len(voci):
+            raise HTTPException(404, "Voce non trovata")
+        v = voci[body.idx]
+        importo = float(body.importo if body.importo is not None else (v.get("effettivo") or 0))
+        if importo <= 0:
+            raise HTTPException(400, "Importo > 0 richiesto per registrare un pagamento")
+        # Idempotenza: se voce ha già un pagamento_id valido, ritorna quello
+        if v.get("pagato") and v.get("pagamento_id"):
+            existing = await db.commesse_cassa.find_one({"id": v["pagamento_id"]}, {"_id": 0})
+            if existing:
+                return {"ok": True, "pagamento_id": v["pagamento_id"], "movimento": existing, "duplicato": True}
+        # Trova fornitore associato
+        forn_nome = v.get("subappaltatore") or v.get("fornitore_nome") or v.get("voce") or "Fornitore"
+        forn_id = v.get("fornitore_id") or v.get("subappaltatore_id") or ""
+        movimento = {
+            "id": UID(),
+            "commessa_id": cid,
+            "tipo": "uscita",
+            "direzione": "uscita",
+            "importo": importo,
+            "data": body.data or NOW()[:10],
+            "stato_pagamento": "pagato",
+            "metodo": body.metodo,
+            "beneficiario_tipo": "fornitore" if (v.get("tipo") != "manodopera") else "subappaltatore",
+            "beneficiario_id": forn_id,
+            "beneficiario_nome": forn_nome,
+            "categoria": "fornitura" if (v.get("tipo") != "manodopera") else "manodopera",
+            "descrizione": f"Pagamento voce: {v.get('voce') or '—'} (qty {v.get('qty') or 1})",
+            "voce_acquisto_idx": body.idx,
+            "voce_acquisto_id": v.get("computo_item_id") or v.get("voce_id"),
+            "note": body.note or "",
+            "created_at": NOW(), "created_by": user.get("id"),
+        }
+        await db.commesse_cassa.insert_one(movimento)
+        # Marca voce pagata + link al movimento
+        voci[body.idx] = {**v, "pagato": True, "pagamento_id": movimento["id"], "pagato_il": NOW()}
+        await db.commesse.update_one({"id": cid}, {"$set": {"voci_acquisti": voci}})
+        movimento.pop("_id", None)
+        return {"ok": True, "pagamento_id": movimento["id"], "movimento": movimento}
+
+    @r.post("/commesse/{cid}/workflow/voci-acquisti/annulla-pagamento")
+    async def annulla_pagamento_voce(cid: str, body: PagaVoceIn, user=Depends(get_current_user)):
+        """Annulla il pagamento di una voce: rimuove il movimento cassa associato e resetta il flag."""
+        c = await _commessa(cid)
+        voci = list(c.get("voci_acquisti") or [])
+        if body.idx < 0 or body.idx >= len(voci):
+            raise HTTPException(404, "Voce non trovata")
+        v = voci[body.idx]
+        pid = v.get("pagamento_id")
+        if pid:
+            await db.commesse_cassa.delete_one({"id": pid, "commessa_id": cid})
+        voci[body.idx] = {**v, "pagato": False, "pagamento_id": None, "pagato_il": None}
+        await db.commesse.update_one({"id": cid}, {"$set": {"voci_acquisti": voci}})
+        return {"ok": True}
+
 
     # ---------- 5. PREVENTIVI ARTIGIANI (+ AI analisi + autorizzazione) ----------
     class PrevArtigianoIn(BaseModel):
@@ -446,7 +515,7 @@ def build_commessa_workflow_router(db, get_current_user):
             {"id": pid, "commessa_id": cid},
             {"$set": {"stato": "autorizzato", "autorizzato_da": user.get("id"), "autorizzato_at": NOW()}},
         )
-        # Aggiorna anche il computo metrico
+        # Aggiorna anche il computo metrico e voci_acquisti
         prev_doc = await db.commesse_artigiani_preventivi.find_one({"id": pid}, {"_id": 0})
         if prev_doc:
             c = await _commessa(cid)
@@ -457,7 +526,45 @@ def build_commessa_workflow_router(db, get_current_user):
                     it["stato_assegnazione"] = "artigiano"
                     it["preventivo_artigiano_id"] = pid
             await db.commesse.update_one({"id": cid}, {"$set": {"computo_metrico.items": items}})
+            # Aggiorna voci_acquisti: imposta preventivato = importo offerto / nr voci riferite
+            voci_acq = list(c.get("voci_acquisti") or [])
+            n_voci = max(1, len(prev_doc.get("voci_riferite") or []))
+            importo_per_voce = float(prev_doc.get("importo_offerto") or 0) / n_voci
+            for va in voci_acq:
+                if (va.get("computo_item_id") in (prev_doc.get("voci_riferite") or [])
+                    or va.get("voce_id") in (prev_doc.get("voci_riferite") or [])):
+                    va["preventivato"] = importo_per_voce
+                    va["preventivo_fornitore_id"] = pid
+                    va["subappaltatore"] = prev_doc.get("artigiano_nome") or va.get("subappaltatore", "")
+            await db.commesse.update_one({"id": cid}, {"$set": {"voci_acquisti": voci_acq}})
         return {"ok": True}
+
+    @r.post("/commesse/{cid}/workflow/artigiani-preventivi/{pid}/rifiuta")
+    async def rifiuta_prev_artigiano(cid: str, pid: str, motivo: str = "", user=Depends(get_current_user)):
+        if user.get("role") != "admin" and (user.get("venditore_level") not in ("responsabile", "area_manager")):
+            raise HTTPException(403, "Solo Admin/Responsabile/Area Manager possono rifiutare")
+        await db.commesse_artigiani_preventivi.update_one(
+            {"id": pid, "commessa_id": cid},
+            {"$set": {"stato": "rifiutato", "rifiutato_da": user.get("id"), "rifiutato_at": NOW(), "motivo_rifiuto": motivo}},
+        )
+        return {"ok": True}
+
+    @r.get("/preventivi-fornitori/da-approvare")
+    async def list_pending_preventivi_fornitori(user=Depends(get_current_user)):
+        """Admin dashboard: tutti i preventivi fornitori in attesa di approvazione (warning + da_autorizzare)."""
+        if user.get("role") != "admin" and (user.get("venditore_level") not in ("responsabile", "area_manager")):
+            raise HTTPException(403, "Solo Admin/Responsabile possono vedere questa lista")
+        rows = await db.commesse_artigiani_preventivi.find(
+            {"stato": {"$in": ["warning", "da_autorizzare"]}},
+            {"_id": 0}
+        ).sort("created_at", -1).to_list(200)
+        # Arricchisci con dati commessa
+        out = []
+        for r in rows:
+            c = await db.commesse.find_one({"id": r.get("commessa_id")}, {"_id": 0, "numero": 1, "cliente": 1, "totale_preventivo": 1, "id": 1})
+            r["commessa"] = c or {}
+            out.append(r)
+        return out
 
     @r.get("/commesse/{cid}/workflow/artigiani-preventivi")
     async def list_prev_artigiani(cid: str, user=Depends(get_current_user)):

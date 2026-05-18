@@ -1,6 +1,58 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 68 — Bug fix critici + workflow preventivi fornitori (Feb 2026)
+
+L'utente ha segnalato due bug critici interconnessi:
+1. Il flag "pagato" su voci_acquisti non si rifletteva in Cassa né nel Resoconto
+2. Il flusso preventivi fornitori era debole — voleva: per ogni voce della commessa, caricare il preventivo, assegnare il fornitore, e flag di approvazione (SOLO admin), con corrispondenza forte voce↔preventivo.
+
+### Backend — nuovi endpoint
+- **`POST /api/commesse/{cid}/workflow/voci-acquisti/paga`** — body `{idx, importo?, metodo?, data?, note?}`
+  - Idempotente: se voce ha già `pagamento_id`, non duplica
+  - Crea un movimento in `commesse_cassa` (tipo=uscita, stato=pagato) con beneficiario_nome derivato da `voce.subappaltatore`
+  - Marca `voci_acquisti[idx].pagato=true` + `.pagamento_id` + `.pagato_il`
+  - Il movimento appare automaticamente nella tab Cassa e si somma a `marginalita.uscito`
+- **`POST /api/commesse/{cid}/workflow/voci-acquisti/annulla-pagamento`** — body `{idx}` — rimuove movimento + resetta flag
+- **`POST /api/commesse/{cid}/workflow/artigiani-preventivi/{pid}/rifiuta?motivo=…`** (admin only) — stato=rifiutato + motivo
+- **`GET /api/preventivi-fornitori/da-approvare`** (admin) — lista pending arricchita con dati commessa
+- Modifica `autorizza`: ora aggiorna anche `voci_acquisti[].preventivato` e `.subappaltatore` quando approva
+
+### Frontend — VociAcquistiTab arricchito
+- **Nuova colonna "Preventivo fornitore"** per ogni voce:
+  - Se non c'è preventivo → bottone "+ Carica preventivo" (apre dialog `va-prev-dialog`)
+  - Se c'è → badge stato (✓ Approvato / ⚠ Warning / ⏳ Da approvare / ✗ Rifiutato / 🏢 Interno) + nome fornitore + link PDF
+  - Per admin/responsabile in stati pending → bottoni inline "Approva" (`va-prev-approva-{i}`) e "Rifiuta" (`va-prev-rifiuta-{i}`)
+- **Dialog upload preventivo fornitore** (`va-prev-dialog`): modalità (sub/interno), nome, importo, link/upload PDF, note. Validazione: voce deve essere collegata al computo prima di caricare.
+- **Checkbox Pagato collegata all'endpoint /paga**: disabilitata se effettivo=0, mostra "€✓" verde quando movimento creato, conferma per annullare.
+
+### Flusso end-to-end (verificato)
+1. Crea commessa → importa voci da computo (le voci_acquisti partono dalle voci del preventivo cliente, una corrispondenza 1:1)
+2. Per ogni voce: clicca "Carica preventivo" → inserisci fornitore + importo + PDF + note
+3. Sistema analizza scarto matematico vs computo: 
+   - ≤+10% → stato `ok` (auto-approvato)
+   - +10..25% → stato `warning` (visibile a admin)
+   - >+25% → stato `da_autorizzare` (richiede admin)
+4. Admin vede badge rosso, clicca "Approva" inline → voce.preventivato aggiornato + voce.subappaltatore aggiornato + computo marcato
+5. Quando lavoro fatto → set effettivo, click checkbox Pagato → crea movimento cassa
+6. Cassa, Marginalità (uscito) e Resoconto riflettono tutto automaticamente
+
+### Validazione corrispondenza voce ↔ preventivo
+- I preventivi fornitori sono collegati alle voci tramite `voci_riferite=[computo_item_id]`
+- L'analisi confronta `importo_offerto` con `prezzo_rivendita × qty` delle voci riferite
+- Se manca riferimento → warning automatico
+
+### Testing
+- `iteration_19.json`: **9/9 backend pytest PASS** (1 skip su RBAC venditore — manca seed venditore non-admin), 0 issue critici, 0 issue minor backend.
+- E2E manuale curl: pagamento di €100 → marginalità.uscito = 100, movimento creato.
+- E2E manuale: preventivo fornitore €5000 su voce con stima €15 → automatico `da_autorizzare`, scarto rilevato 31646%.
+
+### File modificati
+- `backend/routes_commessa_workflow.py` — paga/annulla endpoints, autorizza aggiornato per sync voci_acquisti, rifiuta endpoint, da-approvare endpoint
+- `frontend/src/pages/CommessaWorkflow.jsx` — VociAcquistiTab arricchito, togglePagato, dialog preventivo fornitore, approva/rifiuta inline
+
+
+
 ## Round 67 — Major refactor (Feb 2026, in risposta a critica utente)
 L'utente ha lamentato che alcune feature del Round 66 non si vedevano/non funzionavano. Round 67 riorganizza la UI seguendo ESATTAMENTE il suo messaggio:
 

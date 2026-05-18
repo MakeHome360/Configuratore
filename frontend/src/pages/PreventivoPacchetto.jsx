@@ -17,6 +17,7 @@ import { fmtEuro, fmtNum } from "../editor/utils";
 import jsPDF from "jspdf";
 import { InfissoQuickConfigurator } from "../components/InfissoQuickConfigurator";
 import ModalitaPagamentoPicker from "../components/ModalitaPagamentoPicker";
+import ListinoProdottoPicker from "../components/ListinoProdottoPicker";
 import { useAuth } from "@/contexts/AuthContext";
 
 const SOGLIA_SCONTO_AUTO = 5; // Venditore può applicare fino a 5% senza autorizzazione
@@ -37,6 +38,7 @@ export default function PreventivoPacchetto() {
   const [scontoReq, setScontoReq] = useState(null); // richiesta sconto attiva (pending/approvato/rifiutato)
   const [scontoDialog, setScontoDialog] = useState(false);
   const [scontoForm, setScontoForm] = useState({ pct: 10, motivo: "" });
+  const [listinoPickerOpen, setListinoPickerOpen] = useState(false);
 
   const [prev, setPrev] = useState({
     package_id: null,
@@ -46,6 +48,7 @@ export default function PreventivoPacchetto() {
     bathroom_tier: null, // legacy: kept for backward compat (singolo bagno)
     bathroom_surcharge: 0, // legacy
     bathrooms: [],   // NEW: [{ id, tier_id, included, surcharge_eur }] — array bagni multipli
+    listini_selections: [], // Prodotti scelti dai listini fornitori (porte, piastrelle, ecc.)
     cliente: { nome: "", cognome: "", indirizzo: "", email: "", telefono: "" },
     note: "",
     sconto_pct: 0,
@@ -283,12 +286,14 @@ export default function PreventivoPacchetto() {
       // Legacy: usa bathroom_surcharge se array vuoto
       bagno = prev.bathroom_surcharge || 0;
     }
-    const subtotal = base + extras + optional + bagno;
+    // Totale finiture da listini fornitori (porte, piastrelle, sanitari, ecc.)
+    const listini = (prev.listini_selections || []).reduce((s, p) => s + ((parseFloat(p.qty) || 0) * (parseFloat(p.prezzo_rivendita) || 0)), 0);
+    const subtotal = base + extras + optional + bagno + listini;
     const sconto = subtotal * (prev.sconto_pct || 0) / 100;
     const afterDisc = subtotal - sconto;
     const iva = afterDisc * (prev.iva_pct || 10) / 100;
     const total = afterDisc + iva;
-    return { base, extras, optional, bagno, subtotal, sconto, iva, total, mqAdjustment };
+    return { base, extras, optional, bagno, listini, subtotal, sconto, iva, total, mqAdjustment };
   }, [prev, pkg, bathroomTiers, mqAdjustment]);
 
   const save = async () => {
@@ -658,6 +663,46 @@ export default function PreventivoPacchetto() {
                     );
                   })}
                 </div>
+
+                {/* Sezione Listini Fornitori (porte, piastrelle, sanitari, infissi) — il venditore sceglie i prodotti specifici per il cliente */}
+                <div className="mt-8 border-t pt-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h3 className="text-lg font-semibold" style={{ fontFamily: "Outfit" }}>🛒 Finiture da Listini Fornitori</h3>
+                      <p className="text-xs text-zinc-500">Aggiungi porte, infissi, piastrelle, sanitari, ecc. dai listini caricati dall'admin. Il prezzo è già a rivendita.</p>
+                    </div>
+                    <Button size="sm" onClick={() => setListinoPickerOpen(true)} style={{ background: "var(--brand)", color: "white" }} data-testid="pack-listini-add"><Plus className="h-4 w-4 mr-1" />Aggiungi finiture</Button>
+                  </div>
+                  {(prev.listini_selections || []).length === 0 ? (
+                    <div className="text-zinc-400 text-sm text-center py-6 border border-dashed border-zinc-300 rounded">Nessuna finitura da listino scelta. (Opzionale)</div>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
+                        <th className="px-3 py-2 text-left">Prodotto</th>
+                        <th className="px-3 py-2 text-left">Fornitore</th>
+                        <th className="px-3 py-2 text-right w-20">Qty</th>
+                        <th className="px-3 py-2 text-right w-28">€/u</th>
+                        <th className="px-3 py-2 text-right w-28">Totale</th>
+                        <th className="w-10"></th>
+                      </tr></thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {(prev.listini_selections || []).map((p, i) => (
+                          <tr key={`${p.listino_id}-${p.id}-${i}`}>
+                            <td className="px-3 py-2"><div className="font-medium text-xs">{p.nome}</div><div className="text-[10px] text-zinc-500">{p.codice ? `[${p.codice}] ` : ""}{p.categoria_dettaglio || p.categoria}</div></td>
+                            <td className="px-3 py-2 text-xs">{p.fornitore_nome}</td>
+                            <td className="px-3 py-2"><Input type="number" min={0.01} step="0.01" value={p.qty} onChange={e => {
+                              const q = parseFloat(e.target.value) || 0;
+                              setPrev(s => ({ ...s, listini_selections: (s.listini_selections || []).map((x, j) => j === i ? { ...x, qty: q, importo: q * (x.prezzo_rivendita || 0) } : x) }));
+                            }} className="h-8 text-xs text-right mono" data-testid={`pack-listino-qty-${i}`} /></td>
+                            <td className="px-3 py-2 text-right mono">€ {(p.prezzo_rivendita || 0).toFixed(2)}</td>
+                            <td className="px-3 py-2 text-right mono font-bold">€ {((p.qty || 0) * (p.prezzo_rivendita || 0)).toFixed(2)}</td>
+                            <td className="px-3 py-2 text-right"><button onClick={() => setPrev(s => ({ ...s, listini_selections: (s.listini_selections || []).filter((_, j) => j !== i) }))} className="text-rose-600" data-testid={`pack-listino-del-${i}`}>×</button></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               </div>
             )}
 
@@ -901,6 +946,7 @@ export default function PreventivoPacchetto() {
                   <Row label="Base pacchetto" value={fmtEuro(totals.base)} />
                   {totals.extras > 0 && <Row label="Extra lavorazioni" value={fmtEuro(totals.extras)} />}
                   {totals.optional > 0 && <Row label="Optional" value={fmtEuro(totals.optional)} />}
+                  {totals.listini > 0 && <Row label="🛒 Finiture (listini)" value={fmtEuro(totals.listini)} />}
                   {totals.bagno > 0 && <Row label={`Bagni aggiuntivi (${(prev.bathrooms || []).length || 1})`} value={fmtEuro(totals.bagno)} />}
                   {/* DETTAGLIO BAGNI MULTIPLI */}
                   {(prev.bathrooms || []).length > 0 && (
@@ -993,6 +1039,7 @@ export default function PreventivoPacchetto() {
               <div className="flex justify-between"><span>Base</span><span>{fmtEuro(totals.base)}</span></div>
               <div className="flex justify-between"><span>Extra</span><span>{fmtEuro(totals.extras)}</span></div>
               <div className="flex justify-between"><span>Optional</span><span>{fmtEuro(totals.optional)}</span></div>
+              {totals.listini > 0 && <div className="flex justify-between"><span>🛒 Finiture</span><span>{fmtEuro(totals.listini)}</span></div>}
               {totals.bagno > 0 && <div className="flex justify-between"><span>Bagno</span><span>{fmtEuro(totals.bagno)}</span></div>}
               <div className="flex justify-between"><span>IVA</span><span>{fmtEuro(totals.iva)}</span></div>
             </div>
@@ -1012,6 +1059,23 @@ export default function PreventivoPacchetto() {
         </div>
       </main>
       <InfissoQuickConfigurator open={infissiModalOpen} onClose={() => setInfissiModalOpen(false)} onConfirm={onInfissiConfirm} />
+      <ListinoProdottoPicker
+        open={listinoPickerOpen}
+        onOpenChange={setListinoPickerOpen}
+        onConfirm={(items) => {
+          setPrev(s => {
+            const cur = s.listini_selections || [];
+            const out = [...cur];
+            items.forEach(it => {
+              const idx = out.findIndex(x => x.listino_id === it.listino_id && x.id === it.id);
+              if (idx >= 0) out[idx] = { ...out[idx], qty: (parseFloat(out[idx].qty) || 0) + (parseFloat(it.qty) || 0) };
+              else out.push(it);
+            });
+            return { ...s, listini_selections: out };
+          });
+          toast.success(`${items.length} prodotto/i aggiunto/i`);
+        }}
+      />
       {/* Modal extra libero — qualsiasi voce extra con tutti i campi editabili */}
       <Dialog open={extraFreeOpen} onOpenChange={setExtraFreeOpen}>
         <DialogContent className="max-w-md" data-testid="extra-free-dialog">

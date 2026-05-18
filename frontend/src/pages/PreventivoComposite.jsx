@@ -10,6 +10,7 @@ import { Save, Plus, ShieldCheck, Clock, AlertTriangle, FileText } from "lucide-
 import { toast } from "sonner";
 import { InfissoQuickConfigurator } from "@/components/InfissoQuickConfigurator";
 import ModalitaPagamentoPicker from "@/components/ModalitaPagamentoPicker";
+import ListinoProdottoPicker from "@/components/ListinoProdottoPicker";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -39,6 +40,10 @@ export default function PreventivoComposite() {
   const [scontoForm, setScontoForm] = useState({ pct: 10, motivo: "" });
   const [savedId, setSavedId] = useState(null);
   const [modalitaPagamento, setModalitaPagamento] = useState({ preset_id: "", label: "", rate: [] });
+  // Selezioni da Listini Fornitori (porte/infissi/piastrelle/sanitari/...)
+  const [listiniSelections, setListiniSelections] = useState([]);
+  const [listinoPickerOpen, setListinoPickerOpen] = useState(false);
+  const [listinoPickerCat, setListinoPickerCat] = useState("");
 
   const onInfissiConfirm = ({ items }) => {
     const rows = items.map((it, i) => ({
@@ -70,6 +75,7 @@ export default function PreventivoComposite() {
         }).catch(() => {});
         setSicurezzaPct(d.sicurezza_pct ?? 3); setDirezionePct(d.direzione_lavori_pct ?? 5);
         setModalitaPagamento(d.modalita_pagamento || { preset_id: "", label: "", rate: [] });
+        setListiniSelections(d.listini_selections || []);
         const sel = {};
         (d.composite_selections || []).forEach((s) => { sel[s.voce_id] = { qty: s.qty, price: s.price }; });
         setSelections(sel);
@@ -93,8 +99,10 @@ export default function PreventivoComposite() {
     return total;
   }, [sections, selections]);
 
-  const sicurezzaAmt = totaleVoci * (sicurezzaPct / 100);
-  const direzioneAmt = totaleVoci * (direzionePct / 100);
+  const totaleListini = useMemo(() => listiniSelections.reduce((s, p) => s + ((parseFloat(p.qty) || 0) * (parseFloat(p.prezzo_rivendita) || 0)), 0), [listiniSelections]);
+
+  const sicurezzaAmt = (totaleVoci + totaleListini) * (sicurezzaPct / 100);
+  const direzioneAmt = (totaleVoci + totaleListini) * (direzionePct / 100);
   // Maggiorazione mq piccole: <40 a corpo (×1.15 e mq min 40), <60 +10%
   const mqAdj = useMemo(() => {
     const m = parseFloat(mq || 0);
@@ -103,8 +111,8 @@ export default function PreventivoComposite() {
     if (m < 60) return { multiplier: 1.10, mode: "maggiorato" };
     return { multiplier: 1, mode: "normal" };
   }, [mq]);
-  // Applica maggiorazione SOLO al totale voci (manodopera/materiali), non a infissi che sono extra fissi
-  const totaleVociMaggiorato = totaleVoci * mqAdj.multiplier;
+  // Applica maggiorazione al totale voci+listini, non a infissi che sono extra fissi
+  const totaleVociMaggiorato = (totaleVoci + totaleListini) * mqAdj.multiplier;
   const imponibilePreScontoPct = totaleVociMaggiorato + infissiTot + sicurezzaAmt + direzioneAmt - (sconto || 0);
   const scontoPctAmt = imponibilePreScontoPct * (scontoPct || 0) / 100;
   const imponibile = imponibilePreScontoPct - scontoPctAmt;
@@ -129,6 +137,7 @@ export default function PreventivoComposite() {
       mq_adjustment_mode: mqAdj.mode, mq_multiplier: mqAdj.multiplier,
       totale_iva_incl: totale, totale_iva_escl: imponibile,
       modalita_pagamento: modalitaPagamento,
+      listini_selections: listiniSelections,
     };
     try {
       if (isNew) {
@@ -196,6 +205,14 @@ export default function PreventivoComposite() {
                   </div>
                   {infissiTot > 0 && <div className="text-[10px] font-mono opacity-60">{fmtEur(infissiTot)}</div>}
                 </button>
+                <button onClick={() => setActiveSection("__listini__")} data-testid="comp-sec-listini"
+                  className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${activeSection === "__listini__" ? "bg-blue-600 text-white" : "hover:bg-blue-50 text-blue-700"}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">🛒 Listini fornitori</span>
+                    {listiniSelections.length > 0 && <span className="text-xs opacity-70">{listiniSelections.length}</span>}
+                  </div>
+                  {totaleListini > 0 && <div className="text-[10px] font-mono opacity-60">{fmtEur(totaleListini)}</div>}
+                </button>
               </div>
             )}
             {/* Banner maggiorazione mq piccole */}
@@ -246,7 +263,58 @@ export default function PreventivoComposite() {
           </div>
 
           <div className="lg:col-span-3 bg-white border border-zinc-200 rounded-lg p-5">
-            {activeSection === "__infissi__" ? (
+            {activeSection === "__listini__" ? (
+              <>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold">🛒 Prodotti da Listini Fornitori</h3>
+                    <p className="text-xs text-zinc-500">Aggiungi porte, infissi, piastrelle, sanitari, ecc. dai listini caricati in admin. I prezzi sono già a rivendita (netto×ricarico).</p>
+                  </div>
+                  <Button size="sm" onClick={() => { setListinoPickerCat(""); setListinoPickerOpen(true); }} data-testid="comp-listini-add-btn" style={{ background: "var(--brand)", color: "white" }}>
+                    <Plus className="h-4 w-4 mr-1" />Aggiungi prodotti
+                  </Button>
+                </div>
+                {listiniSelections.length === 0 ? (
+                  <div className="text-zinc-500 text-center py-12">Nessun prodotto selezionato.<br/><span className="text-xs">Clicca "Aggiungi prodotti" per scegliere dai listini fornitori (porte, piastrelle, sanitari, ecc.).</span></div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead className="bg-zinc-50 text-xs uppercase text-zinc-500">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Prodotto</th>
+                        <th className="px-3 py-2 text-left">Fornitore</th>
+                        <th className="px-3 py-2 text-right w-20">Qty</th>
+                        <th className="px-3 py-2 text-right w-24">€/u</th>
+                        <th className="px-3 py-2 text-right w-28">Totale</th>
+                        <th className="w-10"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {listiniSelections.map((p, i) => (
+                        <tr key={`${p.listino_id}-${p.id}-${i}`}>
+                          <td className="px-3 py-2">
+                            <div className="font-medium text-xs">{p.nome}</div>
+                            <div className="text-[10px] text-zinc-500">{p.codice ? `[${p.codice}] ` : ""}{p.categoria_dettaglio || p.categoria} · {p.unit}</div>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-zinc-600">{p.fornitore_nome}</td>
+                          <td className="px-3 py-2"><Input type="number" min={0.01} step="0.01" value={p.qty} onChange={e => {
+                            const q = parseFloat(e.target.value) || 0;
+                            setListiniSelections(ls => ls.map((x, j) => j === i ? { ...x, qty: q, importo: q * (x.prezzo_rivendita || 0) } : x));
+                          }} className="h-8 text-xs text-right mono" data-testid={`comp-listino-qty-${i}`} /></td>
+                          <td className="px-3 py-2 text-right mono text-xs">€ {(p.prezzo_rivendita || 0).toFixed(2)}</td>
+                          <td className="px-3 py-2 text-right mono font-bold">€ {((p.qty || 0) * (p.prezzo_rivendita || 0)).toFixed(2)}</td>
+                          <td className="px-3 py-2 text-right"><button onClick={() => setListiniSelections(ls => ls.filter((_, j) => j !== i))} className="text-rose-600 text-xs" data-testid={`comp-listino-del-${i}`}>×</button></td>
+                        </tr>
+                      ))}
+                      <tr className="bg-blue-50 font-bold">
+                        <td colSpan={4} className="px-3 py-2 text-right">Subtotale listini</td>
+                        <td className="px-3 py-2 text-right mono" data-testid="comp-listini-total">€ {totaleListini.toFixed(2)}</td>
+                        <td></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                )}
+              </>
+            ) : activeSection === "__infissi__" ? (
               <>
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold">Infissi · Configuratore extra</h3>
@@ -357,6 +425,24 @@ export default function PreventivoComposite() {
         </div>
       </Page>
       <InfissoQuickConfigurator open={infissiModalOpen} onClose={() => setInfissiModalOpen(false)} onConfirm={onInfissiConfirm} />
+      <ListinoProdottoPicker
+        open={listinoPickerOpen}
+        onOpenChange={setListinoPickerOpen}
+        defaultCategoria={listinoPickerCat}
+        onConfirm={(items) => {
+          setListiniSelections(ls => {
+            const out = [...ls];
+            items.forEach(it => {
+              // Se già presente con stesso listino_id+id → somma qty
+              const idx = out.findIndex(x => x.listino_id === it.listino_id && x.id === it.id);
+              if (idx >= 0) { out[idx] = { ...out[idx], qty: (parseFloat(out[idx].qty) || 0) + (parseFloat(it.qty) || 0) }; }
+              else out.push(it);
+            });
+            return out;
+          });
+          toast.success(`${items.length} prodotto/i aggiunto/i ai listini`);
+        }}
+      />
       {/* Dialog: richiesta sconto > 5% per autorizzazione admin */}
       <Dialog open={scontoDialog} onOpenChange={setScontoDialog}>
         <DialogContent className="max-w-md" data-testid="comp-sconto-dialog">

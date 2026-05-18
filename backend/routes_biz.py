@@ -1217,6 +1217,24 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
                         "total": round(qty * pu, 2),
                         "category": "INFISSI",
                     })
+            # LISTINI FORNITORI: porte/piastrelle/sanitari/ecc. selezionati dal venditore
+            for ls in (prev.get("listini_selections") or []):
+                qty = float(ls.get("qty") or 1)
+                pu = float(ls.get("prezzo_rivendita") or 0)
+                voci_prev.append({
+                    "voce_id": ls.get("id"),
+                    "listino_id": ls.get("listino_id"),
+                    "fornitore_nome": ls.get("fornitore_nome"),
+                    "name": ls.get("nome") or "Prodotto da listino",
+                    "qty": qty,
+                    "unit": ls.get("unit") or "pz",
+                    "unit_price": pu,
+                    "prezzo_netto": float(ls.get("prezzo_netto") or 0),
+                    "ricarico": float(ls.get("ricarico") or 1.8),
+                    "total": round(qty * pu, 2),
+                    "category": (ls.get("categoria") or "FORNITURA").upper(),
+                    "from_listino": True,
+                })
             # Se preventivo PACCHETTO senza items[] esplicite → deriva dal package
             if not voci_prev and prev.get("package_id"):
                 pkg = await db.packages.find_one({"id": prev["package_id"]}, {"_id": 0})
@@ -1240,6 +1258,25 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
                             "category": it.get("category") or "",
                         })
                     voci_prev = derived
+            # LISTINI FORNITORI (pacchetto): aggiungi finiture scelte dal venditore
+            if prev.get("listini_selections"):
+                for ls in (prev.get("listini_selections") or []):
+                    qty = float(ls.get("qty") or 1)
+                    pu = float(ls.get("prezzo_rivendita") or 0)
+                    voci_prev.append({
+                        "voce_id": ls.get("id"),
+                        "listino_id": ls.get("listino_id"),
+                        "fornitore_nome": ls.get("fornitore_nome"),
+                        "name": ls.get("nome") or "Prodotto da listino",
+                        "qty": qty,
+                        "unit": ls.get("unit") or "pz",
+                        "unit_price": pu,
+                        "prezzo_netto": float(ls.get("prezzo_netto") or 0),
+                        "ricarico": float(ls.get("ricarico") or 1.8),
+                        "total": round(qty * pu, 2),
+                        "category": (ls.get("categoria") or "FORNITURA").upper(),
+                        "from_listino": True,
+                    })
                     # Persisti questi items nel preventivo per future regen e per riepilogo coerente
                     await db.preventivi.update_one({"id": prev["id"]}, {"$set": {"items": derived}})
             cm_items = []

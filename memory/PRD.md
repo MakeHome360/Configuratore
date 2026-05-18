@@ -1,6 +1,59 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 69 — Listini Fornitori (Feb 2026)
+
+L'utente vuole una sezione **separata** nei voci backoffice admin per i listini fornitori (porte interne, infissi, piastrelle, ecc.) distinta dalle voci tradizionali di muratura/manodopera. Ogni listino:
+- ha un **fornitore** (es. "Garofoli SpA", "Marazzi", "FIAM")
+- ha una **categoria** principale (14 categorie standard: porte interne, blindate, infissi, piastrelle, sanitari, rubinetterie, vasche/box, termo arredi, elettrodomestici, cucina, parquet, controsoffitti, vernici, altro)
+- contiene N **prodotti** con codice, nome, descrizione, unit, prezzo NETTO, ricarico
+- supporta **import Excel/CSV** in massa o **inserimento manuale**
+- ha un **ricarico_default** (×moltiplicatore) override-able per singolo prodotto
+- categorizza automaticamente per **fascia di prezzo** (low ≤€50, medium €50–200, high >€200) usata per "scegli prodotti per fascia" nei pacchetti
+
+### Backend nuovo modulo
+`/app/backend/routes_listini_fornitori.py` (~340 LOC, lint clean):
+- `GET/POST /api/fornitori-listini` — lista (filtrabile per categoria) + create
+- `GET /api/fornitori-listini/{lid}` — dettaglio
+- `PUT/DELETE /api/fornitori-listini/{lid}` — update (con ricalcolo prezzi su cambio ricarico_default) + delete
+- `POST /api/fornitori-listini/{lid}/prodotti` + `PUT /{pid}` + `DELETE /{pid}` — CRUD prodotti
+- `POST /api/fornitori-listini/{lid}/clear` — svuota prodotti
+- `POST /api/fornitori-listini/{lid}/import?mode=append|replace` — multipart upload .xlsx/.xls/.csv con auto-detect separator + normalizzazione prezzi (€, virgola, punto)
+- `GET /api/fornitori-listini-categorie` — 14 categorie con icona e n_listini
+- `GET /api/fornitori-listini-prodotti/cerca?categoria=&q=&fascia=` — ricerca trasversale tutti i listini, usata da pacchetti e composite
+
+**RBAC**: solo `role=admin` può creare/modificare. Lettura aperta a tutti gli utenti.
+
+**Dipendenza**: aggiunto `openpyxl==3.1.5` in `requirements.txt`.
+
+### Frontend nuova pagina
+`/app/frontend/src/pages/admin/AdminListiniFornitori.jsx` (~370 LOC):
+- **Vista catalogo**: griglia 14 categorie con icone emoji + count listini + tabella dei listini per categoria
+- **Detail listino**: tabella prodotti con codice/nome/sotto-cat/unit/netto/ricarico/rivendita/fascia (badge BASE/MEDIA/ALTA), ricerca live + filtro fascia, bottoni Import/Add/Edit/Delete/Svuota
+- **Dialog Nuovo Listino**: campi fornitore + categoria + nome + ricarico_default + note
+- **Dialog Edit Prodotto**: tutti i campi + preview live "Prezzo rivendita calcolato: € XYZ" (netto × ricarico)
+- **Dialog Import Excel/CSV**: descrizione colonne attese (codice, nome, descrizione, unit, prezzo_netto, categoria) + scelta mode (append/replace) + file input
+- Sidebar: voce "Listini Fornitori" sotto "Voci Backoffice" con icona FileSpreadsheet
+
+### Testing
+- `iteration_20.json`: **15/15 backend pytest PASS, frontend testid completi, 0 issue critici/minor**.
+- E2E manuale: creato listino "Test Porte SRL" (porte_interne, ricarico ×1.8), importato 4 prodotti via .xlsx (P-100..P-300), ricerca per fascia funzionante (P-200/P-300 alta).
+
+### Cosa NON è ancora fatto (per il prossimo round)
+- ⏳ **Integrazione nei Pacchetti**: editor pacchetto deve poter scegliere "prodotto singolo / fornitore+fascia / categoria generica" + flag modificabile_dal_venditore
+- ⏳ **Integrazione nel Composite**: nelle sezioni delle stanze, picker "Scegli da listino fornitore [X]"
+- ⏳ **Rimozione voci piastrelle/porte hardcoded**: sostituire con voci generiche fascia di prezzo finché l'utente non carica i listini reali
+
+### File creati / modificati
+- `backend/routes_listini_fornitori.py` (NUOVO)
+- `backend/server.py` (registrazione router)
+- `backend/requirements.txt` (openpyxl)
+- `frontend/src/pages/admin/AdminListiniFornitori.jsx` (NUOVO)
+- `frontend/src/App.js` (import + route)
+- `frontend/src/components/AppLayout.jsx` (sidebar voce)
+
+
+
 ## Round 68 — Bug fix critici + workflow preventivi fornitori (Feb 2026)
 
 L'utente ha segnalato due bug critici interconnessi:

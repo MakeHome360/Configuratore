@@ -1,0 +1,69 @@
+{
+  "summary": "Round 70 — Integrazione Listini Fornitori in Preventivi (Pacchetto + Composite). Backend pytest: 8/10 PASS, 2/10 FAIL (auto-commessa computo_metrico). Frontend: tutti i testid presenti e funzionanti per Composite (comp-sec-listini, comp-listini-add-btn, listino-picker-dialog, lpp-categoria/search/fascia, lpp-sel-*, lpp-qty-*, lpp-total, lpp-confirm, comp-listino-qty-*, comp-listino-del-*, comp-listini-total). Flusso FE verificato end-to-end: aprire sezione → picker → filtro categoria 'porte_interne' → 4 prodotti visibili → check + qty=1 → lpp-total=€324.00 → conferma → riga aggiunta con subtotale=€324.00 → totale IVA incluso=€384,91 (somma con composite). Toast 'prodotto/i aggiunto/i ai listini' OK. Backend POST/PUT/GET /api/preventivi accettano e ritornano listini_selections per entrambi i tipi (pacchetto+composite, via PreventivoIn extra='allow'). Regression Round 69 (listini CRUD/categorie/cerca) OK.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "PATCH /api/preventivi/{id}/stato (accettato) → _auto_populate_commessa_from_preventivo / routes_biz.py L1187-1303",
+        "issue": "CRITICAL: auto-generazione computo_metrico fallisce SILENZIOSAMENTE quando preventivo COMPOSITE ha listini_selections. Causa root: a riga 1190-1191 il codice presume composite_selections sia un DICT ({voce_id: {qty, price, ...}}), ma il frontend (PreventivoComposite.jsx L132-133) e PreventivoIn (server.py L1513: Optional[List[Dict]]) lo trattano come LISTA. csel.items() solleva AttributeError, intercettata dal try/except esterno (L1305) → computo_metrico mai salvato. RISULTATO: la commessa creata da un preventivo composite accettato ha computo_metrico = {} (vuoto). Test conferma: items=[].",
+        "priority": "CRITICAL"
+      },
+      {
+        "endpoint": "_auto_populate_commessa_from_preventivo (routes_biz.py L1262-1281) — branch pacchetto+listini",
+        "issue": "CRITICAL: nel branch pacchetto, la riga 1281 fa `await db.preventivi.update_one({...}, {\"$set\": {\"items\": derived}})` ma `derived` è definita SOLO dentro l'if a L1239 (`if not voci_prev and prev.get('package_id')`). Se il preventivo ha già items[] esplicite + listini_selections, `derived` è UndefinedLocal → NameError → silent catch → computo_metrico generato SENZA le voci listini. Test pacchetto conferma: cm_items contiene 'Demolizione' ma NON 'Porta liscia bianca' (listino).",
+        "priority": "CRITICAL"
+      },
+      {
+        "endpoint": "_auto_populate_commessa_from_preventivo (routes_biz.py L1282-1300) — cm_items mapping",
+        "issue": "Anche se i 2 bug sopra fossero risolti, il loop `cm_items.append({...})` NON copia i campi listini specifici richiesti dal task: from_listino, listino_id, fornitore_nome, prezzo_netto, ricarico. Solo voce_id/name/qty/unit/prezzo_unit/totale/category vengono persistiti. Task richiede esplicitamente 'voci con from_listino=true, fornitore_nome valorizzato, prezzo_netto + ricarico salvati'.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "PreventivoIn (server.py L1498-1526)",
+        "issue": "listini_selections non è dichiarato esplicitamente come campo Pydantic. Funziona via ConfigDict(extra='allow') ma sarebbe più robusto/documentato dichiararlo: `listini_selections: Optional[List[Dict[str, Any]]] = None`."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Caricamento iniziale PreventivoComposite",
+        "issue": "Al primo render della pagina /preventivocomposite/nuovo, 2 chiamate axios falliscono con 404 (visibile come 'Uncaught runtime errors' overlay dev in dev mode). La pagina è comunque utilizzabile dopo dismiss. In prod (no overlay) verrebbe silenziato. Da indagare: probabile fetch di endpoint opzionale (es. /api/preventivi/__nuovo__ o /api/composite-sections) non esistente per id='nuovo'.",
+        "affected_selectors": []
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_round70_listini_preventivi.py",
+    "/app/test_reports/pytest/round70_results.xml"
+  ],
+  "action_items": [
+    "FIX routes_biz.py L1190-1206: gestire composite_selections sia come list (formato attuale FE) che come dict (legacy). Es: `if isinstance(csel, list): items_iter = [(s.get('voce_id'), s) for s in csel]; else: items_iter = csel.items()`.",
+    "FIX routes_biz.py L1281: rimuovere `await db.preventivi.update_one({...}, {'$set': {'items': derived}})` che usa `derived` non definito quando items[] è già presente. Spostare la persistenza fuori dal loop e dentro la branch corretta, o usare voci_prev al posto di derived.",
+    "FIX routes_biz.py L1289-1300: nel mapping cm_items, propagare i campi from_listino, listino_id, fornitore_nome, prezzo_netto, ricarico quando v.get('from_listino') è True.",
+    "(Minor) Aggiungere listini_selections esplicitamente al modello PreventivoIn in server.py L1498-1526 per chiarezza API contract.",
+    "(Minor) Investigare i 2 errori 404 su /preventivocomposite/nuovo (probabile fetch di id='nuovo' come preventivo esistente)."
+  ],
+  "critical_code_review_comments": [
+    "routes_biz.py: try/except outer a L1187 e L1305 'except Exception as ex' inghiotte TUTTI i bug di auto-commessa senza log dettagliato. Sostituire con logger.exception() o almeno logger.warning(f'auto-cm failed: {ex}') per debug futuro. Bug ricorrenti come quello scoperto in Round 70 sarebbero stati visibili in log.",
+    "Test fixture pytest.composite_prev_id usa stato globale su pytest namespace — funziona ma anti-pattern. Considerare conftest fixtures scope='module' con dict condiviso.",
+    "Frontend: ListinoProdottoPicker carica TUTTI i prodotti via API e filtra client-side. Per fornitori con >500 prodotti potrebbe lagghare. Considerare server-side pagination + debounced search.",
+    "Backend: la chiave 'derived' a L1281 è un classico esempio di accesso a variabile fuori scope — un linter strict (pylance/pyright) lo segnalerebbe. Aggiungere mypy/pyright al CI."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_round70_listini_preventivi.py (NEW)"
+  ],
+  "success_rate": {
+    "backend": "80% (8/10 pytest: CRUD POST/PUT/GET preventivi con listini_selections OK per entrambi i tipi, regression R69 OK; FAIL: auto-commessa computo_metrico per composite e pacchetto con listini)",
+    "frontend": "100% (tutti i testid Round 70 verificati end-to-end nel Composite: sidebar→picker→filtri→select→qty→total→confirm→tabella→subtotale→totale generale)"
+  },
+  "test_credentials": "admin@admin.it / admin (Bearer JWT)",
+  "seed_data_creation": "Test preventivi TEST_R70 (1 composite + 1 pacchetto) creati e cancellati in cleanup fixture. Listino esistente 601dead375aa4b20927d82a29ea5f3ef (Test Porte SRL, 4 prodotti) preservato.",
+  "retest_needed": true,
+  "main_agent_can_self_test": false,
+  "context_for_next_testing_agent": "Round 70 PASS parziale. Backend Pydantic accept (POST/PUT/GET) con listini_selections OK per entrambi tipi (extra='allow'). Frontend Composite end-to-end OK. CRITICAL bugs nel flusso auto-create-commessa (routes_biz.py L1187-1303): (1) composite_selections trattato come dict invece di list → AttributeError silent → computo vuoto; (2) NameError su `derived` nel branch pacchetto+listini → silent fail → listini non in computo; (3) cm_items non propaga from_listino/fornitore_nome/prezzo_netto/ricarico. Test file: /app/backend/tests/test_round70_listini_preventivi.py — al re-test, verificare che i 2 test FAIL (TestAutoCommessaListini) passino dopo fix.",
+  "rca of the issue": "ROOT CAUSE: in /app/backend/routes_biz.py funzione _auto_populate_commessa_from_preventivo (chiamata da PATCH /preventivi/{id}/stato quando stato=accettato): (a) L1191 `for vid, sel in csel.items()` presume DICT ma composite_selections è LIST (formato FE+modello Pydantic); (b) L1281 `'items': derived` riferisce variabile definita solo in if-branch precedente non eseguito quando preventivo ha items[] esplicite. Il try/except a L1187/L1305 cattura entrambi gli errori silenziosamente. RIPRO: creare preventivo composite con composite_selections=[{...}] + listini_selections=[{...}], PATCH stato=accettato, GET commessa → computo_metrico.items=[]. MITIGAZIONE: vedi action_items (3 fix puntuali a routes_biz.py). Tempo stimato fix: 15-20 min. Test regression già pronti."
+}

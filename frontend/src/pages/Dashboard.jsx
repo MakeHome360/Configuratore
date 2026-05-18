@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { Page, PageHeader, StatCard, fmtEur, statoCommessaBadge, statoPreventivoBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
-import { FilePlus2, Files, Briefcase, TrendingUp } from "lucide-react";
+import { FilePlus2, Files, Briefcase, TrendingUp, FileText, Hammer } from "lucide-react";
 import DashboardVenditore from "@/pages/DashboardVenditore";
 import DashboardAlerts from "@/components/DashboardAlerts";
 
@@ -101,22 +101,40 @@ export default function Dashboard() {
               <button className="text-xs text-blue-600 hover:underline" onClick={() => nav("/preventivi")}>Vedi tutti</button>
             </div>
             <div className="divide-y divide-zinc-100">
-              {(stats.ultimi_preventivi || []).slice(0, 5).map((p) => (
-                <div key={p.id} className="px-5 py-3 flex items-center justify-between hover:bg-zinc-50 cursor-pointer"
-                     onClick={() => {
-                       const routes = { pacchetto: "/preventivopacchetto", bagno: "/preventivobagno", composite: "/preventivocomposite", infissi: "/preventivoinfissi" };
-                       nav(`${routes[p.tipo] || "/preventivopacchetto"}/${p.id}`);
-                     }}>
-                  <div className="min-w-0">
+              {(stats.ultimi_preventivi || []).slice(0, 5).map((p) => {
+                const routes = { pacchetto: "/preventivopacchetto", bagno: "/preventivobagno", composite: "/preventivocomposite", infissi: "/preventivoinfissi" };
+                const openPreventivo = (e) => { e?.stopPropagation?.(); nav(`${routes[p.tipo] || "/preventivopacchetto"}/${p.id}`); };
+                const openCad = async (e) => {
+                  e?.stopPropagation?.();
+                  try {
+                    if (p.project_id) { nav(`/editor/${p.project_id}`); return; }
+                    const { data } = await api.post(`/preventivi/${p.id}/create-project`);
+                    nav(`/editor/${data.id}`);
+                  } catch (err) {
+                    // fallback al preventivo se il CAD non è disponibile
+                    openPreventivo();
+                  }
+                };
+                return (
+                <div key={p.id} className="px-5 py-3 flex items-center justify-between hover:bg-zinc-50">
+                  <div className="min-w-0 cursor-pointer" onClick={openPreventivo}>
                     <div className="font-medium text-sm truncate">{p.cliente?.nome || "—"} {p.cliente?.cognome || ""}</div>
                     <div className="text-xs text-zinc-500">{PKG_NAMES[p.package_id] || (p.tipo||"").toUpperCase()} • {p.mq || 0} mq</div>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
                     <div className="text-sm font-semibold">{fmtEur(p.totale_iva_incl)}</div>
                     {statoPreventivoBadge(p.stato)}
+                    <div className="inline-flex gap-1">
+                      <button className="p-1.5 rounded hover:bg-blue-50" onClick={openPreventivo} title="Apri Preventivo" data-testid={`dash-open-prev-${p.id}`}>
+                        <FileText className="h-4 w-4 text-blue-600" />
+                      </button>
+                      <button className="p-1.5 rounded hover:bg-emerald-50" onClick={openCad} title={p.project_id ? "Apri CAD collegato" : "Crea progetto CAD"} data-testid={`dash-open-cad-${p.id}`}>
+                        <Hammer className={`h-4 w-4 ${p.project_id ? "text-emerald-600" : "text-zinc-400"}`} />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              ))}
+              );})}
               {!(stats.ultimi_preventivi || []).length && <div className="px-5 py-8 text-sm text-zinc-500 text-center">Nessun preventivo</div>}
             </div>
           </div>

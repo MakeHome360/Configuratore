@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import { Page, PageHeader, StatCard, fmtEur, statoCommessaBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Wallet, TrendingUp, Briefcase, Files, Crown, Users2, FilePlus2 } from "lucide-react";
+import { Wallet, TrendingUp, Briefcase, Files, Crown, Users2, FilePlus2, FileText, Hammer } from "lucide-react";
 import DashboardAlerts from "@/components/DashboardAlerts";
 
 const LEVEL_LABEL = { semplice: "Venditore", responsabile: "Responsabile Punto Vendita", area_manager: "Area Manager" };
@@ -80,15 +80,35 @@ export default function DashboardVenditore() {
                   <button className="text-xs text-blue-600 hover:underline" onClick={() => nav("/preventivi")}>Vedi tutti</button>
                 </div>
                 <div className="divide-y divide-zinc-100">
-                  {(data.ultimi_preventivi || []).slice(0, 6).map(p => (
+                  {(data.ultimi_preventivi || []).slice(0, 6).map(p => {
+                    const routes = { pacchetto: "/preventivopacchetto", bagno: "/preventivobagno", composite: "/preventivocomposite", infissi: "/preventivoinfissi" };
+                    const openPreventivo = () => nav(`${routes[p.tipo] || "/preventivopacchetto"}/${p.id}`);
+                    const openCad = async () => {
+                      try {
+                        if (p.project_id) { nav(`/editor/${p.project_id}`); return; }
+                        const { data: pj } = await api.post(`/preventivi/${p.id}/create-project`);
+                        nav(`/editor/${pj.id}`);
+                      } catch { openPreventivo(); }
+                    };
+                    return (
                     <div key={p.id} className="px-5 py-3 flex items-center justify-between hover:bg-zinc-50">
-                      <div className="min-w-0">
+                      <div className="min-w-0 cursor-pointer" onClick={openPreventivo}>
                         <div className="font-medium text-sm truncate">{p.cliente?.nome || "—"} {p.cliente?.cognome || ""}</div>
                         <div className="text-xs text-zinc-500">{(p.tipo || "").toUpperCase()} · {p.mq || 0} mq</div>
                       </div>
-                      <div className="text-sm font-semibold">{fmtEur(p.totale_iva_incl)}</div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-sm font-semibold">{fmtEur(p.totale_iva_incl)}</div>
+                        <div className="inline-flex gap-1">
+                          <button className="p-1.5 rounded hover:bg-blue-50" onClick={openPreventivo} title="Apri Preventivo" data-testid={`vend-open-prev-${p.id}`}>
+                            <FileText className="h-4 w-4 text-blue-600" />
+                          </button>
+                          <button className="p-1.5 rounded hover:bg-emerald-50" onClick={openCad} title={p.project_id ? "Apri CAD collegato" : "Crea progetto CAD"} data-testid={`vend-open-cad-${p.id}`}>
+                            <Hammer className={`h-4 w-4 ${p.project_id ? "text-emerald-600" : "text-zinc-400"}`} />
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  ))}
+                  );})}
                   {!(data.ultimi_preventivi || []).length && <div className="px-5 py-8 text-sm text-zinc-500 text-center">Nessun preventivo</div>}
                 </div>
               </div>

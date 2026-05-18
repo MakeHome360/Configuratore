@@ -172,12 +172,27 @@ export default function PreventivoStampa() {
           <div className="flex items-start justify-between gap-6">
             <div className="flex items-center gap-4">
               {azienda.logo ? (
-                <img src={azienda.logo} alt="Logo" className="h-16 w-auto" />
+                <img
+                  src={azienda.logo}
+                  alt="Logo"
+                  className="h-16 w-auto"
+                  data-testid="prev-stampa-logo"
+                  onError={(e) => {
+                    if (e.currentTarget.src.indexOf("/brand/sadicasa-light.png") === -1) {
+                      e.currentTarget.src = "/brand/sadicasa-light.png";
+                    } else {
+                      e.currentTarget.style.display = "none";
+                      const fb = e.currentTarget.nextElementSibling;
+                      if (fb) fb.style.display = "flex";
+                    }
+                  }}
+                />
               ) : (
-                <div className="h-16 w-16 rounded-full flex items-center justify-center text-2xl font-bold text-white" style={{ background: colorePrimario, fontFamily: "Outfit" }}>
-                  {(azienda.nome || "S")[0]}
-                </div>
+                <img src="/brand/sadicasa-light.png" alt="Logo" className="h-16 w-auto" data-testid="prev-stampa-logo-default" />
               )}
+              <div className="h-16 w-16 rounded-full items-center justify-center text-2xl font-bold text-white" style={{ background: colorePrimario, fontFamily: "Outfit", display: "none" }} data-testid="prev-stampa-logo-fallback">
+                {(azienda.nome || "S")[0]}
+              </div>
               <div>
                 <div className="text-2xl font-bold" style={{ fontFamily: "Outfit", color: colorePrimario }}>{azienda.nome || "Sa di casa"}</div>
                 {azienda.sito && <div className="text-xs text-zinc-500 mono">{azienda.sito}</div>}

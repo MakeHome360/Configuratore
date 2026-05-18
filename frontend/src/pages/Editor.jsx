@@ -818,14 +818,14 @@ export default function Editor() {
   const confirmaTavoleInCommessa = async (selectedTavole, prospettiInteresting, commessaId) => {
     try {
       const tav_codes = selectedTavole.map((t) => t.id);
-      // Save flag on project
+      // Save flag on project + cad_locked se commessa collegata
       await api.put(`/projects/${project.id}`, {
         name: project.name,
-        data: { ...project.data, tavole_confermate: tav_codes, tavole_confermate_at: new Date().toISOString(), commessa_id: commessaId || project.data?.commessa_id },
+        data: { ...project.data, tavole_confermate: tav_codes, tavole_confermate_at: new Date().toISOString(), commessa_id: commessaId || project.data?.commessa_id, cad_locked: !!commessaId },
       });
-      setProjectData((p) => ({ ...p, tavole_confermate: tav_codes, tavole_confermate_at: new Date().toISOString(), commessa_id: commessaId || p.commessa_id }));
+      setProjectData((p) => ({ ...p, tavole_confermate: tav_codes, tavole_confermate_at: new Date().toISOString(), commessa_id: commessaId || p.commessa_id, cad_locked: !!commessaId }));
 
-      // Push entries to commessa.documenti
+      // Push entries to commessa.documenti + mark tavole_approvate on commessa
       if (commessaId) {
         const { data: c } = await api.get(`/commesse/${commessaId}`);
         const newDocs = [
@@ -833,12 +833,28 @@ export default function Editor() {
           ...selectedTavole.map((t) => ({ nome: `Tavola di Progetto: ${t.title}`, url: `/editor/${project.id}`, tipo: "tavola_progetto", flag: true, data: new Date().toISOString() })),
           ...(prospettiInteresting || []).map((ent) => ({ nome: `Prospetto Parete (${fmtNum(ent.length / 100, 2)}m)`, url: `/editor/${project.id}`, tipo: "tavola_progetto", flag: true, data: new Date().toISOString() })),
         ];
-        await api.put(`/commesse/${commessaId}`, { documenti: newDocs });
-        toast.success(`Tavole confermate e aggiunte ai documenti commessa (${selectedTavole.length + (prospettiInteresting || []).length})`);
+        await api.put(`/commesse/${commessaId}`, { documenti: newDocs, tavole_approvate: true, tavole_approvate_at: new Date().toISOString(), tavole_project_id: project.id });
+        toast.success(`Tavole confermate e CAD bloccato (${selectedTavole.length + (prospettiInteresting || []).length} doc). Modifiche future richiedono sblocco admin.`);
       } else {
-        toast.success("Tavole confermate sul progetto. Collega una commessa per aggiungerle ai documenti.");
+        toast.success("Tavole confermate sul progetto. Collega una commessa per bloccare le modifiche e aggiungerle ai documenti.");
       }
     } catch (e) { toast.error(e.response?.data?.detail || "Errore conferma tavole"); }
+  };
+
+  // Sblocca CAD (admin) — rimuove cad_locked dal progetto + tavole_approvate dalla commessa
+  const unlockCad = async () => {
+    if (!window.confirm("Sbloccare le modifiche al CAD? Le tavole approvate dovranno essere riconfermate.")) return;
+    try {
+      await api.put(`/projects/${project.id}`, {
+        name: project.name,
+        data: { ...project.data, cad_locked: false, cad_unlocked_at: new Date().toISOString() },
+      });
+      setProjectData((p) => ({ ...p, cad_locked: false }));
+      if (project.data?.commessa_id) {
+        try { await api.put(`/commesse/${project.data.commessa_id}`, { tavole_approvate: false, tavole_sblocco_at: new Date().toISOString() }); } catch {}
+      }
+      toast.success("CAD sbloccato — puoi modificare nuovamente");
+    } catch (e) { toast.error(e?.response?.data?.detail || "Errore sblocco"); }
   };
 
   if (!project) return <div className="h-screen flex items-center justify-center mono text-zinc-500">caricamento editor…</div>;
@@ -871,6 +887,22 @@ export default function Editor() {
           <Button size="sm" className="rounded-sm h-8 px-3 bg-zinc-900 hover:bg-zinc-800 sticky right-0 shrink-0" disabled={saving} onClick={() => save(true)} data-testid="save-project-button"><Save size={14} className="mr-1.5" /> {saving ? "…" : "Salva"}</Button>
         </div>
       </div>
+
+      {/* Banner CAD LOCKED — tavole approvate da commessa */}
+      {project.data?.cad_locked && (
+        <div className="bg-rose-50 border-y-2 border-rose-300 px-4 py-2 flex items-center justify-between gap-3" data-testid="cad-locked-banner">
+          <div className="flex items-center gap-3 text-rose-900">
+            <span className="text-2xl">🔒</span>
+            <div className="text-xs leading-tight">
+              <div className="font-bold uppercase tracking-widest">CAD bloccato — Tavole approvate</div>
+              <div className="text-rose-700">Le tavole sono state confermate sulla Commessa {project.data?.commessa_id ? `#${String(project.data.commessa_id).slice(0, 6)}` : ""}. Le modifiche al disegno sono congelate per garantire la coerenza tra progetto firmato e cantiere.</div>
+            </div>
+          </div>
+          <Button size="sm" variant="outline" className="border-rose-400 text-rose-700 hover:bg-rose-100" onClick={unlockCad} data-testid="cad-unlock-btn">
+            🔓 Sblocca modifiche (admin)
+          </Button>
+        </div>
+      )}
 
       <div className="flex-1 flex min-h-0">
         {/* Left tools */}

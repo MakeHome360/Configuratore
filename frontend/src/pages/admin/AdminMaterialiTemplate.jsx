@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import AppLayout from "@/components/AppLayout";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,8 +56,7 @@ export default function AdminMaterialiTemplate() {
   const delRow = (i) => setEdit(e => ({ ...e, voci: e.voci.filter((_, j) => j !== i) }));
 
   return (
-    <AppLayout>
-      <div className="space-y-5" data-testid="admin-materiali-template-page">
+    <div className="space-y-5" data-testid="admin-materiali-template-page">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Template Tabella Materiali</h1>
           <p className="text-sm text-zinc-500 mt-1">Crea bozze pre-impostate di tabelle materiali. Quando un preventivo viene <strong>accettato</strong>, la commessa generata erediterà automaticamente il template impostato come <strong>predefinito</strong> (★). Il venditore dovrà solo scegliere le finiture.</p>
@@ -142,6 +140,5 @@ export default function AdminMaterialiTemplate() {
           )}
         </div>
       </div>
-    </AppLayout>
   );
 }

@@ -1152,6 +1152,37 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
         # Auto-genera computo metrico
         try:
             voci_prev = prev.get("items") or prev.get("voci_dettaglio") or prev.get("computo") or []
+            # COMPOSITE: deriva da composite_selections (dict {voce_id: {qty, price, name, unit, category}})
+            if not voci_prev and prev.get("composite_selections"):
+                csel = prev.get("composite_selections") or {}
+                voci_prev = []
+                for vid, sel in csel.items():
+                    qty = float(sel.get("qty") or 0)
+                    pu = float(sel.get("price") or 0)
+                    if qty <= 0:
+                        continue
+                    voci_prev.append({
+                        "voce_id": vid,
+                        "name": sel.get("name") or vid,
+                        "qty": qty,
+                        "unit": sel.get("unit") or "pz",
+                        "unit_price": pu,
+                        "total": round(qty * pu, 2),
+                        "category": sel.get("category") or "",
+                    })
+                # Aggiungi anche infissi_extras
+                for inf in (prev.get("infissi_extras") or []):
+                    qty = float(inf.get("qty") or 1)
+                    pu = float(inf.get("unit_price") or inf.get("price") or 0)
+                    voci_prev.append({
+                        "voce_id": inf.get("id") or inf.get("voce_id"),
+                        "name": inf.get("name") or "Infisso",
+                        "qty": qty,
+                        "unit": inf.get("unit") or "pz",
+                        "unit_price": pu,
+                        "total": round(qty * pu, 2),
+                        "category": "INFISSI",
+                    })
             # Se preventivo PACCHETTO senza items[] esplicite → deriva dal package
             if not voci_prev and prev.get("package_id"):
                 pkg = await db.packages.find_one({"id": prev["package_id"]}, {"_id": 0})

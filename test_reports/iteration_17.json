@@ -1,0 +1,34 @@
+{
+  "summary": "Round 66 — verified 3 cluster di fix/feature (A: doppio menu+dashboard split+logo stampa+import computo+composite auto-gen, B: payment presets+allegato A+documenti unificati, C: voci backoffice tipo/fornitore+KPI mano/acq+voci extra+cad lock). 5/5 backend tests PASSED. All 12 frontend testid checks PASSED.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "AdminMaterialiTemplate (/adminmaterialitemplate)", "issues": ["La pagina non usa il wrapper <PageHeader>/<Page> come le altre pagine admin: il titolo h1 'Template Tabella Materiali' appare attaccato al bordo superiore senza padding standard, fuori uniformità rispetto a AdminDatiAzienda/AdminVociBackoffice. Cosmetic, non bloccante."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_round66_clusters.py",
+    "/app/test_reports/pytest/round66_results.xml"
+  ],
+  "action_items": [
+    "(Opzionale, design) Avvolgere AdminMaterialiTemplate in <Page>/<PageHeader> per uniformità admin UI."
+  ],
+  "critical_code_review_comments": [
+    "routes_biz.py linee 1152-1210: la auto-generazione del computo per COMPOSITE iterates composite_selections + infissi_extras correttamente; gestisce qty<=0 skip e arrotonda total. Buona robustezza.",
+    "AdminDatiAzienda.jsx: payment_presets vengono salvati nel dict completo via PUT /dati-azienda. Default è gestito via setDefaultPreset che azzera gli altri (mutex corretto). Validazione tot=100% solo visiva (rosso/verde) non bloccante save — accettabile come UX.",
+    "CommessaWorkflow.jsx >700 LOC (1900+). Andrebbe spezzato in sub-componenti per tab (ContrattoTab, DocumentiTab, VociAcquistiTab già sembra estratta ma intero file resta grosso) per maintainability. Non blocker.",
+    "Editor.jsx confirmaTavoleInCommessa setta sia project.data.cad_locked che commessa.tavole_approvate — coerente. Banner data-testid='cad-locked-banner' e cad-unlock-btn correttamente condizionati. cad_locked flag verificato persistito.",
+    "AdminVociBackoffice VoceDialog: select 'tipo' default 'acquisto', 'fornitore_id' nullable, gestito sia POST che PUT. Lookup fornitori da /subappaltatori?tipo=fornitore — assicurarsi che backend supporti query param tipo=fornitore (non verificato esplicitamente in questo run).",
+    "PreventivoStampa.jsx: logo carica /brand/sadicasa-light.png con fallback testid 'prev-stampa-logo-fallback' (iniziale azienda) tramite onError — pattern corretto."
+  ],
+  "updated_files": ["/app/backend/tests/test_round66_clusters.py (NEW)"],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "100% (12/12 testid checks)"},
+  "test_credentials": "admin@admin.it / admin (cookie-based JWT — funziona)",
+  "seed_data_creation": "Creato 1 preset payment 'TEST_30/40/30' in dati-azienda.payment_presets (id=pp-test-r66), allegato_a + voci_extra TEST su commessa b37e32d2, voce backoffice TEST_R66_Voce poi cancellata. Project cad_locked flag toggled true→false su a73265ca.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Round 66 fully verified. Routes admin sono SENZA slash (/adminmaterialitemplate /admindatiazienda /adminvocibackoffice). Commessa di test con allegato_a salvato: b37e32d2-2628-44c0-90a3-a3667b56e5c2. Preset test da pulire manualmente se necessario: pp-test-r66 in dati_azienda.payment_presets.",
+  "rca of the issue": "N/A — nessun bug bloccante trovato. Tutti i 3 cluster fix/feature funzionano end-to-end."
+}

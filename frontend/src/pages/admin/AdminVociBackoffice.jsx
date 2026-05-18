@@ -138,7 +138,9 @@ export default function AdminVociBackoffice() {
 }
 
 function VoceDialog({ voce, onClose, onSaved, isNew }) {
-  const [f, setF] = useState(voce || { name: "", category: "MURATURA", unit: "m²", prezzo_acquisto: 0, ricarico: 1.8, modificabile_dal_venditore: false, soglia_inclusa: null });
+  const [f, setF] = useState(voce || { name: "", category: "MURATURA", unit: "m²", prezzo_acquisto: 0, ricarico: 1.8, modificabile_dal_venditore: false, soglia_inclusa: null, tipo: "acquisto", fornitore_id: "" });
+  const [fornitori, setFornitori] = useState([]);
+  useEffect(() => { api.get("/subappaltatori?tipo=fornitore").then(r => setFornitori(r.data || [])).catch(() => {}); }, []);
   const save = async () => {
     if (!f.name) return toast.error("Nome");
     try {
@@ -153,6 +155,21 @@ function VoceDialog({ voce, onClose, onSaved, isNew }) {
         <div className="px-6 py-4 border-b flex justify-between items-center"><h2 className="font-semibold text-lg">{isNew ? "Nuova Voce" : "Modifica Voce"}</h2><button onClick={onClose}><X className="h-5 w-5" /></button></div>
         <div className="p-6 space-y-3">
           <div><Label>Nome *</Label><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} data-testid="vb-form-name" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><Label>Tipo voce</Label>
+              <select className="w-full h-10 px-2 border border-zinc-300 rounded" value={f.tipo || "acquisto"} onChange={(e) => setF({ ...f, tipo: e.target.value })} data-testid="vb-form-tipo">
+                <option value="acquisto">🛒 Acquisto (materiali/forniture)</option>
+                <option value="manodopera">🔨 Manodopera (lavorazione)</option>
+                <option value="misto">🔧 Misto (acquisto + posa)</option>
+              </select>
+            </div>
+            <div><Label>Fornitore/Sub di default (opzionale)</Label>
+              <select className="w-full h-10 px-2 border border-zinc-300 rounded" value={f.fornitore_id || ""} onChange={(e) => setF({ ...f, fornitore_id: e.target.value })} data-testid="vb-form-fornitore">
+                <option value="">— nessuno —</option>
+                {fornitori.map(s => <option key={s.id} value={s.id}>{s.nome} ({s.tipo || "fornitore"})</option>)}
+              </select>
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div><Label>Categoria</Label>
               <select className="w-full h-10 px-2 border border-zinc-300 rounded" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>

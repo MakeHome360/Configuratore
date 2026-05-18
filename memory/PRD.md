@@ -1,6 +1,50 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 70 — Integrazione Listini Fornitori in Preventivi (Feb 2026)
+
+**Utente**: "fai tutto e poi faccio deploy".
+
+### Cosa è stato fatto
+1. **Componente picker condiviso** `ListinoProdottoPicker.jsx` (~180 LOC):
+   - Dialog con filtri categoria + ricerca testo + filtro fascia (low/medium/high)
+   - Multi-selezione con quantità editabile per riga
+   - Totale live, fetch da `/api/fornitori-listini-prodotti/cerca`
+   - Restituisce array di prodotti con qty/importo per integrazione esterna
+2. **PreventivoComposite**: nuova sezione `__listini__` nella sidebar con contatore prodotti + totale, vista dedicata con tabella editabile (qty/€/totale/delete). Salvataggio in `preventivo.listini_selections`. Totale incluso nei calcoli (con maggiorazione mq).
+3. **PreventivoPacchetto**: nello step 3 (Optional) sotto la lista optional, sezione "🛒 Finiture da Listini Fornitori" con stesso picker. Visualizzato nel riepilogo prezzi sidebar + step 6 Riepilogo come riga "🛒 Finiture (listini)".
+4. **Backend modelli**: `PreventivoIn` ora ha `listini_selections: Optional[List[Dict[str,Any]]]` e `modalita_pagamento` esplicito.
+5. **Auto-generazione computo metrico DA PREVENTIVO** (2 codepaths sincronizzati):
+   - `routes_biz.py:create_commessa` (POST /api/commesse manuale): listini_selections aggiunti come voci con `from_listino=True`, `fornitore_nome`, `prezzo_netto`, `ricarico` propagati nel cm_item. Fix bug `derived` undefined + bug `composite_selections` list/dict.
+   - `server.py:_auto_populate_commessa_from_preventivo` (PATCH /api/preventivi/{id}/stato → accettato): stessa logica, listini + composite_selections gestiti correttamente. Pre-assegna `artigiano_nome = fornitore_nome` per le voci da listino.
+
+### Bug fixati lungo il percorso
+- `composite_selections` può essere list o dict (legacy) → normalizzato in entrambi i flussi.
+- Variabile `derived` undefined nel branch composite → rimosso codice morto.
+- Duplicazione listini_selections per composite (entravano 2 volte) → consolidato.
+- **2 funzioni di build computo divergenti** identificate dal testing agent → ora entrambe gestiscono composite + listini con stessa semantica.
+
+### Testing
+- `iteration_22.json` + `tests/test_round70_listini_preventivi.py`: **10/10 PASS** dopo i fix.
+- Regression `test_round68_*` + `test_round69_listini_fornitori.py`: **15/15 PASS**.
+- E2E manuale curl: composite + listini → 2 items computo, NO duplicati.
+- Screenshot E2E: composite mostra sidebar listini + picker apre con i 4 prodotti del listino test.
+
+### Voci hardcoded (piastrelle/porte) — NON rimosse
+Le voci piastrelle_pav, piastrelle_riv, porta_interna_base ecc. del seed sono mantenute come **default fallback**. Quando l'admin carica listini specifici, il venditore le può **sostituire** dinamicamente nei preventivi via picker (le voci selezionate dal listino sono additive). Rimuoverle ora romperebbe i pacchetti esistenti.
+
+### Code Architecture (debito tecnico noto)
+- `routes_biz.py:create_commessa` e `server.py:_auto_populate_commessa_from_preventivo` hanno **logica duplicata** di build computo. Da consolidare in `_computo_builder.py` (segnalato dal testing agent — non blocker).
+
+### File modificati
+- `frontend/src/components/ListinoProdottoPicker.jsx` (NUOVO)
+- `frontend/src/pages/PreventivoComposite.jsx` (state listini_selections, sezione __listini__)
+- `frontend/src/pages/PreventivoPacchetto.jsx` (state listini_selections, sezione step 3, totals.listini)
+- `backend/routes_biz.py` (composite list/dict normalize, listini propagation)
+- `backend/server.py` (PreventivoIn fields espliciti, _auto_populate listini + composite)
+
+
+
 ## Round 69 — Listini Fornitori (Feb 2026)
 
 L'utente vuole una sezione **separata** nei voci backoffice admin per i listini fornitori (porte interne, infissi, piastrelle, ecc.) distinta dalle voci tradizionali di muratura/manodopera. Ogni listino:

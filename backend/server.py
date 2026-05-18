@@ -1902,13 +1902,49 @@ async def _auto_populate_commessa_from_preventivo(prev_id: str, user: Dict[str, 
             "unit": "pz",
             "prezzo_unit": float(inf.get("prezzo") or inf.get("prezzo_unit") or 0),
         })
+    # Composite selections (lista) — voci scelte voce-per-voce nel preventivo composite
+    csel = prev.get("composite_selections") or []
+    if isinstance(csel, dict):
+        csel = [{"voce_id": k, **v} if isinstance(v, dict) else {"voce_id": k} for k, v in csel.items()]
+    for sel in csel:
+        if not isinstance(sel, dict):
+            continue
+        q = float(sel.get("qty") or 0)
+        if q <= 0:
+            continue
+        righe.append({
+            "voce_id": sel.get("voce_id") or sel.get("id"),
+            "name": sel.get("name") or sel.get("descrizione") or "Voce",
+            "qty": q,
+            "unit": sel.get("unit") or "pz",
+            "prezzo_unit": float(sel.get("price") or sel.get("unit_price") or sel.get("prezzo_unit") or 0),
+            "category": sel.get("category") or "",
+        })
+    # Listini fornitori (porte, piastrelle, sanitari, ecc.) selezionati nel preventivo
+    for ls in (prev.get("listini_selections") or []):
+        if not isinstance(ls, dict):
+            continue
+        q = float(ls.get("qty") or 1)
+        righe.append({
+            "voce_id": ls.get("id"),
+            "name": ls.get("nome") or "Prodotto da listino",
+            "qty": q,
+            "unit": ls.get("unit") or "pz",
+            "prezzo_unit": float(ls.get("prezzo_rivendita") or 0),
+            "category": (ls.get("categoria") or "FORNITURA").upper(),
+            "from_listino": True,
+            "listino_id": ls.get("listino_id"),
+            "fornitore_nome": ls.get("fornitore_nome"),
+            "prezzo_netto": float(ls.get("prezzo_netto") or 0),
+            "ricarico": float(ls.get("ricarico") or 1.8),
+        })
     # Costruisci computo_metrico items
     cm_items = []
     for r in righe:
         if r["qty"] <= 0 and r["prezzo_unit"] <= 0:
             continue
         vb = voci_back.get(r["voce_id"]) if r["voce_id"] else None
-        cm_items.append({
+        item = {
             "id": f"cm-{uuid.uuid4().hex[:8]}",
             "voce_id": r["voce_id"] or "",
             "name": r["name"],
@@ -1916,10 +1952,19 @@ async def _auto_populate_commessa_from_preventivo(prev_id: str, user: Dict[str, 
             "unit": r["unit"],
             "prezzo_unit": r["prezzo_unit"],
             "totale": round(r["qty"] * r["prezzo_unit"], 2),
-            "category": (vb or {}).get("category", ""),
+            "category": r.get("category") or (vb or {}).get("category", ""),
             "stato_assegnazione": "da_assegnare",
             "auto_from_preventivo": True,
-        })
+        }
+        # Propaga metadati listino fornitore
+        if r.get("from_listino"):
+            item["from_listino"] = True
+            item["listino_id"] = r.get("listino_id")
+            item["fornitore_nome"] = r.get("fornitore_nome")
+            item["prezzo_netto"] = r.get("prezzo_netto", 0)
+            item["ricarico"] = r.get("ricarico", 1.8)
+            item["artigiano_nome"] = r.get("fornitore_nome")
+        cm_items.append(item)
     cm_totale = round(sum(x["totale"] for x in cm_items), 2)
 
     # 2b) UPGRADE TIER BAGNI: per ogni bagno con tier != silver, aggiungi voce computo con la differenza

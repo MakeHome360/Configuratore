@@ -1513,6 +1513,10 @@ class PreventivoIn(BaseModel):
     composite_selections: Optional[List[Dict[str, Any]]] = None
     sicurezza_pct: Optional[float] = None
     direzione_lavori_pct: Optional[float] = None
+    # Listini Fornitori: prodotti scelti dai listini admin (porte/piastrelle/sanitari/...)
+    listini_selections: Optional[List[Dict[str, Any]]] = None
+    # Modalità di pagamento concordata col cliente
+    modalita_pagamento: Optional[Dict[str, Any]] = None
     # infissi specifics
     infissi: Optional[List[Dict[str, Any]]] = None
     # shared

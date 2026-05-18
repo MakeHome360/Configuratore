@@ -1,0 +1,49 @@
+{
+  "summary": "Round 70 retest. Backend pytest: 8/10 PASS, 2/10 FAIL ancora (TestAutoCommessaListini: composite e pacchetto). I 2 bug iteration_21 NON sono stati realmente risolti. ROOT CAUSE: il main agent ha modificato la funzione SBAGLIATA. Ha applicato i fix a /app/backend/routes_biz.py L1186-1303 (funzione `create_commessa` chiamata da POST /api/commesse — flusso 'manuale'), ma la funzione effettivamente invocata da PATCH /api/preventivi/{id}/stato (stato=accettato) è `_auto_populate_commessa_from_preventivo` in /app/backend/server.py L1856-2055. Quella funzione NON legge mai composite_selections né listini_selections: estrae righe solo da items, extra_voci, infissi (L1881-1904). Quindi per preventivi composite il computo è vuoto, e per pacchetto include solo le voci derive ma non i listini. PreventivoIn (server.py L1498-1519) è ORA corretto con listini_selections + modalita_pagamento espliciti — questo fix è OK. FE Round 70 confermato funzionante in iteration_21 (no regressione testata qui, non necessario).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "_auto_populate_commessa_from_preventivo (server.py L1856-2055) — flusso PATCH /api/preventivi/{id}/stato → accettato",
+        "issue": "CRITICAL: la funzione NON gestisce composite_selections (mai letta → preventivi composite producono computo vuoto) NÉ listini_selections (mai letta → voci da listini Round 70 mai inserite nel computo per pacchetto e composite). I fix di routes_biz.py L1186-1278 applicati dal main agent NON impattano questo flusso perché routes_biz.py.create_commessa è invocato solo da POST /api/commesse (creazione manuale), mentre l'accettazione preventivo passa per server.py._auto_populate_commessa_from_preventivo. Codice duplicato in 2 file con logiche divergenti.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "Code duplication routes_biz.py vs server.py",
+        "issue": "Esistono DUE implementazioni di auto-generazione computo metrico (routes_biz.py L1186-1303 + server.py L1856-2055) con logiche diverse. Da consolidare in una sola funzione condivisa."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_round70_listini_preventivi.py",
+    "/app/test_reports/pytest/round70_retest.xml"
+  ],
+  "action_items": [
+    "FIX server.py L1856-1923 (_auto_populate_commessa_from_preventivo): aggiungere parsing di composite_selections (lista di dict {voce_id, qty, price/unit_price, name, unit, category}) DOPO il loop su items/extra_voci/infissi. Esempio: `for sel in (prev.get('composite_selections') or []): if isinstance(sel, dict) and float(sel.get('qty') or 0) > 0: righe.append({...})`.",
+    "FIX server.py L1905-1922: aggiungere parsing di listini_selections con propagazione di from_listino=True, listino_id, fornitore_nome, prezzo_netto, ricarico nel cm_item finale. Pre-assegnare artigiano_nome = fornitore_nome.",
+    "REFACTOR: estrarre la logica di build cm_items in una funzione condivisa (es. /app/backend/_computo_builder.py) chiamata sia da routes_biz.create_commessa che da server._auto_populate_commessa_from_preventivo per eliminare la divergenza.",
+    "RE-RUN /app/backend/tests/test_round70_listini_preventivi.py — i 2 test TestAutoCommessaListini devono passare dopo il fix di server.py."
+  ],
+  "critical_code_review_comments": [
+    "ANTIPATTERN CRITICO: due funzioni con responsabilità identica (auto-gen computo metrico da preventivo) implementate indipendentemente in routes_biz.py e server.py. Il main agent in iteration_21 ha fixato solo una delle due, fallendo silenziosamente il fix. Va consolidato il prima possibile.",
+    "server.py L1602-1606: try/except con logger.exception() — bene, il log dovrebbe esserci. Verificare i log di supervisor per messaggi di errore relativi al PATCH stato.",
+    "Test fixture pytest.composite_prev_id / pacchetto_prev_id usa namespace globale — funzionale ma anti-pattern. Migrare a conftest fixtures."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "80% (8/10 — invariato vs iteration_21: i 2 test auto-commessa+listini ancora FAIL perché fix applicato alla funzione sbagliata)",
+    "frontend": "100% (verificato in iteration_21, no regressione attesa)"
+  },
+  "test_credentials": "admin@admin.it / admin",
+  "seed_data_creation": "Test preventivi TEST_R70 (1 composite + 1 pacchetto) creati e cancellati in cleanup fixture. Listino esistente 601dead375aa4b20927d82a29ea5f3ef preservato.",
+  "retest_needed": true,
+  "main_agent_can_self_test": false,
+  "context_for_next_testing_agent": "Round 70 fix iteration_22: il main agent ha modificato il FILE SBAGLIATO. I fix in routes_biz.py L1186-1278 sono corretti ma non impattano il flusso testato (PATCH stato=accettato). La funzione da fixare è server.py._auto_populate_commessa_from_preventivo L1856-2055: aggiungere parsing di composite_selections (mai presente) e listini_selections (mai presente). PreventivoIn esplicito con listini_selections+modalita_pagamento è OK. Test file /app/backend/tests/test_round70_listini_preventivi.py invariato — 8/10 PASS, 2/10 FAIL (TestAutoCommessaListini::test_accept_composite_creates_commessa_with_listini_in_computo, test_accept_pacchetto_creates_commessa_with_listini_in_computo).",
+  "rca of the issue": "ROOT CAUSE CONFERMATO: PATCH /api/preventivi/{id}/stato (server.py L1591-1607) chiama _auto_populate_commessa_from_preventivo (server.py L1856-2055), NON routes_biz.py.create_commessa. server.py._auto_populate_commessa_from_preventivo legge solo prev.get('items'), prev.get('extra_voci'), prev.get('infissi') — mai composite_selections, mai listini_selections. Quindi: (a) preventivi composite producono righe=[] e cm_items=[] (test composite FAIL: 'Computo metrico vuoto', items=[]); (b) preventivi pacchetto producono righe solo dalle voci derive presenti in items[], senza i listini (test pacchetto FAIL: 'Nessuna voce da listino in cm pacchetto', nomi=['Demolizione']). MITIGAZIONE: replicare la logica di routes_biz.py L1190-1303 (composite_selections list/dict normalization + listini_selections sempre dopo derive + propagazione from_listino metadata) dentro server.py L1880-1923, oppure refactor con funzione condivisa. RIPRO: vedi test_round70_listini_preventivi.py classe TestAutoCommessaListini."
+}

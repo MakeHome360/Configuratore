@@ -1186,13 +1186,24 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
         # Auto-genera computo metrico
         try:
             voci_prev = prev.get("items") or prev.get("voci_dettaglio") or prev.get("computo") or []
-            # COMPOSITE: deriva da composite_selections (dict {voce_id: {qty, price, name, unit, category}})
+            # COMPOSITE: deriva da composite_selections (può essere LIST [{voce_id, qty, ...}] o DICT legacy {voce_id: {qty, ...}})
             if not voci_prev and prev.get("composite_selections"):
                 csel = prev.get("composite_selections") or {}
+                # Normalizza: accetta sia list che dict
+                if isinstance(csel, list):
+                    items_iter = []
+                    for s in csel:
+                        if not isinstance(s, dict):
+                            continue
+                        items_iter.append((s.get("voce_id") or s.get("id") or "", s))
+                elif isinstance(csel, dict):
+                    items_iter = list(csel.items())
+                else:
+                    items_iter = []
                 voci_prev = []
-                for vid, sel in csel.items():
+                for vid, sel in items_iter:
                     qty = float(sel.get("qty") or 0)
-                    pu = float(sel.get("price") or 0)
+                    pu = float(sel.get("price") or sel.get("unit_price") or 0)
                     if qty <= 0:
                         continue
                     voci_prev.append({
@@ -1217,24 +1228,6 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
                         "total": round(qty * pu, 2),
                         "category": "INFISSI",
                     })
-            # LISTINI FORNITORI: porte/piastrelle/sanitari/ecc. selezionati dal venditore
-            for ls in (prev.get("listini_selections") or []):
-                qty = float(ls.get("qty") or 1)
-                pu = float(ls.get("prezzo_rivendita") or 0)
-                voci_prev.append({
-                    "voce_id": ls.get("id"),
-                    "listino_id": ls.get("listino_id"),
-                    "fornitore_nome": ls.get("fornitore_nome"),
-                    "name": ls.get("nome") or "Prodotto da listino",
-                    "qty": qty,
-                    "unit": ls.get("unit") or "pz",
-                    "unit_price": pu,
-                    "prezzo_netto": float(ls.get("prezzo_netto") or 0),
-                    "ricarico": float(ls.get("ricarico") or 1.8),
-                    "total": round(qty * pu, 2),
-                    "category": (ls.get("categoria") or "FORNITURA").upper(),
-                    "from_listino": True,
-                })
             # Se preventivo PACCHETTO senza items[] esplicite → deriva dal package
             if not voci_prev and prev.get("package_id"):
                 pkg = await db.packages.find_one({"id": prev["package_id"]}, {"_id": 0})
@@ -1258,27 +1251,24 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
                             "category": it.get("category") or "",
                         })
                     voci_prev = derived
-            # LISTINI FORNITORI (pacchetto): aggiungi finiture scelte dal venditore
-            if prev.get("listini_selections"):
-                for ls in (prev.get("listini_selections") or []):
-                    qty = float(ls.get("qty") or 1)
-                    pu = float(ls.get("prezzo_rivendita") or 0)
-                    voci_prev.append({
-                        "voce_id": ls.get("id"),
-                        "listino_id": ls.get("listino_id"),
-                        "fornitore_nome": ls.get("fornitore_nome"),
-                        "name": ls.get("nome") or "Prodotto da listino",
-                        "qty": qty,
-                        "unit": ls.get("unit") or "pz",
-                        "unit_price": pu,
-                        "prezzo_netto": float(ls.get("prezzo_netto") or 0),
-                        "ricarico": float(ls.get("ricarico") or 1.8),
-                        "total": round(qty * pu, 2),
-                        "category": (ls.get("categoria") or "FORNITURA").upper(),
-                        "from_listino": True,
-                    })
-                    # Persisti questi items nel preventivo per future regen e per riepilogo coerente
-                    await db.preventivi.update_one({"id": prev["id"]}, {"$set": {"items": derived}})
+            # LISTINI FORNITORI (aggiunti SEMPRE dopo derive, per composite e pacchetto)
+            for ls in (prev.get("listini_selections") or []):
+                qty = float(ls.get("qty") or 1)
+                pu = float(ls.get("prezzo_rivendita") or 0)
+                voci_prev.append({
+                    "voce_id": ls.get("id"),
+                    "listino_id": ls.get("listino_id"),
+                    "fornitore_nome": ls.get("fornitore_nome"),
+                    "name": ls.get("nome") or "Prodotto da listino",
+                    "qty": qty,
+                    "unit": ls.get("unit") or "pz",
+                    "unit_price": pu,
+                    "prezzo_netto": float(ls.get("prezzo_netto") or 0),
+                    "ricarico": float(ls.get("ricarico") or 1.8),
+                    "total": round(qty * pu, 2),
+                    "category": (ls.get("categoria") or "FORNITURA").upper(),
+                    "from_listino": True,
+                })
             cm_items = []
             for v in voci_prev:
                 qty = float(v.get("qty") or v.get("quantita") or v.get("qty_richiesta") or 0)
@@ -1286,7 +1276,7 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
                 tot = float(v.get("total") or v.get("totale") or 0)
                 if tot == 0 and qty and pu:
                     tot = round(qty * pu, 2)
-                cm_items.append({
+                cm_item = {
                     "id": uuid.uuid4().hex,
                     "voce_id": v.get("voce_id") or v.get("id"),
                     "name": v.get("name") or v.get("descrizione") or "—",
@@ -1297,13 +1287,25 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
                     "category": v.get("category") or "",
                     "stato_assegnazione": "da_assegnare",
                     "artigiano_id": None, "artigiano_nome": None, "note_assegnazione": None,
-                })
+                }
+                # Propaga metadati listino fornitore (per Voci & Acquisti e per riconciliazione)
+                if v.get("from_listino"):
+                    cm_item["from_listino"] = True
+                    cm_item["listino_id"] = v.get("listino_id")
+                    cm_item["fornitore_nome"] = v.get("fornitore_nome")
+                    cm_item["prezzo_netto"] = float(v.get("prezzo_netto") or 0)
+                    cm_item["ricarico"] = float(v.get("ricarico") or 1.8)
+                    # Pre-assegna fornitore come default
+                    cm_item["artigiano_nome"] = v.get("fornitore_nome")
+                cm_items.append(cm_item)
             if cm_items:
                 cm = {"items": cm_items, "totale": round(sum(i["totale"] for i in cm_items), 2), "generated_at": now_iso(), "generated_from_preventivo_id": prev["id"]}
                 await db.commesse.update_one({"id": doc["id"]}, {"$set": {"computo_metrico": cm}})
                 doc["computo_metrico"] = cm
         except Exception as ex:
+            import traceback
             print(f"[create_commessa] auto-gen computo failed: {ex}")
+            traceback.print_exc()
         doc.pop("_id", None)
         return doc
 

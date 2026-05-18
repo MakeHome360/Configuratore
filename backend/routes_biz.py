@@ -1053,6 +1053,38 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
         return {"tiers": BATHROOM_TIERS, "manodopera_base": BATHROOM_MANODOPERA_BASE}
 
     # ---------- Commesse ----------
+    def _build_allegato_a_from_preventivo(prev: dict) -> dict:
+        """Inizializza l'Allegato A (piano pagamenti) dalle scelte fatte in preventivo.
+        Se il preventivo ha modalita_pagamento.rate, converte le % in importi assoluti
+        usando totale_iva_incl. Altrimenti ritorna allegato vuoto."""
+        mp = prev.get("modalita_pagamento") or {}
+        rate_pct = mp.get("rate") or []
+        if not rate_pct:
+            return {"preset_id": "", "rate": [], "firmato": False, "firma_data": None, "note": ""}
+        totale = float(prev.get("totale_iva_incl") or 0)
+        rate = []
+        for i, r in enumerate(rate_pct):
+            pct = float(r.get("pct") or 0)
+            rate.append({
+                "id": f"r-{uuid.uuid4().hex[:8]}",
+                "descrizione": r.get("descrizione") or f"Rata {i+1}",
+                "pct": pct,
+                "importo": round(totale * pct / 100, 2),
+                "data_prevista": "",
+                "fase_cantiere_id": "",
+                "stato": "previsto",
+            })
+        return {
+            "preset_id": mp.get("preset_id") or "",
+            "preset_label": mp.get("label") or "",
+            "rate": rate,
+            "firmato": False,
+            "firma_data": None,
+            "note": "",
+            "auto_generato": True,
+            "generato_il": now_iso(),
+        }
+
     class CommessaIn(BaseModel):
         model_config = ConfigDict(extra="allow")
         preventivo_id: str
@@ -1146,6 +1178,8 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
             "updated_at": now_iso(),
             "data_inizio": None,
             "data_fine": None,
+            # Allegato A pre-popolato dalla modalità di pagamento del preventivo
+            "allegato_a": _build_allegato_a_from_preventivo(prev),
         }
         await db.commesse.insert_one(doc)
         await db.preventivi.update_one({"id": prev["id"]}, {"$set": {"commessa_id": doc["id"]}})

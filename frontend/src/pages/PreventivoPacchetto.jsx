@@ -16,6 +16,7 @@ import {
 import { fmtEuro, fmtNum } from "../editor/utils";
 import jsPDF from "jspdf";
 import { InfissoQuickConfigurator } from "../components/InfissoQuickConfigurator";
+import ModalitaPagamentoPicker from "../components/ModalitaPagamentoPicker";
 import { useAuth } from "@/contexts/AuthContext";
 
 const SOGLIA_SCONTO_AUTO = 5; // Venditore può applicare fino a 5% senza autorizzazione
@@ -977,6 +978,8 @@ export default function PreventivoPacchetto() {
                     <div className="label-kicker">Totale finale</div>
                     <div className="mono text-4xl font-semibold" data-testid="preventivo-total">{fmtEuro(totals.total)}</div>
                   </div>
+                  {/* MODALITÀ DI PAGAMENTO — selezionabile dal venditore */}
+                  <ModalitaPagamentoPicker prev={prev} setPrev={setPrev} totale={totals.total} />
                 </div>
               </div>
             )}

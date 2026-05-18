@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { Page, PageHeader, fmtEur, statoPreventivoBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
-import { FilePlus2, Eye, Trash2, Pencil, Hammer } from "lucide-react";
+import { FilePlus2, Eye, Trash2, Pencil, Hammer, Ruler, PenTool } from "lucide-react";
 import { toast } from "sonner";
 
 const PKG_NAMES = { "pkg-basic": "BASIC", "pkg-smart": "SMART", "pkg-premium": "PREMIUM", "pkg-elite": "ELITE" };
@@ -115,11 +115,11 @@ export default function Preventivi() {
                   <td className="px-4 py-3 text-xs text-zinc-500">{new Date(p.created_at).toLocaleDateString("it-IT")}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="inline-flex gap-1">
-                      <button className="p-1.5 rounded hover:bg-zinc-100" onClick={() => p.tipo === "cad" ? (p.project_id ? nav(`/editor/${p.project_id}`) : toast.error("Progetto CAD collegato non trovato")) : nav(`${ROUTES[p.tipo] || "/preventivopacchetto"}/${p.id}`)} title={p.tipo === "cad" ? "Apri nel CAD" : "Modifica"} data-testid={`prev-open-${p.id}`}>
-                        <Pencil className="h-4 w-4 text-zinc-600" />
+                      <button className="p-1.5 rounded hover:bg-blue-50" onClick={() => nav(`${ROUTES[p.tipo] || "/preventivopacchetto"}/${p.id}`)} title="Apri Preventivo" data-testid={`prev-open-${p.id}`}>
+                        <Eye className="h-4 w-4 text-blue-600" />
                       </button>
-                      <button className="p-1.5 rounded hover:bg-emerald-50" onClick={() => openOrCreateProgetto(p)} title={p.project_id ? "Apri progettazione collegata" : "Crea progettazione da questo preventivo"} data-testid={`prev-cad-${p.id}`}>
-                        <Eye className={`h-4 w-4 ${p.project_id ? "text-emerald-600" : "text-zinc-400"}`} />
+                      <button className="p-1.5 rounded hover:bg-emerald-50" onClick={() => openOrCreateProgetto(p)} title={p.project_id ? "Apri progetto CAD collegato" : "Crea progetto CAD da questo preventivo"} data-testid={`prev-cad-${p.id}`}>
+                        <PenTool className={`h-4 w-4 ${p.project_id ? "text-emerald-600" : "text-zinc-400"}`} />
                       </button>
                       <button className="p-1.5 rounded hover:bg-orange-50" onClick={() => openCommessaModal(p)} title="Converti in Commessa (cantiere)" data-testid={`prev-commessa-${p.id}`}>
                         <Hammer className="h-4 w-4 text-orange-600" />

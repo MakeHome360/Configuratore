@@ -55,36 +55,33 @@ export default function CommessaWorkflow() {
 
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="rounded-sm flex-wrap h-auto">
-            <TabsTrigger value="contratto" data-testid="tab-contratto"><FileSignature className="h-4 w-4 mr-1.5" /> 1. Contratto</TabsTrigger>
+            <TabsTrigger value="documenti" data-testid="tab-documenti"><Files className="h-4 w-4 mr-1.5" /> 1. Documenti & Contratto</TabsTrigger>
             <TabsTrigger value="checklist" data-testid="tab-checklist"><ClipboardCheck className="h-4 w-4 mr-1.5" /> 2. Checklist venditore</TabsTrigger>
-            <TabsTrigger value="documenti" data-testid="tab-documenti"><Files className="h-4 w-4 mr-1.5" /> 3. Documenti</TabsTrigger>
-            <TabsTrigger value="materiali" data-testid="tab-materiali"><ListChecks className="h-4 w-4 mr-1.5" /> 4. Materiali</TabsTrigger>
-            <TabsTrigger value="computo" data-testid="tab-computo"><Calculator className="h-4 w-4 mr-1.5" /> 5. Computo</TabsTrigger>
-            <TabsTrigger value="artigiani" data-testid="tab-artigiani"><Hammer className="h-4 w-4 mr-1.5" /> 6. Artigiani / Sub</TabsTrigger>
-            <TabsTrigger value="fasi" data-testid="tab-fasi"><CalendarRange className="h-4 w-4 mr-1.5" /> 7. Fasi cantiere (calendario)</TabsTrigger>
-            <TabsTrigger value="foto-cantiere" data-testid="tab-foto-cantiere"><Camera className="h-4 w-4 mr-1.5" /> 8. Foto Cantiere</TabsTrigger>
-            <TabsTrigger value="voci-acquisti" data-testid="tab-voci-acquisti"><Wallet className="h-4 w-4 mr-1.5" /> 9. Voci e Acquisti</TabsTrigger>
-            <TabsTrigger value="cassa" data-testid="tab-cassa"><Wallet className="h-4 w-4 mr-1.5" /> 10. Cassa & Pagamenti</TabsTrigger>
-            <TabsTrigger value="resoconto" data-testid="tab-resoconto"><FileBarChart2 className="h-4 w-4 mr-1.5" /> 11. Resoconto</TabsTrigger>
+            <TabsTrigger value="materiali" data-testid="tab-materiali"><ListChecks className="h-4 w-4 mr-1.5" /> 3. Materiali</TabsTrigger>
+            <TabsTrigger value="computo" data-testid="tab-computo"><Calculator className="h-4 w-4 mr-1.5" /> 4. Computo</TabsTrigger>
+            <TabsTrigger value="artigiani" data-testid="tab-artigiani"><Hammer className="h-4 w-4 mr-1.5" /> 5. Artigiani / Sub</TabsTrigger>
+            <TabsTrigger value="fasi" data-testid="tab-fasi"><CalendarRange className="h-4 w-4 mr-1.5" /> 6. Fasi cantiere (calendario)</TabsTrigger>
+            <TabsTrigger value="foto-cantiere" data-testid="tab-foto-cantiere"><Camera className="h-4 w-4 mr-1.5" /> 7. Foto Cantiere</TabsTrigger>
+            <TabsTrigger value="voci-acquisti" data-testid="tab-voci-acquisti"><Wallet className="h-4 w-4 mr-1.5" /> 8. Voci e Acquisti</TabsTrigger>
+            <TabsTrigger value="cassa" data-testid="tab-cassa"><Wallet className="h-4 w-4 mr-1.5" /> 9. Cassa & Pagamenti</TabsTrigger>
+            <TabsTrigger value="resoconto" data-testid="tab-resoconto"><FileBarChart2 className="h-4 w-4 mr-1.5" /> 10. Resoconto</TabsTrigger>
           </TabsList>
 
-          {/* 1. CONTRATTO */}
-          <TabsContent value="contratto" className="mt-4"><Contratto wf={wf} cid={cid} reload={reload} /></TabsContent>
+          {/* 1. DOCUMENTI (include Contratto + Allegato A + lista obbligatori) */}
+          <TabsContent value="documenti" className="mt-4"><Documenti wf={wf} cid={cid} reload={reload} /></TabsContent>
           {/* 2. CHECKLIST VENDITORE */}
           <TabsContent value="checklist" className="mt-4"><ChecklistVenditore wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 3. DOCUMENTI */}
-          <TabsContent value="documenti" className="mt-4"><Documenti wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 4. MATERIALI */}
+          {/* 3. MATERIALI */}
           <TabsContent value="materiali" className="mt-4"><Materiali wf={wf} cid={cid} reload={reload} voci={voci} /></TabsContent>
-          {/* 5. COMPUTO */}
+          {/* 4. COMPUTO */}
           <TabsContent value="computo" className="mt-4"><ComputoTab wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 6. ARTIGIANI */}
+          {/* 5. ARTIGIANI */}
           <TabsContent value="artigiani" className="mt-4"><Artigiani wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 7. FASI Cantiere (con calendario + template + assegnatari) */}
+          {/* 6. FASI Cantiere */}
           <TabsContent value="fasi" className="mt-4"><Fasi wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 8. FOTO CANTIERE — raggruppate per giorno con titolo */}
+          {/* 7. FOTO CANTIERE */}
           <TabsContent value="foto-cantiere" className="mt-4"><FotoCantiere wf={wf} cid={cid} reload={reload} /></TabsContent>
-          {/* 9. VOCI E ACQUISTI */}
+          {/* 8. VOCI E ACQUISTI */}
           <TabsContent value="voci-acquisti" className="mt-4"><VociAcquistiTab wf={wf} cid={cid} reload={reload} /></TabsContent>
           {/* 9. CASSA */}
           <TabsContent value="cassa" className="mt-4"><Cassa wf={wf} cid={cid} reload={reload} /></TabsContent>
@@ -121,11 +118,13 @@ function UploadField({ label, onUploaded, commessaId, tipo, accept = "*/*", test
   );
 }
 
-// ---- 1. CONTRATTO ----
-function Contratto({ wf, cid, reload }) {
+// ---- 1. DOCUMENTI & CONTRATTO unificato ----
+function Documenti({ wf, cid, reload }) {
   const cn = wf.contratto || {};
   const com = wf.commessa || {};
+  const docs = wf.documenti || [];
   const [form, setForm] = useState({ url: cn.url || "", testo: cn.testo || "", firmato: !!cn.firmato, note: cn.note || "" });
+  useEffect(() => { setForm({ url: cn.url || "", testo: cn.testo || "", firmato: !!cn.firmato, note: cn.note || "" }); /* eslint-disable-next-line */ }, [JSON.stringify(cn)]);
   // Allegato A: piano rate (modalità di pagamento concordate col cliente)
   const initAllegato = com.allegato_a || { preset_id: "", rate: [], firmato: false, firma_data: null, note: "" };
   const [allegato, setAllegato] = useState(initAllegato);
@@ -229,10 +228,11 @@ function Contratto({ wf, cid, reload }) {
         <table className="w-full text-sm">
           <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
             <th className="px-2 py-2 text-left">Descrizione</th>
-            <th className="px-2 py-2 text-right w-24">%</th>
-            <th className="px-2 py-2 text-right w-32">Importo €</th>
+            <th className="px-2 py-2 text-right w-20">%</th>
+            <th className="px-2 py-2 text-right w-28">Importo €</th>
             <th className="px-2 py-2 text-left w-36">Data prevista</th>
-            <th className="px-2 py-2 text-left w-28">Stato</th>
+            <th className="px-2 py-2 text-left w-44">Fase cantiere</th>
+            <th className="px-2 py-2 text-left w-24">Stato</th>
             <th className="w-10"></th>
           </tr></thead>
           <tbody className="divide-y divide-zinc-100">
@@ -242,6 +242,17 @@ function Contratto({ wf, cid, reload }) {
                 <td className="px-2 py-1.5"><Input type="number" step="0.5" value={r.pct} onChange={e => updRata(i, "pct", parseFloat(e.target.value) || 0)} className="h-8 text-xs text-right mono" data-testid={`allegato-pct-${i}`} /></td>
                 <td className="px-2 py-1.5"><Input type="number" step="0.01" value={r.importo} onChange={e => updRata(i, "importo", parseFloat(e.target.value) || 0)} className="h-8 text-xs text-right mono" data-testid={`allegato-imp-${i}`} /></td>
                 <td className="px-2 py-1.5"><Input type="date" value={r.data_prevista || ""} onChange={e => updRata(i, "data_prevista", e.target.value)} className="h-8 text-xs" data-testid={`allegato-data-${i}`} /></td>
+                <td className="px-2 py-1.5">
+                  <Select value={r.fase_cantiere_id || ""} onValueChange={v => updRata(i, "fase_cantiere_id", v)}>
+                    <SelectTrigger className="h-8 text-xs" data-testid={`allegato-fase-${i}`}><SelectValue placeholder="— scegli fase —" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="alla-firma">Alla firma del contratto</SelectItem>
+                      <SelectItem value="inizio-lavori">All'inizio dei lavori</SelectItem>
+                      {(wf.fasi || []).map(f => <SelectItem key={f.id} value={f.id}>{f.titolo || f.name}</SelectItem>)}
+                      <SelectItem value="fine-lavori">Saldo a fine lavori</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </td>
                 <td className="px-2 py-1.5">
                   <Select value={r.stato || "previsto"} onValueChange={v => updRata(i, "stato", v)}>
                     <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
@@ -255,14 +266,14 @@ function Contratto({ wf, cid, reload }) {
                 <td className="px-2 py-1.5 text-right"><button onClick={() => delRata(i)} className="text-rose-600 p-1 hover:bg-rose-50 rounded" data-testid={`allegato-del-${i}`}><Trash2 className="h-4 w-4" /></button></td>
               </tr>
             ))}
-            {!(allegato.rate || []).length && <tr><td colSpan={6} className="px-3 py-8 text-center text-zinc-400 text-xs">Nessuna rata. Scegli un preset o aggiungi manualmente.</td></tr>}
+            {!(allegato.rate || []).length && <tr><td colSpan={7} className="px-3 py-8 text-center text-zinc-400 text-xs">Nessuna rata. Scegli un preset o aggiungi manualmente.</td></tr>}
           </tbody>
           {(allegato.rate || []).length > 0 && (
             <tfoot><tr className="bg-zinc-50 font-semibold text-sm">
               <td className="px-2 py-2">TOTALE</td>
               <td className={`px-2 py-2 text-right mono ${Math.abs(totPct - 100) > 0.01 ? "text-rose-600" : "text-emerald-700"}`} data-testid="allegato-tot-pct">{totPct.toFixed(2)}%</td>
               <td className="px-2 py-2 text-right mono" data-testid="allegato-tot-imp">€ {totImp.toFixed(2)}</td>
-              <td colSpan={3}></td>
+              <td colSpan={4}></td>
             </tr></tfoot>
           )}
         </table>
@@ -275,6 +286,146 @@ function Contratto({ wf, cid, reload }) {
           <Button onClick={saveAllegato} style={{ background: "var(--brand)", color: "white" }} data-testid="allegato-save"><Save className="h-4 w-4 mr-1.5" /> Salva Allegato A</Button>
           <Button variant="outline" onClick={stampaAllegato} disabled={!(allegato.rate || []).length} data-testid="allegato-stampa"><FileSignature className="h-4 w-4 mr-1.5" /> Stampa / PDF</Button>
         </div>
+      </div>
+
+      {/* DOCUMENTI OBBLIGATORI + ALTRI DOCUMENTI */}
+      <DocumentiList wf={wf} cid={cid} reload={reload} contrattoUrl={form.url} contrattoFirmato={form.firmato} allegatoFirmato={!!allegato.firmato} allegatoRate={(allegato.rate||[]).length} />
+    </div>
+  );
+}
+
+// Lista documenti obbligatori + altri caricati
+function DocumentiList({ wf, cid, reload, contrattoUrl, contrattoFirmato, allegatoFirmato, allegatoRate }) {
+  const docs = wf.documenti || [];
+  const com = wf.commessa || {};
+  // Documenti OBBLIGATORI: ogni voce ha tipo, label, helper, e stato derivato
+  const tavoleProgetto = docs.filter(d => /tavola|progetto|planimetria|cad/i.test(d.tipo || d.name || ""));
+  const obligatori = [
+    { tipo: "contratto", label: "Contratto cliente firmato", done: !!contrattoUrl && !!contrattoFirmato, partial: !!contrattoUrl && !contrattoFirmato, hint: contrattoUrl ? "Caricato — manca firma" : "Carica contratto qui sopra", critico: true },
+    { tipo: "allegato_a", label: "Allegato A — Piano dei pagamenti", done: allegatoRate > 0 && allegatoFirmato, partial: allegatoRate > 0 && !allegatoFirmato, hint: allegatoRate > 0 ? "Rate definite — manca firma" : "Compila le rate qui sopra", critico: true },
+    { tipo: "doc_cliente", label: "Documento d'identità cliente", done: docs.some(d => /identit|carta|patente|passaporto/i.test(d.tipo || d.name || "")), hint: "Carica copia CI/Patente del cliente", critico: true },
+    { tipo: "codice_fiscale", label: "Codice fiscale cliente", done: docs.some(d => /codice.?fiscale|cf|tessera.?sanitaria/i.test(d.tipo || d.name || "")), hint: "Carica copia del codice fiscale", critico: true },
+    { tipo: "privacy", label: "Modulo Privacy / GDPR", done: docs.some(d => /privacy|gdpr/i.test(d.tipo || d.name || "")), hint: "Carica modulo privacy firmato", critico: true },
+    { tipo: "pratica", label: "Pratica edilizia (CILA/SCIA/Permesso)", done: docs.some(d => /cila|scia|permesso|pratica|edilizia/i.test(d.tipo || d.name || "")), hint: "Carica CILA / SCIA / Permesso di costruire", critico: false },
+    { tipo: "preventivo", label: "Preventivo accettato (PDF)", done: !!com.preventivo_id || docs.some(d => /preventivo/i.test(d.tipo || d.name || "")), hint: "Verrà generato in automatico se preventivo collegato", critico: false },
+    { tipo: "tavola_progetto", label: "Tavole CAD firmate dal cliente", done: tavoleProgetto.length > 0, hint: tavoleProgetto.length > 0 ? `${tavoleProgetto.length} tavola/e collegata/e` : "Conferma tavole dal CAD per linkarle qui", critico: false },
+  ];
+  const okCount = obligatori.filter(o => o.done).length;
+  const totCount = obligatori.length;
+
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ tipo: "doc_cliente", name: "", url: "", note: "" });
+  const downloadAll = () => {
+    const links = docs.filter(d => d.url).map(d => d.url);
+    if (contrattoUrl) links.unshift(contrattoUrl);
+    if (!links.length) { toast.error("Nessun documento scaricabile"); return; }
+    toast.success(`Apertura di ${links.length} documenti in nuove schede…`);
+    links.forEach((u, i) => setTimeout(() => window.open(u, "_blank", "noopener"), i * 150));
+  };
+
+  return (
+    <div className="space-y-3" data-testid="documenti-list-section">
+      {/* Checklist obbligatori */}
+      <div className="bg-white border border-zinc-200 rounded p-5">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="font-semibold">Documenti obbligatori della commessa</h3>
+            <p className="text-xs text-zinc-500">Lista di tutti i documenti richiesti per chiudere la pratica. Tutti possono essere scaricati dal cliente/azienda.</p>
+          </div>
+          <div className="text-right">
+            <div className={`text-2xl font-bold mono ${okCount === totCount ? "text-emerald-700" : "text-amber-700"}`}>{okCount}/{totCount}</div>
+            <div className="text-[10px] uppercase text-zinc-500">obbligatori OK</div>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          {obligatori.map((o, i) => (
+            <div key={o.tipo} className={`flex items-center gap-3 p-2.5 rounded border ${o.done ? "bg-emerald-50 border-emerald-200" : o.partial ? "bg-amber-50 border-amber-300" : o.critico ? "bg-rose-50/40 border-rose-200" : "bg-zinc-50 border-zinc-200"}`} data-testid={`doc-obbl-${o.tipo}`}>
+              <span className="text-[10px] mono text-zinc-400 w-5 text-right">{i + 1}.</span>
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${o.done ? "bg-emerald-500 text-white" : o.partial ? "bg-amber-500 text-white" : "bg-white border-2 border-zinc-300"}`}>
+                {o.done && <CheckCircle2 size={14} />}
+                {o.partial && !o.done && <Clock size={14} />}
+              </div>
+              <div className="flex-1 text-sm">
+                <div className="font-medium">{o.label}</div>
+                <div className="text-xs text-zinc-500">{o.hint}</div>
+              </div>
+              {o.critico && !o.done && <span className="text-[10px] px-1.5 py-0.5 bg-rose-200 text-rose-800 rounded uppercase font-bold">Obbligatorio</span>}
+              {o.done && <span className="text-[10px] text-emerald-700 mono">OK</span>}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Lista documenti caricati (tutti i tipi) */}
+      <div className="bg-white border border-zinc-200 rounded">
+        <div className="flex items-center justify-between p-4 border-b border-zinc-200 gap-2 flex-wrap">
+          <div>
+            <h3 className="font-semibold">Tutti i documenti caricati ({docs.length + (contrattoUrl ? 1 : 0)})</h3>
+            <p className="text-xs text-zinc-500">Contratto, doc cliente, pratiche, tavole, foto, ecc. Click su un link per aprire / scaricare. Bottone "Scarica tutti" apre ogni documento in una nuova scheda.</p>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={downloadAll} data-testid="doc-download-all"><Download className="h-4 w-4 mr-1" /> Scarica tutti</Button>
+            <Button size="sm" onClick={() => setOpen(true)} data-testid="doc-add" style={{ background: "var(--brand)", color: "white" }}><Plus className="h-4 w-4 mr-1" /> Aggiungi</Button>
+          </div>
+        </div>
+        <table className="w-full text-sm">
+          <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
+            <th className="px-3 py-2 text-left">Tipo</th><th className="px-3 py-2 text-left">Nome</th><th className="px-3 py-2 text-left">Link</th><th className="px-3 py-2 text-left">Note</th><th className="px-3 py-2"></th>
+          </tr></thead>
+          <tbody className="divide-y divide-zinc-100">
+            {contrattoUrl && (
+              <tr className={contrattoFirmato ? "bg-emerald-50/40" : "bg-amber-50/40"}>
+                <td className="px-3 py-2 text-xs uppercase"><span className="inline-block text-[9px] mr-1 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-bold">SYS</span>contratto</td>
+                <td className="px-3 py-2 font-medium">{contrattoFirmato ? "Contratto firmato" : "Contratto cliente (non firmato)"}</td>
+                <td className="px-3 py-2 text-xs"><a href={contrattoUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">apri ↗</a></td>
+                <td className="px-3 py-2 text-xs text-zinc-500">{contrattoFirmato ? "✓ Firmato" : "⚠ Non firmato"}</td>
+                <td></td>
+              </tr>
+            )}
+            {docs.map(d => (
+              <tr key={d.id}>
+                <td className="px-3 py-2 text-xs uppercase">{d.tipo}</td>
+                <td className="px-3 py-2 font-medium">{d.name}</td>
+                <td className="px-3 py-2 text-xs">{d.url ? <a href={d.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">apri ↗</a> : "-"}</td>
+                <td className="px-3 py-2 text-xs text-zinc-500">{d.note}</td>
+                <td className="px-3 py-2 text-right"><button className="text-rose-600 hover:bg-rose-50 p-1" onClick={async () => { await api.delete(`/commesse/${cid}/workflow/documenti/${d.id}`); reload(); }} data-testid={`doc-del-${d.id}`}><Trash2 className="h-4 w-4" /></button></td>
+              </tr>
+            ))}
+            {!docs.length && !contrattoUrl && <tr><td colSpan={5} className="px-3 py-12 text-center text-zinc-500">Nessun documento. Carica contratto sopra, oppure aggiungi documenti vari.</td></tr>}
+          </tbody>
+        </table>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent>
+            <DialogHeader><DialogTitle>Nuovo documento</DialogTitle></DialogHeader>
+            <div className="space-y-3">
+              <div><Label className="text-xs">Tipo</Label>
+                <Select value={form.tipo} onValueChange={v => setForm({ ...form, tipo: v })}>
+                  <SelectTrigger data-testid="doc-tipo"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="doc_cliente">Documento identità cliente</SelectItem>
+                    <SelectItem value="codice_fiscale">Codice fiscale cliente</SelectItem>
+                    <SelectItem value="privacy">Privacy / GDPR</SelectItem>
+                    <SelectItem value="pratica">Pratica edilizia (CILA/SCIA/permesso)</SelectItem>
+                    <SelectItem value="progetto">Progetto / Planimetria</SelectItem>
+                    <SelectItem value="tavola">Tavola tecnica</SelectItem>
+                    <SelectItem value="preventivo">Preventivo PDF</SelectItem>
+                    <SelectItem value="doc_casa">Doc immobile (visure)</SelectItem>
+                    <SelectItem value="foto">Foto rilievo</SelectItem>
+                    <SelectItem value="altro">Altro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div><Label className="text-xs">Nome</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} data-testid="doc-name" /></div>
+              <div><Label className="text-xs">URL (link a Drive/Dropbox/Cloud)</Label><Input value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} placeholder="https://..." data-testid="doc-url" /></div>
+              <div><UploadField label="Oppure carica file dal PC" onUploaded={(meta) => setForm({ ...form, url: window.location.origin + meta.url, name: form.name || meta.name })} commessaId={cid} accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.dwg,.dxf,.xls,.xlsx,.zip" testid="upload-documento" /></div>
+              <div><Label className="text-xs">Note</Label><Input value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} data-testid="doc-note" /></div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setOpen(false)}>Annulla</Button>
+              <Button onClick={async () => { await api.post(`/commesse/${cid}/workflow/documenti`, form); setOpen(false); setForm({ tipo: "doc_cliente", name: "", url: "", note: "" }); toast.success("Documento aggiunto"); reload(); }} style={{ background: "var(--brand)", color: "white" }} data-testid="doc-save">Aggiungi</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
@@ -471,111 +622,6 @@ function ChecklistVenditore({ wf, cid, reload }) {
   );
 }
 
-
-// ---- 2. DOCUMENTI ----
-function Documenti({ wf, cid, reload }) {
-  const docs = wf.documenti || [];
-  const cn = wf.contratto || {};
-  const com = wf.commessa || {};
-  const allegato = com.allegato_a || null;
-  // Lista unificata: contratto + allegato A + tutti i documenti caricati
-  const unified = [
-    ...(cn.url ? [{ id: "_contratto_", tipo: "contratto", name: cn.firmato ? "Contratto firmato" : "Contratto cliente", url: cn.url, note: cn.firma_data ? `Firmato il ${new Date(cn.firma_data).toLocaleDateString("it-IT")}` : "Non firmato", _virtual: true, _firmato: !!cn.firmato }] : []),
-    ...((allegato && (allegato.rate || []).length) ? [{ id: "_allegato_a_", tipo: "allegato_a", name: "Allegato A — Piano dei pagamenti", url: "", note: allegato.firmato ? `Firmato il ${new Date(allegato.firma_data || "").toLocaleDateString("it-IT")}` : "Da firmare", _virtual: true, _firmato: !!allegato.firmato, _stampa: true }] : []),
-    ...docs.map(d => ({ ...d, _virtual: false })),
-  ];
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ tipo: "progetto", name: "", url: "", note: "" });
-  // Scarica tutti: apre ogni link in nuovo tab (fallback senza zip)
-  const downloadAll = () => {
-    const links = unified.filter(d => d.url).map(d => d.url);
-    if (!links.length) { toast.error("Nessun documento scaricabile"); return; }
-    toast.success(`Apertura di ${links.length} documenti in nuove schede…`);
-    links.forEach((u, i) => setTimeout(() => window.open(u, "_blank", "noopener"), i * 150));
-  };
-  const stampaIndice = () => {
-    const w = window.open("", "_blank", "width=800,height=900");
-    const cli = com.cliente || {};
-    const rows = unified.map((d, i) => `<tr><td>${i+1}</td><td>${(d.tipo || "").toUpperCase()}</td><td>${d.name || "-"}</td><td>${d.note || ""}</td><td>${d.url ? `<a href="${d.url}">${d.url}</a>` : "—"}</td></tr>`).join("");
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Indice Documenti · ${com.numero}</title>
-      <style>body{font-family:system-ui,sans-serif;padding:40px;color:#111}h1{color:#0F766E}table{width:100%;border-collapse:collapse;margin-top:24px}th,td{padding:8px 12px;border-bottom:1px solid #ddd;font-size:12px;text-align:left;vertical-align:top}th{background:#f4f4f5;text-transform:uppercase;font-size:10px}</style>
-      </head><body><h1>Indice Documenti Commessa ${com.numero || ""}</h1>
-      <div style="font-size:12px;color:#666">Cliente: <b>${cli.nome || ""} ${cli.cognome || ""}</b> · ${new Date().toLocaleDateString("it-IT")}</div>
-      <table><thead><tr><th>#</th><th>Tipo</th><th>Nome</th><th>Note</th><th>Link</th></tr></thead><tbody>${rows}</tbody></table>
-      <script>window.print()</script></body></html>`);
-    w.document.close();
-  };
-  return (
-    <div className="bg-white border border-zinc-200 rounded">
-      <div className="flex items-center justify-between p-4 border-b border-zinc-200 gap-2 flex-wrap">
-        <div>
-          <h3 className="font-semibold">Documenti — vista unificata</h3>
-          <p className="text-xs text-zinc-500">Contratto, Allegato A e documenti del progetto/cliente in un'unica lista. Scaricabile in blocco.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={stampaIndice} data-testid="doc-stampa-indice"><FileBarChart2 className="h-4 w-4 mr-1" /> Indice PDF</Button>
-          <Button size="sm" variant="outline" onClick={downloadAll} data-testid="doc-download-all"><Download className="h-4 w-4 mr-1" /> Scarica tutti</Button>
-          <Button size="sm" onClick={() => setOpen(true)} data-testid="doc-add" style={{ background: "var(--brand)", color: "white" }}><Plus className="h-4 w-4 mr-1" /> Aggiungi</Button>
-        </div>
-      </div>
-      <table className="w-full text-sm">
-        <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
-          <th className="px-3 py-2 text-left">Tipo</th><th className="px-3 py-2 text-left">Nome</th><th className="px-3 py-2 text-left">Link</th><th className="px-3 py-2 text-left">Note / Stato</th><th className="px-3 py-2"></th>
-        </tr></thead>
-        <tbody className="divide-y divide-zinc-100">
-          {unified.map(d => (
-            <tr key={d.id} className={d._virtual ? (d._firmato ? "bg-emerald-50/40" : "bg-amber-50/40") : ""}>
-              <td className="px-3 py-2 text-xs uppercase">
-                {d._virtual && <span className="inline-block text-[9px] mr-1 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-bold">SYS</span>}
-                {d.tipo}
-              </td>
-              <td className="px-3 py-2 font-medium">{d.name}</td>
-              <td className="px-3 py-2 text-xs">
-                {d.url ? <a href={d.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">apri ↗</a> :
-                 d._stampa ? <button className="text-blue-600 hover:underline" onClick={() => toast.info("Vai al tab Contratto per stampare l'Allegato A")}>stampa…</button> : "-"}
-              </td>
-              <td className="px-3 py-2 text-xs text-zinc-500">
-                {d._firmato ? <span className="text-emerald-600 font-semibold">✓ </span> : (d._virtual ? <span className="text-amber-600 font-semibold">⚠ </span> : null)}
-                {d.note}
-              </td>
-              <td className="px-3 py-2 text-right">
-                {!d._virtual && <button className="text-rose-600 hover:bg-rose-50 p-1" onClick={async () => { await api.delete(`/commesse/${cid}/workflow/documenti/${d.id}`); reload(); }} data-testid={`doc-del-${d.id}`}><Trash2 className="h-4 w-4" /></button>}
-              </td>
-            </tr>
-          ))}
-          {!unified.length && <tr><td colSpan={5} className="px-3 py-12 text-center text-zinc-500">Nessun documento. Aggiungi progetti, tavole, planimetrie, doc casa/cliente.</td></tr>}
-        </tbody>
-      </table>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Nuovo documento</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div><Label className="text-xs">Tipo</Label>
-              <Select value={form.tipo} onValueChange={v => setForm({ ...form, tipo: v })}>
-                <SelectTrigger data-testid="doc-tipo"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="progetto">Progetto</SelectItem>
-                  <SelectItem value="tavola">Tavola tecnica</SelectItem>
-                  <SelectItem value="doc_casa">Doc. immobile (visure, planimetria)</SelectItem>
-                  <SelectItem value="doc_cliente">Doc. cliente (carta identità, codice fiscale)</SelectItem>
-                  <SelectItem value="altro">Altro</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div><Label className="text-xs">Nome</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} data-testid="doc-name" /></div>
-            <div><Label className="text-xs">URL (link a Drive/Dropbox/Cloud)</Label><Input value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} placeholder="https://..." data-testid="doc-url" /></div>
-            <div><UploadField label="Oppure carica file dal PC" onUploaded={(meta) => setForm({ ...form, url: window.location.origin + meta.url, name: form.name || meta.name })} commessaId={cid} accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.dwg,.dxf,.xls,.xlsx,.zip" testid="upload-documento" /></div>
-            <div><Label className="text-xs">Note</Label><Input value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} data-testid="doc-note" /></div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Annulla</Button>
-            <Button onClick={async () => { await api.post(`/commesse/${cid}/workflow/documenti`, form); setOpen(false); setForm({ tipo: "progetto", name: "", url: "", note: "" }); toast.success("Documento aggiunto"); reload(); }} style={{ background: "var(--brand)", color: "white" }} data-testid="doc-save">Aggiungi</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
 
 // ---- 3. MATERIALI ----
 function Materiali({ wf, cid, reload, voci }) {
@@ -1764,12 +1810,28 @@ function VociAcquistiTab({ wf, cid, reload }) {
     } finally { setImporting(false); }
   };
   const upd = (i, k, v) => setItems(items.map((x, j) => j === i ? { ...x, [k]: v } : x));
-  const linkVoce = (i, voceId) => {
-    const voce = voci.find(v => v.id === voceId);
-    if (!voce) return upd(i, "voce_id", "");
-    const qty = parseFloat(items[i].qty) || 1;
-    const stima = (voce.prezzo_acquisto || 0) * qty;
-    setItems(items.map((x, j) => j === i ? { ...x, voce_id: voce.id, voce: voce.name, stima_backoffice: stima, tipo: voce.tipo || x.tipo || "acquisto", fornitore_id: voce.fornitore_id || x.fornitore_id || "" } : x));
+  // VOCI DEL PREVENTIVO (= items del computo metrico) per il dropdown
+  const cmItems = (wf.computo_metrico || {}).items || [];
+  const linkVoce = (i, voceUid) => {
+    // voceUid è l'id dell'item del computo (uuid hex), non l'id backoffice
+    const cmIt = cmItems.find(v => v.id === voceUid);
+    if (!cmIt) return upd(i, "voce_id", "");
+    const qty = parseFloat(items[i].qty) || parseFloat(cmIt.qty) || 1;
+    // recupera info backoffice se voce_id presente
+    const vb = (cmIt.voce_id && voci.find(v => v.id === cmIt.voce_id)) || null;
+    const prezzoAcq = vb ? (vb.prezzo_acquisto || 0) : (cmIt.prezzo_unit ? cmIt.prezzo_unit / 1.8 : 0);
+    const stima = prezzoAcq * qty;
+    setItems(items.map((x, j) => j === i ? {
+      ...x,
+      voce_id: cmIt.voce_id || cmIt.id, // l'id catalogo o fallback all'id computo
+      computo_item_id: cmIt.id,
+      voce: cmIt.name,
+      qty,
+      stima_backoffice: stima,
+      tipo: (vb && vb.tipo) || x.tipo || "acquisto",
+      fornitore_id: (vb && vb.fornitore_id) || x.fornitore_id || "",
+      category: cmIt.category || "",
+    } : x));
   };
   const updQty = (i, q) => {
     const qty = parseFloat(q) || 0;
@@ -1827,7 +1889,7 @@ function VociAcquistiTab({ wf, cid, reload }) {
         <div className="flex items-center justify-between p-4 border-b border-zinc-200">
           <div>
             <h3 className="font-semibold">Voci e Acquisti — riconciliazione preventivato vs effettivo</h3>
-            <p className="text-xs text-zinc-500">Per ogni voce collega il listino backoffice: <strong>Stima nostra</strong> = prezzo acquisto × qty. Il <strong>tipo</strong> (manodopera/acquisto/misto) e il <strong>fornitore</strong> sono ereditati dal catalogo.</p>
+            <p className="text-xs text-zinc-500">Le voci provengono dal <strong>preventivo</strong> (= computo metrico). Per ognuna scegli il fornitore/sub e indica preventivato vs effettivo. <strong>Stima nostra</strong> = prezzo acquisto backoffice × qty.</p>
           </div>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" disabled={importing || !cmCount} onClick={() => doImport(false)} data-testid="va-import-all" title={!cmCount ? "Computo metrico vuoto: rigeneralo nella tab Computo" : `Importa tutte le ${cmCount} voci del computo`}>
@@ -1865,13 +1927,13 @@ function VociAcquistiTab({ wf, cid, reload }) {
                   <tr key={i} className={v.from_computo ? "bg-blue-50/30" : ""}>
                     <td className="px-2 py-1.5">
                       {v.from_computo && <div className="text-[9px] uppercase tracking-widest text-blue-700 font-bold mb-0.5" title="Voce importata dal Computo Metrico">📋 da computo{v.category ? ` · ${v.category}` : ""}</div>}
-                      <Select value={v.voce_id || ""} onValueChange={(val) => linkVoce(i, val)}>
-                        <SelectTrigger className="h-8 text-xs" data-testid={`va-voce-link-${i}`}><SelectValue placeholder="Scegli dal listino…" /></SelectTrigger>
+                      <Select value={v.computo_item_id || ""} onValueChange={(val) => linkVoce(i, val)}>
+                        <SelectTrigger className="h-8 text-xs" data-testid={`va-voce-link-${i}`}><SelectValue placeholder={cmItems.length ? "Scegli dalle voci del preventivo…" : "Computo vuoto — rigeneralo"} /></SelectTrigger>
                         <SelectContent>
-                          {voci.map(vv => (<SelectItem key={vv.id} value={vv.id}>{vv.name} <span className="text-zinc-500">· {(vv.prezzo_acquisto || 0).toFixed(2)}€/{vv.unit}</span></SelectItem>))}
+                          {cmItems.map(vv => (<SelectItem key={vv.id} value={vv.id}>{vv.name} <span className="text-zinc-500">· {fmtNum(vv.qty || 0, 2)} {vv.unit}</span></SelectItem>))}
                         </SelectContent>
                       </Select>
-                      {!v.voce_id && <Input value={v.voce} onChange={(e) => upd(i, "voce", e.target.value)} placeholder="o testo libero" className="h-7 text-[11px] mt-1" data-testid={`va-voce-${i}`} />}
+                      {!v.computo_item_id && !v.voce_id && <Input value={v.voce} onChange={(e) => upd(i, "voce", e.target.value)} placeholder="o testo libero" className="h-7 text-[11px] mt-1" data-testid={`va-voce-${i}`} />}
                     </td>
                     <td className="px-2 py-1.5">
                       <Select value={v.tipo || "acquisto"} onValueChange={val => upd(i, "tipo", val)}>

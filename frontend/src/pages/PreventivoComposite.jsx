@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Save, Plus, ShieldCheck, Clock, AlertTriangle, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { InfissoQuickConfigurator } from "@/components/InfissoQuickConfigurator";
+import ModalitaPagamentoPicker from "@/components/ModalitaPagamentoPicker";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -37,6 +38,7 @@ export default function PreventivoComposite() {
   const [scontoDialog, setScontoDialog] = useState(false);
   const [scontoForm, setScontoForm] = useState({ pct: 10, motivo: "" });
   const [savedId, setSavedId] = useState(null);
+  const [modalitaPagamento, setModalitaPagamento] = useState({ preset_id: "", label: "", rate: [] });
 
   const onInfissiConfirm = ({ items }) => {
     const rows = items.map((it, i) => ({
@@ -67,6 +69,7 @@ export default function PreventivoComposite() {
           if (rows.length) setScontoReq(rows[0]);
         }).catch(() => {});
         setSicurezzaPct(d.sicurezza_pct ?? 3); setDirezionePct(d.direzione_lavori_pct ?? 5);
+        setModalitaPagamento(d.modalita_pagamento || { preset_id: "", label: "", rate: [] });
         const sel = {};
         (d.composite_selections || []).forEach((s) => { sel[s.voce_id] = { qty: s.qty, price: s.price }; });
         setSelections(sel);
@@ -125,6 +128,7 @@ export default function PreventivoComposite() {
       sconto_eur: sconto, sconto_pct: scontoPct, iva_pct: ivaPct, note,
       mq_adjustment_mode: mqAdj.mode, mq_multiplier: mqAdj.multiplier,
       totale_iva_incl: totale, totale_iva_escl: imponibile,
+      modalita_pagamento: modalitaPagamento,
     };
     try {
       if (isNew) {
@@ -343,6 +347,14 @@ export default function PreventivoComposite() {
           )}
         </div>
         <div className="mt-3"><Label className="text-xs">Note</Label><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></div>
+        {/* Modalità di pagamento (preset admin / personalizzata) */}
+        <div className="bg-white border border-zinc-200 rounded-lg p-4 mt-3">
+          <ModalitaPagamentoPicker
+            prev={{ modalita_pagamento: modalitaPagamento }}
+            setPrev={(updater) => { const next = typeof updater === "function" ? updater({ modalita_pagamento: modalitaPagamento }) : updater; setModalitaPagamento(next.modalita_pagamento || { preset_id: "", label: "", rate: [] }); }}
+            totale={totale}
+          />
+        </div>
       </Page>
       <InfissoQuickConfigurator open={infissiModalOpen} onClose={() => setInfissiModalOpen(false)} onConfirm={onInfissiConfirm} />
       {/* Dialog: richiesta sconto > 5% per autorizzazione admin */}

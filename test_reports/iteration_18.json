@@ -1,0 +1,36 @@
+{
+  "summary": "Round 67 — Major refactor verification. 8/8 backend pytest PASSED. Frontend: 13/14 testid checks PASSED (1 inconclusive — voci-acquisti placeholder not visually testable since commessa has 0 voci rows; code grep confirms correct placeholder strings in CommessaWorkflow.jsx:1931). Critical fixes verified end-to-end: Eye=preventivo / PenTool=CAD, AdminMaterialiTemplate single sidebar+PageHeader, 10 tabs commessa with merged Documenti&Contratto (no tab-contratto), Allegato A with fase column, lista 8 documenti obbligatori, ModalitaPagamentoPicker su Pacchetto step6 e Composite, allegato_a pre-popolato da modalita_pagamento (importi corretti: 30/40/30 di 6600 = [1980,2640,1980]), import-from-computo popola voci_acquisti reali.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Tab bar in CommessaWorkflow", "issues": ["Con 10 tab + icona+numero+label, la TabsList va a capo (flex-wrap h-auto) — la 10° tab 'Resoconto' finisce da sola sulla seconda riga. Non bloccante, ma su 1920px sarebbe più pulita ridurre il padding o accorciare 'Foto Cantiere' → 'Foto'."]},
+      {"screen": "PreventivoPacchetto / PreventivoComposite (controlled-input warning)", "issues": ["Console warning React: 'A component is changing a controlled input to be uncontrolled' rilevato due volte. Sintomo: alcuni Input partono con value=undefined poi diventano stringa. Da fixare passando value={x ?? ''} ai campi interessati (probabilmente i nuovi campi modalita_pagamento o sconto)."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_round67_major_refactor.py",
+    "/app/test_reports/pytest/round67_results.xml"
+  ],
+  "action_items": [
+    "(Minor) Sistemare warning 'controlled input → uncontrolled' nei due preventivi (default value '' ai nuovi campi)",
+    "(Cosmetic) Tabs commessa vanno a capo su 1920px: ridurre padding o accorciare label"
+  ],
+  "critical_code_review_comments": [
+    "routes_biz.py _build_allegato_a_from_preventivo (1056-1086): logica corretta, gestisce mp vuoto, percentuali e calcolo importo. Aggiunge auto_generato=True + generato_il timestamp — ottimo per audit.",
+    "Preventivi.jsx 118-121: Eye→preventivo via ROUTES[p.tipo] fallback /preventivopacchetto, PenTool→openOrCreateProgetto che fa POST /preventivi/{id}/create-project se manca project_id. Pattern corretto e idempotente.",
+    "ModalitaPagamentoPicker.jsx: auto-seleziona preset default al mount (riga 25-28). Comportamento corretto. Calcolo totPct usa parseFloat con fallback 0 — safe. Warning rosso se !=100% non blocca save (UX intenzionale).",
+    "CommessaWorkflow.jsx: 2229 LOC, files >700. Da spezzare (Documenti, AllegatoA, DocumentiList, VociAcquistiTab in moduli separati). Già flagged in iter17, persiste.",
+    "VociAcquistiTab cmItems (1931): pesca da computo_metrico.items invece di /voci-backoffice — corretto come richiesto da utente. Placeholder dinamico in base a items disponibili.",
+    "PreventivoIn (server.py:1498) ha model_config extra='allow' — accetta correttamente modalita_pagamento senza schema esplicito, OK ma considerare di aggiungere il campo tipizzato per documentazione/validazione."
+  ],
+  "updated_files": ["/app/backend/tests/test_round67_major_refactor.py (NEW)"],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100% (13/13 testable checks; 1 inconclusive perché commessa vuota di voci, verificato via code grep)"},
+  "test_credentials": "admin@admin.it / admin (cookie-based JWT OK)",
+  "seed_data_creation": "Creato e poi cancellato: preventivo TEST_R67 composite (€6600), commessa derivata con allegato_a pre-popolato 30/40/30 e voci_acquisti importate da computo. Pulizia OK in test_cleanup.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Round 67 PASS. Route commessa workflow = /commesse/{cid}/workflow (NON /commessaworkflow/{cid}). Backend test su /app/backend/tests/test_round67_major_refactor.py copre end-to-end il flusso preventivo→commessa con modalita_pagamento→allegato_a pre-popolato + import voci-acquisti da computo. Comessa di riferimento con allegato_a non vuoto: b37e32d2-2628-44c0-90a3-a3667b56e5c2.",
+  "rca of the issue": "N/A — nessun bug bloccante. Solo 2 warning UX minori (controlled input + tab wrap)."
+}

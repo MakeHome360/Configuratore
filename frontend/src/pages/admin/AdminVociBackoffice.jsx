@@ -59,7 +59,7 @@ export default function AdminVociBackoffice() {
             return (
               <button key={c} onClick={() => setCat(c)} data-testid={`adm-vb-tab-${c}`}
                 className={`p-4 border-2 rounded-lg text-left ${cat === c ? "border-zinc-900 bg-zinc-50" : "border-zinc-200"}`}>
-                <div className="font-bold">{c}</div>
+                <div className="font-bold flex items-center justify-between">{c}<span className="text-xs font-normal bg-zinc-100 text-zinc-600 rounded px-1.5 py-0.5">{vs.length}</span></div>
                 <div className="text-xs text-zinc-500 mt-1">Acquisto: {fmtEur2(acq)}</div>
                 <div className="text-xs text-zinc-500">Rivendita: {fmtEur2(riv)}</div>
                 <div className="text-xs font-semibold text-emerald-600">+{mar.toFixed(1)}%</div>
@@ -131,7 +131,7 @@ export default function AdminVociBackoffice() {
           <strong>💡 Source of Truth:</strong> i prezzi qui sono usati ovunque. Modifica un prezzo qui e si aggiornerà <strong>automaticamente</strong> in tutti i pacchetti, preventivi composite e calcoli di marginalità.
         </div>
       </Page>
-      {(creating || editing) && <VoceDialog voce={editing} onClose={() => { setEditing(null); setCreating(false); }} onSaved={load} isNew={creating} />}
+      {(creating || editing) && <VoceDialog voce={editing} onClose={() => { setEditing(null); setCreating(false); }} onSaved={(created) => { load(); if (created?.category && created.category !== cat) setCat(created.category); }} isNew={creating} />}
       {importing && <CsvImportDialog endpoint="/voci-backoffice/bulk-import" header="name,category,unit,prezzo_acquisto,ricarico" example='Punto luce LED,IMPIANTI,punto,15,1.8' title="Importa Voci Backoffice da CSV" onClose={() => setImporting(false)} onSuccess={load} />}
     </div>
   );
@@ -142,12 +142,16 @@ function VoceDialog({ voce, onClose, onSaved, isNew }) {
   const [fornitori, setFornitori] = useState([]);
   useEffect(() => { api.get("/subappaltatori?tipo=fornitore").then(r => setFornitori(r.data || [])).catch(() => {}); }, []);
   const save = async () => {
-    if (!f.name) return toast.error("Nome");
+    if (!f.name) return toast.error("Nome obbligatorio");
     try {
-      if (isNew) await api.post("/voci-backoffice", f);
-      else await api.put(`/voci-backoffice/${f.id}`, f);
-      toast.success("Salvato"); onSaved(); onClose();
-    } catch (e) { toast.error(e.response?.data?.detail || "Errore"); }
+      let res;
+      if (isNew) res = await api.post("/voci-backoffice", f);
+      else res = await api.put(`/voci-backoffice/${f.id}`, f);
+      const created = res?.data || f;
+      toast.success(isNew ? `Voce "${created.name}" creata in categoria ${created.category}` : "Voce aggiornata");
+      onSaved(created);
+      onClose();
+    } catch (e) { toast.error(e.response?.data?.detail || "Errore: " + (e.message || "imprevisto")); }
   };
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>

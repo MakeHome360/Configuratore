@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Edit2, Plus, Trash2, ChevronDown, ChevronUp, Save, X } from "lucide-react";
 import { toast } from "sonner";
+import ListinoProdottoPicker from "@/components/ListinoProdottoPicker";
 
 const MQ_SIM = [50, 70, 90, 120];
 
@@ -116,15 +117,16 @@ export default function AdminPacchetti() {
 }
 
 function PackageDialog({ pkg, voci, onClose, onSaved, isNew }) {
-  const initial = pkg ? { ...pkg, items: (pkg.items || []).map((it) => ({ voce_id: it.voce_id || it.id, qty_mode: it.qty_mode || "mq", qty_ratio: it.qty_ratio || 0, qty_value: it.qty_value || 0, unit_price_pkg: it.unit_price_pkg })) } : { name: "", subtitle: "", price_per_m2: 0, color: "#475569", description: "", items: [] };
+  const initial = pkg ? { ...pkg, items: (pkg.items || []).map((it) => ({ voce_id: it.voce_id || it.id, qty_mode: it.qty_mode || "mq", qty_ratio: it.qty_ratio || 0, qty_value: it.qty_value || 0, unit_price_pkg: it.unit_price_pkg })), listini_items: pkg.listini_items || [], price_override: pkg.price_override ?? null } : { name: "", subtitle: "", price_per_m2: 0, color: "#475569", description: "", items: [], listini_items: [], price_override: null };
   const [form, setForm] = useState(initial);
   const [search, setSearch] = useState("");
+  const [listinoPickerOpen, setListinoPickerOpen] = useState(false);
   const save = async () => {
     if (!form.name) return toast.error("Nome obbligatorio");
     try {
       if (isNew) await api.post("/packages", form);
       else await api.put(`/packages/${form.id}`, form);
-      toast.success("Salvato"); onSaved(); onClose();
+      toast.success(isNew ? "Pacchetto creato" : "Pacchetto aggiornato"); onSaved(); onClose();
     } catch (e) { toast.error(e.response?.data?.detail || "Errore"); }
   };
 
@@ -166,9 +168,52 @@ function PackageDialog({ pkg, voci, onClose, onSaved, isNew }) {
           <div className="col-span-3 border-r p-5 space-y-3 overflow-y-auto">
             <div><Label className="text-xs">Nome *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="pkg-form-name" /></div>
             <div><Label className="text-xs">Prezzo €/mq *</Label><Input type="number" value={form.price_per_m2} onChange={(e) => setForm({ ...form, price_per_m2: Number(e.target.value) })} data-testid="pkg-form-price" /></div>
+            <div className="bg-amber-50 border border-amber-200 rounded p-2 space-y-1">
+              <Label className="text-xs text-amber-900 font-semibold">⚙ Override prezzo totale (€ fisso)</Label>
+              <Input type="number" step="0.01" placeholder="Lascia vuoto per usare €/mq" value={form.price_override ?? ""} onChange={(e) => { const n = parseFloat(e.target.value); setForm({ ...form, price_override: isNaN(n) || n <= 0 ? null : n }); }} data-testid="pkg-form-override" className="mono text-right" />
+              <p className="text-[10px] text-amber-700">Se compilato, sovrascrive il calcolo per mq. Utile per pacchetti "tutto incluso" a forfait.</p>
+            </div>
             <div><Label className="text-xs">Sottotitolo</Label><Input value={form.subtitle} onChange={(e) => setForm({ ...form, subtitle: e.target.value })} /></div>
             <div><Label className="text-xs">Descrizione</Label><Textarea rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
             <div><Label className="text-xs">Colore</Label><div className="flex items-center gap-2 mt-1"><input type="color" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className="w-12 h-10 rounded cursor-pointer" /><Input value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className="flex-1" /></div></div>
+
+            {/* PRODOTTI DA LISTINI FORNITORI inclusi nel pacchetto */}
+            <div className="border-t pt-3 mt-3">
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-xs font-semibold">🛒 Listini inclusi ({(form.listini_items || []).length})</Label>
+                <Button size="sm" variant="outline" onClick={() => setListinoPickerOpen(true)} className="h-7 text-xs" data-testid="pkg-listini-add"><Plus className="h-3 w-3 mr-1" />Aggiungi</Button>
+              </div>
+              <p className="text-[10px] text-zinc-500 mb-2">Prodotti pre-inclusi nel pacchetto (porte, piastrelle, sanitari, ecc.). Verranno proposti al venditore in fase di preventivo.</p>
+              {(form.listini_items || []).length === 0 ? (
+                <div className="text-[11px] text-zinc-400 italic text-center py-3 border border-dashed border-zinc-200 rounded">Nessun prodotto incluso</div>
+              ) : (
+                <div className="space-y-1.5">
+                  {(form.listini_items || []).map((li, idx) => (
+                    <div key={`${li.listino_id}-${li.id}-${idx}`} className="bg-blue-50 border border-blue-200 rounded p-1.5 text-[11px]" data-testid={`pkg-listino-item-${idx}`}>
+                      <div className="flex items-start justify-between gap-1">
+                        <div className="font-medium truncate">{li.nome}</div>
+                        <button onClick={() => setForm({ ...form, listini_items: form.listini_items.filter((_, j) => j !== idx) })} className="text-rose-600 shrink-0"><Trash2 className="h-3 w-3" /></button>
+                      </div>
+                      <div className="text-zinc-500">{li.fornitore_nome} · {li.categoria}</div>
+                      <div className="flex items-center justify-between mt-1 gap-1">
+                        <div className="flex items-center gap-1">
+                          <span className="text-[9px] text-zinc-500">Qty:</span>
+                          <Input type="number" min={0.01} step="0.01" value={li.qty} onChange={(e) => { const q = parseFloat(e.target.value) || 0; setForm({ ...form, listini_items: form.listini_items.map((x, j) => j === idx ? { ...x, qty: q } : x) }); }} className="h-6 w-14 text-[10px] text-right mono" data-testid={`pkg-listino-qty-${idx}`} />
+                        </div>
+                        <div className="mono text-zinc-700">€ {((li.qty || 0) * (li.prezzo_rivendita || 0)).toFixed(2)}</div>
+                      </div>
+                      <label className="flex items-center gap-1 mt-1 cursor-pointer">
+                        <input type="checkbox" checked={!!li.modificabile_dal_venditore} onChange={(e) => setForm({ ...form, listini_items: form.listini_items.map((x, j) => j === idx ? { ...x, modificabile_dal_venditore: e.target.checked } : x) })} data-testid={`pkg-listino-mod-${idx}`} />
+                        <span className="text-[9px] text-zinc-600">Modificabile dal venditore</span>
+                      </label>
+                    </div>
+                  ))}
+                  <div className="text-[10px] text-zinc-600 mono text-right pt-1 border-t border-zinc-200">
+                    Subtot. listini: € {(form.listini_items || []).reduce((s, x) => s + ((parseFloat(x.qty) || 0) * (parseFloat(x.prezzo_rivendita) || 0)), 0).toFixed(2)}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* MIDDLE: Available voci picker */}
@@ -265,6 +310,20 @@ function PackageDialog({ pkg, voci, onClose, onSaved, isNew }) {
           <Button onClick={save} data-testid="pkg-form-save" style={{ background: "var(--brand)", color: "white" }}><Save className="h-4 w-4 mr-2" />Salva Pacchetto</Button>
         </div>
       </div>
+      <ListinoProdottoPicker
+        open={listinoPickerOpen}
+        onOpenChange={setListinoPickerOpen}
+        onConfirm={(items) => {
+          const cur = form.listini_items || [];
+          const out = [...cur];
+          items.forEach(it => {
+            const idx = out.findIndex(x => x.listino_id === it.listino_id && x.id === it.id);
+            if (idx >= 0) out[idx] = { ...out[idx], qty: (parseFloat(out[idx].qty) || 0) + (parseFloat(it.qty) || 0) };
+            else out.push({ ...it, modificabile_dal_venditore: false });
+          });
+          setForm({ ...form, listini_items: out });
+        }}
+      />
     </div>
   );
 }

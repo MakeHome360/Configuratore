@@ -25,6 +25,7 @@ import Commesse from "@/pages/Commesse";
 import DettaglioCommessa from "@/pages/DettaglioCommessa";
 import CentroCosto from "@/pages/CentroCosto";
 import CRM from "@/pages/CRM";
+import LeadDetail from "@/pages/LeadDetail";
 import DashboardCliente from "@/pages/DashboardCliente";
 import DashboardSubappaltatore from "@/pages/DashboardSubappaltatore";
 import DashboardVenditore from "@/pages/DashboardVenditore";
@@ -118,6 +119,7 @@ function App() {
             <Route path="/dettagliocommessa/:id" element={P(DettaglioCommessa)} />
             <Route path="/centrocosto" element={P(CentroCosto)} />
             <Route path="/crm" element={P(CRM)} />
+            <Route path="/crm/lead/:lid" element={P(LeadDetail)} />
             {/* Progettazione CAD (plus) */}
             <Route path="/progetti" element={P(Progetti)} />
             <Route path="/editor/:id" element={P(Editor)} />

@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel, ConfigDict, EmailStr
 
 from packages_seed import (
@@ -1404,7 +1404,14 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
 
     @r.get("/leads")
     async def list_leads(user=Depends(get_current_user)):
-        return await db.leads.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+        return await db.leads.find({}, {"_id": 0}).sort("created_at", -1).to_list(2000)
+
+    @r.get("/leads/{lid}")
+    async def get_lead(lid: str, user=Depends(get_current_user)):
+        doc = await db.leads.find_one({"id": lid}, {"_id": 0})
+        if not doc:
+            raise HTTPException(404, "Lead non trovato")
+        return doc
 
     @r.post("/leads")
     async def create_lead(body: LeadIn, user=Depends(get_current_user)):
@@ -1412,6 +1419,7 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
         doc["id"] = str(uuid.uuid4())
         doc["created_at"] = now_iso()
         doc["updated_at"] = now_iso()
+        doc.setdefault("note_history", [])
         await db.leads.insert_one(doc)
         doc.pop("_id", None)
         return doc
@@ -1421,12 +1429,189 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
         body.pop("_id", None); body.pop("id", None)
         body["updated_at"] = now_iso()
         await db.leads.update_one({"id": lid}, {"$set": body})
+        doc = await db.leads.find_one({"id": lid}, {"_id": 0})
+        return doc or {"ok": True}
+
+    @r.post("/leads/{lid}/note")
+    async def add_lead_note(lid: str, body: Dict[str, Any], user=Depends(get_current_user)):
+        """Aggiunge una nota di follow-up timestampata alla cronologia del lead."""
+        testo = (body.get("testo") or "").strip()
+        if not testo:
+            raise HTTPException(400, "Testo nota obbligatorio")
+        nota = {
+            "id": str(uuid.uuid4()),
+            "testo": testo,
+            "tipo": body.get("tipo") or "nota",  # nota | chiamata | email | sms | meeting
+            "esito": body.get("esito") or "",
+            "created_at": now_iso(),
+            "user_id": user.get("id"),
+            "user_nome": user.get("name") or user.get("email") or "Utente",
+        }
+        await db.leads.update_one(
+            {"id": lid},
+            {"$push": {"note_history": {"$each": [nota], "$position": 0}},
+             "$set": {"updated_at": now_iso(), "ultimo_contatto": nota["created_at"]}},
+        )
+        return nota
+
+    @r.delete("/leads/{lid}/note/{nid}")
+    async def del_lead_note(lid: str, nid: str, user=Depends(get_current_user)):
+        await db.leads.update_one({"id": lid}, {"$pull": {"note_history": {"id": nid}}})
         return {"ok": True}
 
-    @r.delete("/leads/{lid}")
-    async def delete_lead(lid: str, user=Depends(get_current_user)):
-        await db.leads.delete_one({"id": lid})
-        return {"ok": True}
+    @r.post("/leads/import")
+    async def import_leads(file: UploadFile = File(...), source: str = Form("import"), dedupe: bool = Form(True), user=Depends(get_current_user)):
+        """Importa una lista di lead da file CSV o Excel.
+
+        Mapping colonne auto (case-insensitive, accenti rimossi):
+          nome | first_name | firstname           → nome
+          cognome | last_name | lastname | surname → cognome
+          telefono | phone | cellulare | mobile    → telefono
+          email | mail | e-mail                    → email
+          citta | city | comune | localita         → citta
+          indirizzo | address | via                 → indirizzo
+          mq | metri | superficie                   → mq
+          tipo_immobile | tipologia | property      → tipo_immobile
+          note | notes | commento                   → note
+
+        De-dupe per email+telefono (case-insensitive). Source viene salvato per tracciabilità.
+        """
+        import io
+        import re
+        import pandas as pd
+        content = await file.read()
+        fname = (file.filename or "").lower()
+        try:
+            if fname.endswith(".csv") or fname.endswith(".txt"):
+                # auto-detect separator
+                sample = content[:4096].decode("utf-8", errors="ignore")
+                sep = ";" if sample.count(";") > sample.count(",") else ","
+                df = pd.read_csv(io.BytesIO(content), sep=sep, dtype=str, keep_default_na=False)
+            elif fname.endswith(".xlsx") or fname.endswith(".xls"):
+                df = pd.read_excel(io.BytesIO(content), dtype=str)
+                df = df.fillna("")
+            else:
+                raise HTTPException(400, "Formato non supportato. Usa .csv .xlsx .xls")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(400, f"Errore lettura file: {e}")
+
+        def norm(s: str) -> str:
+            s = (s or "").strip().lower()
+            s = re.sub(r"[àáâä]", "a", s)
+            s = re.sub(r"[èéêë]", "e", s)
+            s = re.sub(r"[ìíîï]", "i", s)
+            s = re.sub(r"[òóôö]", "o", s)
+            s = re.sub(r"[ùúûü]", "u", s)
+            s = re.sub(r"[^a-z0-9]+", "_", s).strip("_")
+            return s
+
+        COL_MAP = {
+            "nome": ["nome", "name", "first_name", "firstname", "first"],
+            "cognome": ["cognome", "surname", "last_name", "lastname", "last"],
+            "telefono": ["telefono", "phone", "cellulare", "mobile", "tel", "cell"],
+            "email": ["email", "mail", "e_mail"],
+            "citta": ["citta", "city", "comune", "localita", "town"],
+            "indirizzo": ["indirizzo", "address", "via", "street"],
+            "mq": ["mq", "metri", "superficie", "metri_quadri", "sqm"],
+            "tipo_immobile": ["tipo_immobile", "tipologia", "property", "tipo", "immobile"],
+            "note": ["note", "notes", "commento", "comment", "descrizione", "messaggio", "message"],
+            "anno_costruzione": ["anno_costruzione", "anno", "year"],
+            "piano": ["piano", "floor"],
+        }
+        # invert
+        col_lookup = {}
+        for canonical, aliases in COL_MAP.items():
+            for a in aliases:
+                col_lookup[a] = canonical
+        # Build dataframe column mapping
+        mapping = {}
+        for col in df.columns:
+            n = norm(col)
+            if n in col_lookup:
+                mapping[col] = col_lookup[n]
+
+        # Carica leads esistenti per dedupe
+        existing_emails = set()
+        existing_phones = set()
+        if dedupe:
+            async for row in db.leads.find({}, {"email": 1, "telefono": 1, "_id": 0}):
+                if row.get("email"):
+                    existing_emails.add(row["email"].strip().lower())
+                if row.get("telefono"):
+                    existing_phones.add(re.sub(r"\D", "", row["telefono"]))
+
+        imported = 0
+        skipped_dup = 0
+        errors = []
+        batch_seen_emails = set()
+        batch_seen_phones = set()
+        rows_to_insert = []
+        for idx, row in df.iterrows():
+            try:
+                lead = {
+                    "id": str(uuid.uuid4()),
+                    "stato": "nuovo",
+                    "source": source,
+                    "imported_at": now_iso(),
+                    "created_at": now_iso(),
+                    "updated_at": now_iso(),
+                    "note_history": [],
+                }
+                for src_col, canonical in mapping.items():
+                    val = str(row[src_col]).strip()
+                    if not val or val.lower() in ("nan", "none"):
+                        continue
+                    if canonical == "mq":
+                        try:
+                            lead["mq"] = float(val.replace(",", "."))
+                        except Exception:
+                            pass
+                    elif canonical == "anno_costruzione":
+                        try:
+                            lead["anno_costruzione"] = int(val)
+                        except Exception:
+                            pass
+                    else:
+                        lead[canonical] = val
+                if not lead.get("nome") and not lead.get("telefono") and not lead.get("email"):
+                    errors.append({"riga": int(idx) + 2, "motivo": "Riga vuota (manca nome/telefono/email)"})
+                    continue
+                if not lead.get("nome"):
+                    lead["nome"] = lead.get("email") or lead.get("telefono") or f"Lead riga {idx + 2}"
+                # dedupe
+                em = (lead.get("email") or "").strip().lower()
+                ph = re.sub(r"\D", "", lead.get("telefono") or "")
+                is_dup = False
+                if dedupe:
+                    if em and (em in existing_emails or em in batch_seen_emails):
+                        is_dup = True
+                    if ph and (ph in existing_phones or ph in batch_seen_phones):
+                        is_dup = True
+                if is_dup:
+                    skipped_dup += 1
+                    continue
+                if em:
+                    batch_seen_emails.add(em)
+                if ph:
+                    batch_seen_phones.add(ph)
+                rows_to_insert.append(lead)
+            except Exception as e:
+                errors.append({"riga": int(idx) + 2, "motivo": str(e)})
+
+        if rows_to_insert:
+            await db.leads.insert_many(rows_to_insert)
+            imported = len(rows_to_insert)
+
+        return {
+            "imported": imported,
+            "skipped_duplicates": skipped_dup,
+            "errors": errors[:50],
+            "total_rows": int(len(df)),
+            "columns_detected": list(mapping.values()),
+            "columns_unmapped": [c for c in df.columns if c not in mapping],
+        }
 
     @r.post("/leads/ai-suggest")
     async def ai_suggest(body: Dict[str, Any], user=Depends(get_current_user)):

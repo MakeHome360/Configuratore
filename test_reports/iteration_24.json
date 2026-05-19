@@ -1,0 +1,28 @@
+{
+  "summary": "Round 72 CRM frontend testing — all critical flows PASS. Tested import dialog (CSV upload, dedupe 1/1, template button, result panel), CRM search/filter source, pipeline card→detail navigation (eye button), tabella row→detail (tel:/mailto: clickable, 35 tel + 25 mailto links), LeadDetail full coverage: 4 quick actions (tel:, wa.me/, mailto:, google maps) with correct hrefs, edit→save toggle (INPUT→DIV), state change (5 stati buttons), note types (4) with conditional esito select (chiamata shows, nota hides), note add+timeline, source label visible in detail. 42 → 43 leads after import confirms dedupe works.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Badge (ui-kit)", "issue": "data-testid prop not forwarded to rendered element — lead-badge-stato testid not findable in DOM though badge renders visually. Likely Badge component does not spread extra props. Affects automation/testing only.", "selector": "[data-testid='lead-badge-stato']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_round72_crm_import.py"],
+  "action_items": [
+    "(Optional/low) Make ui-kit Badge component forward {...rest} so data-testid attribute reaches DOM — enables automated assertion of stato badge text."
+  ],
+  "critical_code_review_comments": [
+    "LeadDetail.jsx ~280 LOC, well structured, clear separation between edit/readonly. PUT /api/leads/:id used both for full update and partial stato change — server must accept partial body (worked in test).",
+    "ImportLeadsDialog uses fetch with credentials:include, bypassing axios — duplicated auth pattern. Consider unifying via api.post with multipart support to use same interceptors.",
+    "delNota does not catch error nor show toast on failure — minor UX gap.",
+    "Confirm dialogs use window.confirm — works but inconsistent with shadcn AlertDialog pattern used elsewhere; acceptable for MVP."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (prior iter)", "frontend": "100% (all flows verified)"},
+  "test_credentials": "admin@admin.it / admin",
+  "seed_data_creation": "Imported temp CSV with source 'test_round72_<rand>' (1 imported, 1 deduped). Added test note with marker on existing lead. Cleanup: source-tagged lead deletion attempted via lead-delete-btn (confirm). Some test leads may remain — visible via filter source.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Round 72 frontend fully validated. CRM has accumulated test leads from prior iterations (42→43 leads). Badge component in /app/frontend/src/components/ui-kit may need fix to forward data-testid. All testids on cards, rows, detail page, import dialog, note types, stato buttons work."
+}

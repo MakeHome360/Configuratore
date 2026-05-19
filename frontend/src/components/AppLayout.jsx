@@ -25,7 +25,6 @@ const NAV = [
   ]},
   { section: "Cantieri", items: [
     { to: "/gestore-cantieri", label: "Gestione Cantieri", icon: Hammer, roles: ["admin","gestore","venditore","user"] },
-    { to: "/dashboard-subappaltatori", label: "Dashboard Sub.", icon: BarChart3, roles: ["admin","gestore"] },
     { to: "/portale-sub", label: "I miei cantieri", icon: Briefcase, roles: ["subappaltatore"] },
   ]},
   { section: "Cliente", items: [

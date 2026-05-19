@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { Page, PageHeader } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Trash2, Mail } from "lucide-react";
+import { Plus, Trash2, Mail, Eye } from "lucide-react";
 import { toast } from "sonner";
 
 export default function AdminSubappaltatori() {
@@ -12,7 +13,8 @@ export default function AdminSubappaltatori() {
   const [tipo, setTipo] = useState("subappaltatore");
   const [modal, setModal] = useState(false);
   const [draft, setDraft] = useState({ nome: "", categoria: "", telefono: "", email: "" });
-  const [invitato, setInvitato] = useState(null); // { email, password_temporanea, scadenza }
+  const [invitato, setInvitato] = useState(null);
+  const nav = useNavigate();
   const load = () => api.get("/subappaltatori").then((r) => setRows(r.data || []));
   useEffect(() => { load(); }, []);
   const filt = rows.filter((r) => r.tipo === tipo);
@@ -44,13 +46,14 @@ export default function AdminSubappaltatori() {
             <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr><th className="px-3 py-2 text-left">Nome</th><th className="px-3 py-2 text-left">Categoria</th><th className="px-3 py-2 text-left">Contatti</th><th className="px-3 py-2 text-left">Cantieri</th><th className="px-3 py-2 text-center">Stato</th><th></th></tr></thead>
             <tbody className="divide-y divide-zinc-100">
               {filt.map((r) => (
-                <tr key={r.id}>
+                <tr key={r.id} className="hover:bg-zinc-50 cursor-pointer" onClick={() => nav(`/adminsubappaltatori/${r.id}`)} data-testid={`sub-row-${r.id}`}>
                   <td className="px-3 py-2 font-medium">{r.nome}</td>
                   <td className="px-3 py-2">{r.categoria}</td>
                   <td className="px-3 py-2 text-xs">{r.telefono} {r.email && <><br />{r.email}</>}</td>
                   <td className="px-3 py-2">{r.num_cantieri || 0} cantieri</td>
                   <td className="px-3 py-2 text-center"><span className={`text-xs px-2 py-0.5 rounded ${r.attivo ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100"}`}>{r.attivo ? "Attivo" : "Inattivo"}</span></td>
-                  <td className="px-3 py-2 flex items-center gap-1">
+                  <td className="px-3 py-2 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => nav(`/adminsubappaltatori/${r.id}`)} className="p-1.5 hover:bg-blue-50 rounded" title="Apri dettaglio" data-testid={`sub-open-${r.id}`}><Eye className="h-4 w-4 text-blue-600" /></button>
                     {tipo === "subappaltatore" && (
                       <button onClick={() => invita(r)} title={r.portale_email ? `Re-invita (attuale: ${r.portale_email})` : "Invita al portale"} className="px-2 py-1 text-xs border border-zinc-200 rounded hover:bg-zinc-50 text-emerald-700" data-testid={`sub-invite-${r.id}`}>
                         <Mail className="h-3.5 w-3.5 inline mr-1" />

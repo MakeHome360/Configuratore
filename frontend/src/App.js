@@ -38,6 +38,8 @@ import AdminFasiCommessa from "@/pages/admin/AdminFasiCommessa";
 import AdminVenditori from "@/pages/admin/AdminVenditori";
 import AdminSubappaltatori from "@/pages/admin/AdminSubappaltatori";
 import AdminNegozi from "@/pages/admin/AdminNegozi";
+import NegozioDetail from "@/pages/admin/NegozioDetail";
+import SubappaltatoreDetail from "@/pages/admin/SubappaltatoreDetail";
 import AdminReportBudget from "@/pages/admin/AdminReportBudget";
 import AdminTemplateEmail from "@/pages/admin/AdminTemplateEmail";
 import AdminUtenti from "@/pages/admin/AdminUtenti";
@@ -131,7 +133,9 @@ function App() {
             <Route path="/adminfasicommessa" element={P(AdminFasiCommessa)} />
             <Route path="/adminvenditori" element={P(AdminVenditori)} />
             <Route path="/adminsubappaltatori" element={P(AdminSubappaltatori)} />
+            <Route path="/adminsubappaltatori/:sid" element={P(SubappaltatoreDetail)} />
             <Route path="/adminnegozi" element={P(AdminNegozi)} />
+            <Route path="/adminnegozi/:nid" element={P(NegozioDetail)} />
             <Route path="/adminreportbudget" element={P(AdminReportBudget)} />
             <Route path="/admintemplateemail" element={P(AdminTemplateEmail)} />
             <Route path="/adminutenti" element={P(AdminUtenti)} />

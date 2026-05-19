@@ -1,0 +1,41 @@
+{
+  "summary": "Round 74 frontend smoke completed. PASS on: menu dedup (Dashboard Sub. removed, only Subappaltatori in Amministrazione), AdminSubappaltatori clickable rows + sub-open-{id} eye buttons (9/9), SubappaltatoreDetail loads with all 4 KPI labels (Cantieri attivi, Preventivi inviati, Incassato, Da incassare), sub-doc-add → sub-doc-dialog → sub-doc-tipo dialog flow OK, AdminNegozi neg-card-{id} clickable, NegozioDetail loads with all 6 KPI labels (Venditori, Lead, Conv. rate, Preventivi, Commesse, Fatturato) + negozio-venditori-table present, CommessaWorkflow tab-preventivi present and clickable, preventivi-commessa-tab renders with correct empty state message and disclaimer about 'modifica preventivo accettato → BOZZA', Documenti tab in admin shows tipo-lavori-* (6 buttons, all enabled) + doc-skip-* (8 toggles, no 🔒 locks). MINOR issues: (1) sub-kpi and negozio-kpi data-testid attached to ONE wrapper container, not on each individual KPI card — tests expected 4 and 6 individual elements; (2) HTML hydration errors on SubappaltatoreDetail/NegozioDetail headers (<p> contains <div> via PageHeader subtitle); (3) Could not verify prev-print/prev-edit/prev-clone/prev-del action buttons because all 5 commesse tested return empty array from GET /api/commesse/{cid}/preventivi despite having preventivo_id set on the commessa — UI empty-state renders correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/commesse/{cid}/preventivi", "issue": "Returns count=0 for all 5 test commesse despite commessa.preventivo_id being set. May be a data linkage issue (e.g., joining on preventivo.commessa_id rather than commessa.preventivo_id). Could not validate prev-print/edit/clone/del action buttons end-to-end in UI."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "SubappaltatoreDetail.jsx", "issue": "data-testid='sub-kpi' is attached to a single wrapper div containing all 4 KPIs instead of one per KPI card. Test request expects 4 elements with this testid (one per card).", "selector": "[data-testid='sub-kpi']", "priority": "MEDIUM"},
+      {"component": "NegozioDetail.jsx", "issue": "data-testid='negozio-kpi' is attached to a single wrapper div containing all 6 KPIs instead of one per KPI card. Test request expects 6 elements with this testid.", "selector": "[data-testid='negozio-kpi']", "priority": "MEDIUM"},
+      {"component": "PageHeader (ui-kit)", "issue": "HTML hydration error: PageHeader renders subtitle inside <p> but SubappaltatoreDetail (line 77) and NegozioDetail (line 41) pass a <div> as subtitle. Browser logs: '<p> cannot contain a nested <div>'. Visible only as console warnings, no functional break.", "selector": "[data-testid='page-header']", "priority": "LOW"},
+      {"component": "Dialog (sub-doc-dialog)", "issue": "Missing aria-describedby / DialogDescription — radix warns in console. A11y minor.", "selector": "[data-testid='sub-doc-dialog']", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Preventivi tab on commessa workflow", "issue": "Tab UI renders correctly but no commessa in DB returns preventivi from new endpoint, so action buttons (prev-print/edit/clone/del) and prev-totale-commessa footer cannot be UI-verified. Needs either a backend fix (preventivo lookup by commessa.preventivo_id) OR seed data with a properly linked preventivo.", "affected_selectors": ["[data-testid='preventivi-commessa-tab']", "[data-testid^='prev-print-']", "[data-testid='prev-totale-commessa']"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_25.json"],
+  "action_items": [
+    "Split sub-kpi data-testid: attach data-testid='sub-kpi' to EACH of the 4 KPI cards (not just the grid wrapper) in SubappaltatoreDetail.jsx.",
+    "Split negozio-kpi data-testid: attach data-testid='negozio-kpi' to EACH of the 6 KPI cards in NegozioDetail.jsx.",
+    "Fix PageHeader subtitle DOM: either change ui-kit PageHeader to render subtitle inside a <div> instead of <p>, OR change the subtitle prop passed by SubappaltatoreDetail/NegozioDetail to NOT contain block-level <div> children (use <span> with inline elements). Currently triggers React hydration warning.",
+    "Investigate why GET /api/commesse/{cid}/preventivi returns [] for all commesse that have preventivo_id set — likely the new endpoint queries by preventivo.commessa_id while existing data only sets commessa.preventivo_id. Either backfill preventivo.commessa_id or have the endpoint include the original preventivo by id lookup.",
+    "Add DialogDescription/aria-describedby to sub-doc-dialog (minor a11y)."
+  ],
+  "critical_code_review_comments": [
+    "Single wrapper data-testid pattern for sub-kpi/negozio-kpi defeats per-card automation (cannot target individual KPI like 'Incassato'). Standard pattern is one testid per atomic UI element + an optional container testid.",
+    "PageHeader/subtitle is being misused as a slot for arbitrary JSX (badges, status pills). Either make subtitle accept ReactNode and render in a <div>, or expose a separate prop like 'meta' / 'badges'.",
+    "Verify backend POST /api/commesse/{cid}/preventivi/clone-from also sets the new preventivo.commessa_id and is_extra=true so future GET returns both original + extra correctly."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "(deferred — frontend-only run; backend was 4/4 in prior run, but UI integration revealed empty list anomaly)", "frontend": "~85% (all routes/components load, all tabs/buttons present and clickable, RBAC admin path OK; 3 testid/data anomalies blocking full automation assert)"},
+  "test_credentials": "admin@admin.it / admin",
+  "seed_data_creation": "None. No new data created.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "IMPORTANT: Commessa workflow route is /commesse/:cid/workflow (PLURAL — request said singular /commessa). All 11 tabs verified. tab-preventivi exists and content renders. Use admin@admin.it/admin. To test prev-print/edit/clone/del action buttons end-to-end, FIRST verify GET /api/commesse/{cid}/preventivi returns non-empty for at least one commessa — none of first 5 tested do. RBAC venditore-view not tested (would need a venditore login). KPI testids (sub-kpi, negozio-kpi) only resolve to 1 element each — fix or expect 1 in assertions."
+}

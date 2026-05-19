@@ -514,6 +514,74 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
         await db.negozi.update_one({"id": neg_id}, {"$set": body})
         return {"ok": True}
 
+    @r.get("/negozi/{neg_id}")
+    async def get_negozio(neg_id: str, user=Depends(get_current_user)):
+        doc = await db.negozi.find_one({"id": neg_id}, {"_id": 0})
+        if not doc:
+            raise HTTPException(404, "Negozio non trovato")
+        return doc
+
+    @r.get("/negozi/{neg_id}/dashboard")
+    async def negozio_dashboard(neg_id: str, user=Depends(get_current_user)):
+        """Dashboard negozio: venditori che lavorano nel negozio + performance individuali."""
+        neg = await db.negozi.find_one({"id": neg_id}, {"_id": 0})
+        if not neg:
+            raise HTTPException(404, "Negozio non trovato")
+        # Venditori del negozio (campo `store_id` o `negozio_id` su user)
+        venditori = await db.users.find(
+            {"role": "venditore", "$or": [{"store_id": neg_id}, {"negozio_id": neg_id}]},
+            {"_id": 0, "password_hash": 0},
+        ).to_list(200)
+        # Per ogni venditore calcola KPI
+        from datetime import datetime as _dt, timedelta
+        sett_fa = (_dt.now() - timedelta(days=7)).isoformat()
+        mese_fa = (_dt.now() - timedelta(days=30)).isoformat()
+        venditori_kpi = []
+        for v in venditori:
+            vid = v.get("id")
+            lead_count = await db.leads.count_documents({"venditore_id": vid})
+            lead_vinti = await db.leads.count_documents({"venditore_id": vid, "stato": "vinto"})
+            prev_tot = await db.preventivi.count_documents({"venditore_id": vid})
+            prev_mese = await db.preventivi.count_documents({"venditore_id": vid, "created_at": {"$gte": mese_fa}})
+            com_attive = await db.commesse.count_documents({"venditore_id": vid, "stato": {"$nin": ["chiuso", "annullato", "concluso"]}})
+            com_concluse = await db.commesse.count_documents({"venditore_id": vid, "stato": {"$in": ["chiuso", "concluso"]}})
+            # Fatturato venduto = somma totale_iva_escl dei preventivi accettati
+            cur = db.preventivi.find({"venditore_id": vid, "stato": "accettato"}, {"_id": 0, "totale_iva_escl": 1, "totale_iva_incl": 1})
+            fatturato = 0.0
+            async for p in cur:
+                fatturato += float(p.get("totale_iva_escl") or p.get("totale_iva_incl") or 0)
+            conv_rate = round((lead_vinti / lead_count * 100), 1) if lead_count > 0 else 0.0
+            venditori_kpi.append({
+                "id": vid,
+                "name": v.get("name") or v.get("nome") or v.get("email"),
+                "email": v.get("email"),
+                "telefono": v.get("telefono"),
+                "active": v.get("active", True),
+                "kpi": {
+                    "lead_count": lead_count,
+                    "lead_vinti": lead_vinti,
+                    "conversion_rate": conv_rate,
+                    "preventivi_totali": prev_tot,
+                    "preventivi_ultimo_mese": prev_mese,
+                    "commesse_attive": com_attive,
+                    "commesse_concluse": com_concluse,
+                    "fatturato_venduto": round(fatturato, 2),
+                },
+            })
+        # Aggregati negozio
+        tot = {
+            "lead_count": sum(v["kpi"]["lead_count"] for v in venditori_kpi),
+            "lead_vinti": sum(v["kpi"]["lead_vinti"] for v in venditori_kpi),
+            "preventivi_totali": sum(v["kpi"]["preventivi_totali"] for v in venditori_kpi),
+            "commesse_attive": sum(v["kpi"]["commesse_attive"] for v in venditori_kpi),
+            "commesse_concluse": sum(v["kpi"]["commesse_concluse"] for v in venditori_kpi),
+            "fatturato_venduto": round(sum(v["kpi"]["fatturato_venduto"] for v in venditori_kpi), 2),
+            "num_venditori": len(venditori_kpi),
+            "num_venditori_attivi": sum(1 for v in venditori_kpi if v["active"]),
+        }
+        tot["conversion_rate"] = round((tot["lead_vinti"] / tot["lead_count"] * 100), 1) if tot["lead_count"] > 0 else 0.0
+        return {"negozio": neg, "venditori": venditori_kpi, "totali": tot}
+
     # ---------- Dati Azienda ----------
     @r.get("/dati-azienda")
     async def get_dati(user=Depends(get_current_user)):
@@ -594,6 +662,163 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
         if user.get("role") != "admin":
             raise HTTPException(403, "Solo admin")
         await db.subappaltatori.delete_one({"id": sub_id})
+        return {"ok": True}
+
+    @r.get("/subappaltatori/{sub_id}")
+    async def get_sub(sub_id: str, user=Depends(get_current_user)):
+        doc = await db.subappaltatori.find_one({"id": sub_id}, {"_id": 0})
+        if not doc:
+            raise HTTPException(404, "Subappaltatore non trovato")
+        return doc
+
+    @r.get("/subappaltatori/{sub_id}/dashboard")
+    async def sub_dashboard(sub_id: str, user=Depends(get_current_user)):
+        """Dashboard completa subappaltatore: documenti aziendali (DURC/Visura/CCIAA),
+        cantieri in corso, preventivi a noi, incassato vs da incassare."""
+        sub = await db.subappaltatori.find_one({"id": sub_id}, {"_id": 0})
+        if not sub:
+            raise HTTPException(404, "Subappaltatore non trovato")
+
+        # Documenti generali del subappaltatore (DURC, visura camerale, CCIAA, polizza, idoneità tecnica…)
+        # Cerchiamo sia nel campo `documenti_aziendali` del sub stesso, sia nella collezione `documenti_subappaltatore`
+        docs_sub = sub.get("documenti_aziendali") or []
+        # Tipi obbligatori check (warning se scaduti / mancanti)
+        DOC_TIPI = [
+            ("durc", "DURC", "Documento Unico Regolarità Contributiva (validità 120 giorni)"),
+            ("visura", "Visura Camerale", "Visura camerale aggiornata"),
+            ("cciaa", "Iscrizione CCIAA", "Iscrizione Camera di Commercio"),
+            ("polizza_rc", "Polizza RC", "Responsabilità Civile aziendale"),
+            ("idoneita_tecnica", "Idoneità Tecnica", "Attestazione idoneità tecnico-professionale"),
+            ("contratto_subappalto", "Contratto Subappalto", "Contratto firmato con SaDiCasa"),
+        ]
+        from datetime import datetime as _dt
+        oggi = _dt.now().date()
+        check_docs = []
+        for tipo_key, label, descr in DOC_TIPI:
+            found = next((d for d in docs_sub if (d.get("tipo") or "").lower() == tipo_key), None)
+            stato = "missing"
+            scadenza_iso = None
+            if found:
+                scadenza_iso = found.get("scadenza")
+                if scadenza_iso:
+                    try:
+                        sd = _dt.fromisoformat(scadenza_iso[:10]).date()
+                        if sd < oggi:
+                            stato = "expired"
+                        elif (sd - oggi).days <= 30:
+                            stato = "expiring"
+                        else:
+                            stato = "valid"
+                    except Exception:
+                        stato = "valid"
+                else:
+                    stato = "valid"
+            check_docs.append({
+                "tipo": tipo_key, "label": label, "descrizione": descr,
+                "stato": stato, "scadenza": scadenza_iso,
+                "url": (found or {}).get("url"), "note": (found or {}).get("note"),
+            })
+
+        # Cantieri (commesse) collegati al subappaltatore
+        commesse = await db.commesse.find({"subappaltatori_ids": sub_id}, {"_id": 0}).to_list(500)
+        commesse_attive = [c for c in commesse if c.get("stato") not in ("chiuso", "annullato", "concluso")]
+        commesse_concluse = [c for c in commesse if c.get("stato") in ("chiuso", "annullato", "concluso")]
+
+        # Preventivi/computi a nostro favore (voci_acquisti col fornitore = sub_id)
+        # Cerca movimenti contabili: nei `commesse_movimenti` con fornitore=sub_id e nei `voci_acquisti`
+        incassato = 0.0     # quello che IL SUB ha già preso da noi (uscite per noi)
+        da_incassare = 0.0  # quello che IL SUB DEVE ancora prendere da noi
+        preventivi_inviati = 0
+        for c in commesse:
+            for v in (c.get("voci_acquisti") or []):
+                if (v.get("fornitore_id") or v.get("subappaltatore_id")) != sub_id:
+                    continue
+                tot = float(v.get("totale") or v.get("prezzo_totale") or 0)
+                if v.get("pagato"):
+                    incassato += tot
+                else:
+                    da_incassare += tot
+            # preventivi fornitori
+            for pf in (c.get("preventivi_fornitori") or []):
+                if pf.get("fornitore_id") == sub_id or pf.get("subappaltatore_id") == sub_id:
+                    preventivi_inviati += 1
+
+        # Anche da contratti / movimenti
+        movs = await db.commesse_movimenti.find({"fornitore_id": sub_id}, {"_id": 0}).to_list(500)
+        for m in movs:
+            if m.get("tipo") == "uscita":
+                incassato += float(m.get("importo") or 0)
+
+        # Compatto un riepilogo per ogni cantiere
+        cantieri_summary = []
+        for c in commesse:
+            tot_lavori = 0.0
+            tot_pagato = 0.0
+            for v in (c.get("voci_acquisti") or []):
+                if (v.get("fornitore_id") or v.get("subappaltatore_id")) != sub_id:
+                    continue
+                t = float(v.get("totale") or v.get("prezzo_totale") or 0)
+                tot_lavori += t
+                if v.get("pagato"):
+                    tot_pagato += t
+            cantieri_summary.append({
+                "id": c.get("id"),
+                "code": c.get("code"),
+                "cliente_nome": (c.get("cliente") or {}).get("nome") or (c.get("cliente") or {}).get("ragione_sociale") or "—",
+                "indirizzo": c.get("indirizzo") or (c.get("cliente") or {}).get("indirizzo") or "—",
+                "stato": c.get("stato") or "aperta",
+                "data_inizio": c.get("data_inizio"),
+                "data_fine_prevista": c.get("data_fine_prevista"),
+                "totale_lavori": round(tot_lavori, 2),
+                "totale_pagato": round(tot_pagato, 2),
+                "totale_residuo": round(tot_lavori - tot_pagato, 2),
+            })
+
+        return {
+            "subappaltatore": sub,
+            "documenti_check": check_docs,
+            "documenti_critici_mancanti": [d for d in check_docs if d["stato"] in ("missing", "expired")],
+            "kpi": {
+                "num_cantieri_totali": len(commesse),
+                "num_cantieri_attivi": len(commesse_attive),
+                "num_cantieri_conclusi": len(commesse_concluse),
+                "num_preventivi_inviati": preventivi_inviati,
+                "incassato": round(incassato, 2),
+                "da_incassare": round(da_incassare, 2),
+                "fatturato_totale": round(incassato + da_incassare, 2),
+            },
+            "cantieri": cantieri_summary,
+        }
+
+    @r.post("/subappaltatori/{sub_id}/documenti")
+    async def add_sub_documento(sub_id: str, body: Dict[str, Any], user=Depends(get_current_user)):
+        """Aggiunge un documento aziendale (DURC/Visura/Polizza/…) al subappaltatore."""
+        if user.get("role") not in ("admin", "gestore"):
+            raise HTTPException(403, "Solo admin/gestore")
+        sub = await db.subappaltatori.find_one({"id": sub_id})
+        if not sub:
+            raise HTTPException(404, "Subappaltatore non trovato")
+        doc = {
+            "id": str(uuid.uuid4()),
+            "tipo": body.get("tipo") or "altro",
+            "nome": body.get("nome") or body.get("tipo") or "Documento",
+            "url": body.get("url"),
+            "scadenza": body.get("scadenza"),  # ISO date
+            "note": body.get("note"),
+            "uploaded_at": now_iso(),
+            "uploaded_by": user.get("id"),
+        }
+        await db.subappaltatori.update_one(
+            {"id": sub_id},
+            {"$push": {"documenti_aziendali": doc}, "$set": {"updated_at": now_iso()}},
+        )
+        return doc
+
+    @r.delete("/subappaltatori/{sub_id}/documenti/{did}")
+    async def del_sub_documento(sub_id: str, did: str, user=Depends(get_current_user)):
+        if user.get("role") not in ("admin", "gestore"):
+            raise HTTPException(403, "Solo admin/gestore")
+        await db.subappaltatori.update_one({"id": sub_id}, {"$pull": {"documenti_aziendali": {"id": did}}})
         return {"ok": True}
 
     # ---------- Venditori (list users with role venditore) ----------

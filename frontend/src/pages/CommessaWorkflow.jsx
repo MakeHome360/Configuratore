@@ -1,14 +1,14 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
-import { Page, PageHeader, StatCard, fmtEur, fmtNum } from "@/components/ui-kit";
+import { Page, PageHeader, StatCard, fmtEur, fmtNum, Badge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileSignature, Files, ListChecks, Calculator, Hammer, CalendarRange, Wallet, FileBarChart2, Plus, Trash2, ShieldCheck, AlertTriangle, Sparkles, CheckCircle2, Clock, ClipboardCheck, Camera, Image as ImageIcon, Save, Download, X } from "lucide-react";
+import { FileSignature, Files, ListChecks, Calculator, Hammer, CalendarRange, Wallet, FileBarChart2, Plus, Trash2, ShieldCheck, AlertTriangle, Sparkles, CheckCircle2, Clock, ClipboardCheck, Camera, Image as ImageIcon, Save, Download, X, Lock, Edit3, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -57,19 +57,22 @@ export default function CommessaWorkflow() {
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="rounded-sm flex-wrap h-auto">
             <TabsTrigger value="documenti" data-testid="tab-documenti"><Files className="h-4 w-4 mr-1.5" /> 1. Documenti & Contratto</TabsTrigger>
-            <TabsTrigger value="checklist" data-testid="tab-checklist"><ClipboardCheck className="h-4 w-4 mr-1.5" /> 2. Checklist venditore</TabsTrigger>
-            <TabsTrigger value="materiali" data-testid="tab-materiali"><ListChecks className="h-4 w-4 mr-1.5" /> 3. Materiali</TabsTrigger>
-            <TabsTrigger value="computo" data-testid="tab-computo"><Calculator className="h-4 w-4 mr-1.5" /> 4. Computo</TabsTrigger>
-            <TabsTrigger value="artigiani" data-testid="tab-artigiani"><Hammer className="h-4 w-4 mr-1.5" /> 5. Artigiani / Sub</TabsTrigger>
-            <TabsTrigger value="fasi" data-testid="tab-fasi"><CalendarRange className="h-4 w-4 mr-1.5" /> 6. Fasi cantiere (calendario)</TabsTrigger>
-            <TabsTrigger value="foto-cantiere" data-testid="tab-foto-cantiere"><Camera className="h-4 w-4 mr-1.5" /> 7. Foto Cantiere</TabsTrigger>
-            <TabsTrigger value="voci-acquisti" data-testid="tab-voci-acquisti"><Wallet className="h-4 w-4 mr-1.5" /> 8. Voci e Acquisti</TabsTrigger>
-            <TabsTrigger value="cassa" data-testid="tab-cassa"><Wallet className="h-4 w-4 mr-1.5" /> 9. Cassa & Pagamenti</TabsTrigger>
-            <TabsTrigger value="resoconto" data-testid="tab-resoconto"><FileBarChart2 className="h-4 w-4 mr-1.5" /> 10. Resoconto</TabsTrigger>
+            <TabsTrigger value="preventivi" data-testid="tab-preventivi"><FileSignature className="h-4 w-4 mr-1.5" /> 2. Preventivi (originale + extra)</TabsTrigger>
+            <TabsTrigger value="checklist" data-testid="tab-checklist"><ClipboardCheck className="h-4 w-4 mr-1.5" /> 3. Checklist venditore</TabsTrigger>
+            <TabsTrigger value="materiali" data-testid="tab-materiali"><ListChecks className="h-4 w-4 mr-1.5" /> 4. Materiali</TabsTrigger>
+            <TabsTrigger value="computo" data-testid="tab-computo"><Calculator className="h-4 w-4 mr-1.5" /> 5. Computo</TabsTrigger>
+            <TabsTrigger value="artigiani" data-testid="tab-artigiani"><Hammer className="h-4 w-4 mr-1.5" /> 6. Artigiani / Sub</TabsTrigger>
+            <TabsTrigger value="fasi" data-testid="tab-fasi"><CalendarRange className="h-4 w-4 mr-1.5" /> 7. Fasi cantiere (calendario)</TabsTrigger>
+            <TabsTrigger value="foto-cantiere" data-testid="tab-foto-cantiere"><Camera className="h-4 w-4 mr-1.5" /> 8. Foto Cantiere</TabsTrigger>
+            <TabsTrigger value="voci-acquisti" data-testid="tab-voci-acquisti"><Wallet className="h-4 w-4 mr-1.5" /> 9. Voci e Acquisti</TabsTrigger>
+            <TabsTrigger value="cassa" data-testid="tab-cassa"><Wallet className="h-4 w-4 mr-1.5" /> 10. Cassa & Pagamenti</TabsTrigger>
+            <TabsTrigger value="resoconto" data-testid="tab-resoconto"><FileBarChart2 className="h-4 w-4 mr-1.5" /> 11. Resoconto</TabsTrigger>
           </TabsList>
 
           {/* 1. DOCUMENTI (include Contratto + Allegato A + lista obbligatori) */}
           <TabsContent value="documenti" className="mt-4"><Documenti wf={wf} cid={cid} reload={reload} /></TabsContent>
+          {/* 2. PREVENTIVI (lista, modifica, clone-extra) */}
+          <TabsContent value="preventivi" className="mt-4"><PreventiviCommessa cid={cid} com={wf.commessa || {}} /></TabsContent>
           {/* 2. CHECKLIST VENDITORE */}
           <TabsContent value="checklist" className="mt-4"><ChecklistVenditore wf={wf} cid={cid} reload={reload} /></TabsContent>
           {/* 3. MATERIALI */}
@@ -297,6 +300,8 @@ function Documenti({ wf, cid, reload }) {
 
 // Lista documenti obbligatori + altri caricati
 function DocumentiList({ wf, cid, reload, contrattoUrl, contrattoFirmato, allegatoFirmato, allegatoRate }) {
+  const { user } = useAuth();
+  const canEditConfig = user?.role === "admin"; // solo admin può modificare tipo lavori e skip
   const docs = wf.documenti || [];
   const com = wf.commessa || {};
   // tipo_lavori e doc skip list (mantenuti su commessa)
@@ -381,16 +386,21 @@ function DocumentiList({ wf, cid, reload, contrattoUrl, contrattoFirmato, allega
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div>
             <h3 className="font-semibold text-blue-900">Tipo di lavori</h3>
-            <p className="text-xs text-blue-700">Imposta lo scope dell'intervento per filtrare automaticamente i documenti obbligatori. Puoi anche personalizzare manualmente sotto.</p>
+            <p className="text-xs text-blue-700">
+              {canEditConfig
+                ? "Imposta lo scope dell'intervento per filtrare automaticamente i documenti obbligatori. Puoi anche personalizzare manualmente sotto."
+                : <span className="flex items-center gap-1"><Lock className="h-3 w-3" />Configurazione bloccata — solo l'admin può modificare il tipo lavori e quali documenti sono richiesti.</span>}
+            </p>
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
           {Object.keys(PRESETS).map(k => (
             <button
               key={k}
-              onClick={() => applyPresetLavori(k)}
+              onClick={() => canEditConfig && applyPresetLavori(k)}
+              disabled={!canEditConfig}
               data-testid={`tipo-lavori-${k}`}
-              className={`px-3 py-1.5 rounded text-xs font-semibold border ${tipoLavori === k ? "bg-blue-600 text-white border-blue-600" : "bg-white text-blue-700 border-blue-300 hover:bg-blue-100"}`}
+              className={`px-3 py-1.5 rounded text-xs font-semibold border ${tipoLavori === k ? "bg-blue-600 text-white border-blue-600" : "bg-white text-blue-700 border-blue-300 hover:bg-blue-100"} ${!canEditConfig ? "opacity-60 cursor-not-allowed" : ""}`}
             >
               {TIPI_LAVORI_LABEL[k]}
             </button>
@@ -425,14 +435,18 @@ function DocumentiList({ wf, cid, reload, contrattoUrl, contrattoFirmato, allega
               </div>
               {o.critico && !o.done && !o.skipped && <span className="text-[10px] px-1.5 py-0.5 bg-rose-200 text-rose-800 rounded uppercase font-bold">Obbligatorio</span>}
               {o.done && !o.skipped && <span className="text-[10px] text-emerald-700 mono">OK</span>}
-              <button
-                onClick={() => toggleSkip(o.tipo)}
-                className={`text-[10px] px-2 py-0.5 rounded border ${o.skipped ? "bg-amber-100 border-amber-400 text-amber-800 hover:bg-amber-200" : "bg-white border-zinc-300 text-zinc-600 hover:bg-zinc-100"}`}
-                data-testid={`doc-skip-${o.tipo}`}
-                title={o.skipped ? "Riattiva come richiesto" : "Marca come non richiesto"}
-              >
-                {o.skipped ? "Richiedi" : "Non richiesto"}
-              </button>
+              {canEditConfig ? (
+                <button
+                  onClick={() => toggleSkip(o.tipo)}
+                  className={`text-[10px] px-2 py-0.5 rounded border ${o.skipped ? "bg-amber-100 border-amber-400 text-amber-800 hover:bg-amber-200" : "bg-white border-zinc-300 text-zinc-600 hover:bg-zinc-100"}`}
+                  data-testid={`doc-skip-${o.tipo}`}
+                  title={o.skipped ? "Riattiva come richiesto" : "Marca come non richiesto"}
+                >
+                  {o.skipped ? "Richiedi" : "Non richiesto"}
+                </button>
+              ) : (
+                <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-100 text-zinc-400 flex items-center gap-1" title="Solo admin può modificare"><Lock className="h-2.5 w-2.5" />locked</span>
+              )}
             </div>
           ))}
         </div>
@@ -2502,6 +2516,131 @@ function Resoconto({ cid, marg, wf }) {
         <StatCard label="Fasi" value={`${r.fasi_completate} / ${r.fasi_totali}`} icon={CalendarRange} />
         <StatCard label="Saldo da incassare" value={fmtEur(marg.saldo_residuo_cliente)} icon={Clock} color={marg.saldo_residuo_cliente > 0 ? "text-amber-600" : "text-emerald-600"} />
         <StatCard label="Documenti" value={(wf.documenti || []).length} icon={Files} />
+      </div>
+    </div>
+  );
+}
+
+
+// Tab Preventivi della commessa: lista principale + extra, modifica, clone, stampa
+function PreventiviCommessa({ cid, com }) {
+  const nav = useNavigate();
+  const { user } = useAuth();
+  const [prevs, setPrevs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [cloning, setCloning] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api.get(`/commesse/${cid}/preventivi`);
+      setPrevs(r.data || []);
+    } catch (e) {
+      toast.error("Errore caricamento preventivi");
+    }
+    setLoading(false);
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [cid]);
+
+  const editPreventivo = (p) => {
+    const tipo = p.tipo || "pacchetto";
+    const route = tipo === "composite" ? `/preventivocomposite/${p.id}` : `/preventivopacchetto/${p.id}`;
+    nav(route);
+  };
+
+  const clonePreventivo = async (p) => {
+    const titolo = window.prompt(`Crea un preventivo EXTRA basato su questo (originale rimane intatto).\n\nDai un nome all'extra (es. "Variante pavimento", "Extra impianto elettrico"):`, "Variante / extra lavori");
+    if (!titolo) return;
+    setCloning(true);
+    try {
+      const r = await api.post(`/commesse/${cid}/preventivi/clone-from/${p.id}`, { titolo });
+      toast.success("Preventivo extra creato. Aprilo per modificarlo.");
+      await load();
+      editPreventivo(r.data);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Errore");
+    }
+    setCloning(false);
+  };
+
+  const delPreventivo = async (p) => {
+    if (p.is_principale) return toast.error("Non puoi eliminare il preventivo principale della commessa.");
+    if (!window.confirm(`Eliminare preventivo extra?`)) return;
+    try {
+      await api.delete(`/preventivi/${p.id}`);
+      toast.success("Eliminato");
+      load();
+    } catch (e) { toast.error("Errore"); }
+  };
+
+  const totale = prevs.reduce((s, p) => s + Number(p.totale_iva_incl || 0), 0);
+
+  return (
+    <div className="space-y-4" data-testid="preventivi-commessa-tab">
+      <div className="bg-blue-50 border border-blue-200 rounded p-4">
+        <h3 className="font-semibold text-blue-900">Preventivi collegati alla commessa</h3>
+        <p className="text-xs text-blue-700 mt-1">
+          <strong>Originale</strong>: il preventivo accettato che ha aperto la commessa.<br/>
+          <strong>Extra</strong>: nuovi preventivi creati durante il cantiere (varianti, lavori aggiuntivi). Si sommano al totale commessa.<br/>
+          ⚠ Modificare un preventivo già accettato lo riporterà in stato <strong>BOZZA</strong> e richiederà nuova accettazione dal cliente.
+        </p>
+      </div>
+
+      <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-zinc-50 text-xs uppercase text-zinc-500"><tr>
+            <th className="px-3 py-2 text-left w-24">Tipo</th>
+            <th className="px-3 py-2 text-left">Descrizione</th>
+            <th className="px-3 py-2 text-left w-32">Tipologia</th>
+            <th className="px-3 py-2 text-center w-28">Stato</th>
+            <th className="px-3 py-2 text-right w-32">Totale IVA incl.</th>
+            <th className="px-3 py-2 text-center w-44">Azioni</th>
+          </tr></thead>
+          <tbody className="divide-y divide-zinc-100">
+            {loading && <tr><td colSpan={6} className="px-3 py-8 text-center text-zinc-500 text-xs">Caricamento…</td></tr>}
+            {!loading && prevs.map(p => {
+              const titoloExtra = p.note?.match(/\[(.+?)\]/)?.[1] || (p.is_extra ? "Extra" : "Originale");
+              const needsReacc = p.needs_reacceptance && p.stato === "bozza";
+              return (
+                <tr key={p.id} className={p.is_principale ? "bg-blue-50/30" : ""} data-testid={`prev-row-${p.id}`}>
+                  <td className="px-3 py-2">
+                    {p.is_principale ? <Badge color="blue">Principale</Badge> : <Badge color="amber">Extra</Badge>}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="font-medium">{p.is_principale ? `Preventivo originale della commessa` : titoloExtra}</div>
+                    <div className="text-[10px] text-zinc-500 mono">{p.id.slice(0, 8)} · {new Date(p.created_at).toLocaleDateString("it-IT")}</div>
+                    {needsReacc && <div className="text-[10px] text-rose-600 font-bold mt-0.5">⚠ MODIFICATO — Richiede nuova accettazione cliente</div>}
+                  </td>
+                  <td className="px-3 py-2 text-xs">{(p.tipo || "—").toUpperCase()}</td>
+                  <td className="px-3 py-2 text-center">
+                    <Badge color={p.stato === "accettato" ? "green" : p.stato === "rifiutato" ? "red" : p.stato === "inviato" ? "blue" : "zinc"}>{p.stato || "bozza"}</Badge>
+                  </td>
+                  <td className="px-3 py-2 text-right mono font-bold">{fmtEur(p.totale_iva_incl || 0)}</td>
+                  <td className="px-3 py-2 text-center">
+                    <div className="flex gap-1 justify-center flex-wrap">
+                      <button onClick={() => window.open(`/preventivi/${p.id}/stampa`, "_blank")} className="text-xs px-2 py-1 border rounded hover:bg-zinc-50" title="Apri stampa" data-testid={`prev-print-${p.id}`}><FileText className="h-3 w-3 inline" /></button>
+                      <button onClick={() => editPreventivo(p)} className="text-xs px-2 py-1 border rounded hover:bg-blue-50 text-blue-700" title="Modifica" data-testid={`prev-edit-${p.id}`}><Edit3 className="h-3 w-3 inline" /></button>
+                      <button onClick={() => clonePreventivo(p)} disabled={cloning} className="text-xs px-2 py-1 border border-amber-300 rounded hover:bg-amber-50 text-amber-700 disabled:opacity-50" title="Crea EXTRA" data-testid={`prev-clone-${p.id}`}>+ Extra</button>
+                      {!p.is_principale && (user?.role === "admin") && (
+                        <button onClick={() => delPreventivo(p)} className="text-xs px-2 py-1 border border-rose-200 rounded hover:bg-rose-50 text-rose-600" title="Elimina" data-testid={`prev-del-${p.id}`}><Trash2 className="h-3 w-3 inline" /></button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {!loading && !prevs.length && <tr><td colSpan={6} className="px-3 py-12 text-center text-zinc-500 text-sm italic">Nessun preventivo collegato. La commessa è stata creata manualmente.</td></tr>}
+          </tbody>
+          {prevs.length > 0 && (
+            <tfoot className="bg-zinc-50 font-bold">
+              <tr>
+                <td colSpan={4} className="px-3 py-2 text-right text-xs uppercase">Totale commessa (originale + extra):</td>
+                <td className="px-3 py-2 text-right mono text-lg" data-testid="prev-totale-commessa">{fmtEur(totale)}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
       </div>
     </div>
   );

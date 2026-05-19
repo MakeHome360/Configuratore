@@ -1584,10 +1584,75 @@ async def get_preventivo(prev_id: str, user: Dict[str, Any] = Depends(get_curren
     return doc
 
 
+@api.get("/commesse/{cid}/preventivi")
+async def list_preventivi_commessa(cid: str, user: Dict[str, Any] = Depends(get_current_user)):
+    """Lista TUTTI i preventivi collegati a una commessa: quello originale (preventivo_id su commessa)
+    + tutti gli extra (preventivi con campo commessa_id=cid)."""
+    com = await db.commesse.find_one({"id": cid}, {"_id": 0})
+    if not com:
+        raise HTTPException(404, "Commessa non trovata")
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    # 1) Preventivo principale
+    if com.get("preventivo_id"):
+        p = await db.preventivi.find_one({"id": com["preventivo_id"]}, {"_id": 0})
+        if p:
+            p["is_principale"] = True
+            out.append(p)
+            seen.add(p["id"])
+    # 2) Preventivi extra (collegati per commessa_id)
+    async for p in db.preventivi.find({"commessa_id": cid}, {"_id": 0}):
+        if p["id"] in seen:
+            continue
+        p["is_principale"] = False
+        out.append(p)
+    # Sort: principale primo, poi per data creazione asc
+    out.sort(key=lambda x: (0 if x.get("is_principale") else 1, x.get("created_at") or ""))
+    return out
+
+
+@api.post("/commesse/{cid}/preventivi/clone-from/{prev_id}")
+async def clone_preventivo_for_commessa(cid: str, prev_id: str, body: Dict[str, Any] = None, user: Dict[str, Any] = Depends(get_current_user)):
+    """Clona un preventivo esistente come EXTRA della commessa.
+    Permette di gestire variazioni in corso d'opera senza modificare il preventivo originale accettato."""
+    body = body or {}
+    com = await db.commesse.find_one({"id": cid}, {"_id": 0})
+    if not com:
+        raise HTTPException(404, "Commessa non trovata")
+    src = await db.preventivi.find_one({"id": prev_id}, {"_id": 0})
+    if not src:
+        raise HTTPException(404, "Preventivo sorgente non trovato")
+    # Copia preventivo
+    new_prev = {**src}
+    new_prev.pop("_id", None)
+    new_id = str(uuid.uuid4())
+    new_prev["id"] = new_id
+    new_prev["commessa_id"] = cid
+    new_prev["is_extra"] = True
+    new_prev["parent_preventivo_id"] = prev_id
+    new_prev["stato"] = "bozza"
+    new_prev["created_at"] = datetime.now(timezone.utc).isoformat()
+    new_prev["updated_at"] = new_prev["created_at"]
+    titolo_extra = body.get("titolo") or f"Extra/Variante del {datetime.now().strftime('%d/%m/%Y')}"
+    new_prev["note"] = f"[{titolo_extra}] {src.get('note') or ''}".strip()
+    new_prev["user_id"] = user.get("id")
+    # Rimuove eventuali firme e accettazioni dal clone (è una nuova proposta)
+    for k in ("firma_otp", "firma_data", "firma_ip", "accepted_at"):
+        new_prev.pop(k, None)
+    await db.preventivi.insert_one(new_prev)
+    new_prev.pop("_id", None)
+    return new_prev
+
+
 @api.put("/preventivi/{prev_id}")
 async def update_preventivo(prev_id: str, body: PreventivoIn, user: Dict[str, Any] = Depends(get_current_user)):
     update_doc = {**body.model_dump(exclude_none=False), "updated_at": datetime.now(timezone.utc).isoformat()}
     update_doc.pop("id", None)
+    # Se il preventivo era accettato e l'utente lo modifica, richiede NUOVA accettazione (torna a bozza)
+    existing = await db.preventivi.find_one({"id": prev_id, "user_id": user["id"]}, {"_id": 0, "stato": 1})
+    if existing and existing.get("stato") == "accettato":
+        update_doc["stato"] = "bozza"
+        update_doc["needs_reacceptance"] = True
     await db.preventivi.update_one({"id": prev_id, "user_id": user["id"]}, {"$set": update_doc})
     doc = await db.preventivi.find_one({"id": prev_id, "user_id": user["id"]}, {"_id": 0})
     if not doc:

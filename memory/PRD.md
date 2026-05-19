@@ -1,6 +1,63 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 72 — CRM potenziato: dettaglio lead + import lista CSV/Excel (Feb 2026)
+
+**Richieste utente** (testuale):
+1. "se carico un contatto devo poter aprire e vedere anche i dati per contattarlo"
+2. "lavoro anche con sistemi che mi danno liste di lead da chiamare, mi devi fare la possibilità di importare liste intere di lead"
+
+### Backend (`routes_biz.py`)
+- **`GET /api/leads/{lid}`** — dettaglio singolo lead (mancante prima).
+- **`POST /api/leads/{lid}/note`** — aggiunge una nota di follow-up timestampata alla `note_history` del lead. Tipi: `nota | chiamata | email | meeting`. Esito opzionale (`positivo/neutro/negativo/no_risposta`). Aggiorna `ultimo_contatto`.
+- **`DELETE /api/leads/{lid}/note/{nid}`** — elimina singola nota.
+- **`POST /api/leads/import`** — multipart upload `file` (.csv/.xlsx/.xls) + `source` (etichetta tracciabilità) + `dedupe` bool.
+  - Auto-mapping colonne (case-insensitive, accent-stripped, IT+EN): nome/cognome/telefono/email/citta/indirizzo/mq/tipo_immobile/note/anno_costruzione/piano. Riconosce alias come `First_Name`, `Phone`, `Mobile`, `E-Mail`, `City`, `Comune`, `Localita`, `Property`.
+  - CSV: auto-detect separator (`;` o `,`).
+  - Excel: tramite `openpyxl` (già presente).
+  - Dedupe per email (lowercase) + telefono (solo cifre) confrontando sia con DB sia internamente al batch.
+  - Risposta: `{imported, skipped_duplicates, errors[], total_rows, columns_detected, columns_unmapped}`.
+  - Tutti i lead importati salvano `source`, `imported_at` e `note_history: []`.
+
+### Frontend
+- **`/app/frontend/src/pages/CRM.jsx`** (riscritto, ~250 LOC):
+  - Barra ricerca (`crm-search`) live filtra per nome/telefono/email/città.
+  - Filter source (`crm-filter-source`) appare se ci sono lead con `source` (utile per filtrare per campagna/lista importata).
+  - Bottone "Importa lista" (`crm-import-btn`) apre dialog completo.
+  - Pipeline cards e tabella rows ora **cliccabili** → apre `/crm/lead/:lid`.
+  - Bottone Eye (`crm-open-{id}`, `crm-row-open-{id}`) per apertura diretta.
+  - Click su tel/email nella tabella non propaga e apre tel:/mailto:.
+- **`/app/frontend/src/pages/LeadDetail.jsx`** (NUOVO, ~280 LOC):
+  - Header con nome cliente, badge stato, source (📥), `ultimo_contatto`.
+  - **4 azioni rapide** (`lead-action-{call,whatsapp,email,map}`): tel: / wa.me/ (con +39 prefix auto) / mailto: con subject precompilato / Google Maps.
+  - Dati contatto (nome, cognome, telefono, email, indirizzo, città) + Dati immobile (tipo, mq, anno, piano, muri, impianti) in **read-only di default**; click "Modifica" (`lead-edit-btn`) → tutti i campi diventano editabili; "Salva" (`lead-save-btn`) persiste.
+  - Sezione "Esigenze rilevate" (popolata dal configuratore).
+  - Banner pacchetto consigliato con CTA "Crea Preventivo" (`lead-create-preventivo`).
+  - **Sidebar** cambio stato (5 bottoni `lead-set-stato-{stato}`) + bottone elimina lead.
+  - **Sezione "Nuova attività"** (`lead-add-note-section`): 4 tipi nota con icone, select esito condizionale per chiamata/email/meeting, textarea + save.
+  - **Timeline cronologia** ordinata DESC, ogni nota con icona tipo, esito emoji, timestamp, autore. Delete singola nota.
+- **Route**: `/crm/lead/:lid` aggiunta in `App.js`.
+
+### Testing
+- `tests/test_round72_crm_import.py`: **5/5 PASS**
+  - detail endpoint 200 + 404
+  - note history (add 2, ordine DESC, ultimo_contatto, delete)
+  - CSV import IT con dedupe (3 imp, 1 dup)
+  - CSV import alias EN (First_Name/Phone/E-Mail/City)
+  - format invalido → 400
+- Regression Round 68-71: **42/42 PASS** (1 skip pre-esistente).
+- `testing_agent_v3_fork` iteration_24: 0 issue critici/major/minor, tutti i data-testid validati, 4 quick actions con href corretti, edit↔read toggle funzionante, cambio stato funzionante, nota add+timeline funzionante.
+
+### File modificati
+- `backend/routes_biz.py` (4 nuovi endpoint + UploadFile/File/Form imports)
+- `frontend/src/pages/CRM.jsx` (RISCRITTO)
+- `frontend/src/pages/LeadDetail.jsx` (NUOVO)
+- `frontend/src/App.js` (route)
+- `backend/tests/test_round72_crm_import.py` (NUOVO)
+
+
+
+
 ## Round 71 — Pacchetti override + Listini inclusi + Documenti per tipo lavori + Computo completo (Feb 2026)
 
 **Richieste utente** (4 punti):

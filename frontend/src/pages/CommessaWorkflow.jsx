@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileSignature, Files, ListChecks, Calculator, Hammer, CalendarRange, Wallet, FileBarChart2, Plus, Trash2, ShieldCheck, AlertTriangle, Sparkles, CheckCircle2, Clock, ClipboardCheck, Camera, Image as ImageIcon, Save, Download } from "lucide-react";
+import { FileSignature, Files, ListChecks, Calculator, Hammer, CalendarRange, Wallet, FileBarChart2, Plus, Trash2, ShieldCheck, AlertTriangle, Sparkles, CheckCircle2, Clock, ClipboardCheck, Camera, Image as ImageIcon, Save, Download, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -299,26 +299,76 @@ function Documenti({ wf, cid, reload }) {
 function DocumentiList({ wf, cid, reload, contrattoUrl, contrattoFirmato, allegatoFirmato, allegatoRate }) {
   const docs = wf.documenti || [];
   const com = wf.commessa || {};
+  // tipo_lavori e doc skip list (mantenuti su commessa)
+  const [tipoLavori, setTipoLavori] = useState(com.tipo_lavori || "ristrutturazione_completa");
+  const [skipList, setSkipList] = useState(com.documenti_skip || []);
+  useEffect(() => { setTipoLavori(com.tipo_lavori || "ristrutturazione_completa"); setSkipList(com.documenti_skip || []); /* eslint-disable-next-line */ }, [com.id, com.tipo_lavori, JSON.stringify(com.documenti_skip)]);
+
+  // Preset: documenti richiesti per tipo di lavoro
+  const PRESETS = {
+    ristrutturazione_completa: ["contratto","allegato_a","doc_cliente","codice_fiscale","privacy","pratica","preventivo","tavola_progetto"],
+    parziale: ["contratto","allegato_a","doc_cliente","codice_fiscale","privacy","preventivo"],
+    manutenzione: ["contratto","allegato_a","doc_cliente","privacy","preventivo"],
+    infissi_only: ["contratto","allegato_a","doc_cliente","codice_fiscale","privacy","preventivo","tavola_progetto"],
+    custom: null, // custom = mostra tutti, l'utente decide quali skip
+  };
+  const TIPI_LAVORI_LABEL = {
+    ristrutturazione_completa: "Ristrutturazione completa",
+    parziale: "Ristrutturazione parziale",
+    manutenzione: "Manutenzione / piccoli lavori",
+    infissi_only: "Solo infissi",
+    custom: "Personalizzato",
+  };
+  const applyPresetLavori = async (nuovo) => {
+    setTipoLavori(nuovo);
+    const richiesti = PRESETS[nuovo];
+    // skipList = tutti gli obbligatori NON nel preset
+    const all = ["contratto","allegato_a","doc_cliente","codice_fiscale","privacy","pratica","preventivo","tavola_progetto"];
+    const newSkip = richiesti ? all.filter(x => !richiesti.includes(x)) : skipList;
+    setSkipList(newSkip);
+    try {
+      await api.put(`/commesse/${cid}`, { ...com, tipo_lavori: nuovo, documenti_skip: newSkip });
+      toast.success(`Tipo lavori impostato: ${TIPI_LAVORI_LABEL[nuovo]}`);
+      reload();
+    } catch (e) { toast.error("Errore salvataggio"); }
+  };
+  const toggleSkip = async (tipo) => {
+    const nuovo = skipList.includes(tipo) ? skipList.filter(x => x !== tipo) : [...skipList, tipo];
+    setSkipList(nuovo);
+    try {
+      await api.put(`/commesse/${cid}`, { ...com, documenti_skip: nuovo, tipo_lavori: "custom" });
+      setTipoLavori("custom");
+      reload();
+    } catch (e) { toast.error("Errore salvataggio"); }
+  };
+
   // Documenti OBBLIGATORI: ogni voce ha tipo, label, helper, e stato derivato
   const tavoleProgetto = docs.filter(d => /tavola|progetto|planimetria|cad/i.test(d.tipo || d.name || ""));
-  const obligatori = [
+  const preventivoCaricato = docs.find(d => /preventivo/i.test(d.tipo || d.name || ""));
+  // URL stampa del preventivo (auto-SYS row)
+  const preventivoStampaUrl = com.preventivo_id ? `${window.location.origin}/preventivi/${com.preventivo_id}/stampa` : null;
+  const obligatoriRaw = [
     { tipo: "contratto", label: "Contratto cliente firmato", done: !!contrattoUrl && !!contrattoFirmato, partial: !!contrattoUrl && !contrattoFirmato, hint: contrattoUrl ? "Caricato — manca firma" : "Carica contratto qui sopra", critico: true },
     { tipo: "allegato_a", label: "Allegato A — Piano dei pagamenti", done: allegatoRate > 0 && allegatoFirmato, partial: allegatoRate > 0 && !allegatoFirmato, hint: allegatoRate > 0 ? "Rate definite — manca firma" : "Compila le rate qui sopra", critico: true },
     { tipo: "doc_cliente", label: "Documento d'identità cliente", done: docs.some(d => /identit|carta|patente|passaporto/i.test(d.tipo || d.name || "")), hint: "Carica copia CI/Patente del cliente", critico: true },
     { tipo: "codice_fiscale", label: "Codice fiscale cliente", done: docs.some(d => /codice.?fiscale|cf|tessera.?sanitaria/i.test(d.tipo || d.name || "")), hint: "Carica copia del codice fiscale", critico: true },
     { tipo: "privacy", label: "Modulo Privacy / GDPR", done: docs.some(d => /privacy|gdpr/i.test(d.tipo || d.name || "")), hint: "Carica modulo privacy firmato", critico: true },
     { tipo: "pratica", label: "Pratica edilizia (CILA/SCIA/Permesso)", done: docs.some(d => /cila|scia|permesso|pratica|edilizia/i.test(d.tipo || d.name || "")), hint: "Carica CILA / SCIA / Permesso di costruire", critico: false },
-    { tipo: "preventivo", label: "Preventivo accettato (PDF)", done: !!com.preventivo_id || docs.some(d => /preventivo/i.test(d.tipo || d.name || "")), hint: "Verrà generato in automatico se preventivo collegato", critico: false },
-    { tipo: "tavola_progetto", label: "Tavole CAD firmate dal cliente", done: tavoleProgetto.length > 0, hint: tavoleProgetto.length > 0 ? `${tavoleProgetto.length} tavola/e collegata/e` : "Conferma tavole dal CAD per linkarle qui", critico: false },
+    { tipo: "preventivo", label: "Preventivo accettato (PDF)", done: !!preventivoStampaUrl || !!preventivoCaricato, hint: preventivoStampaUrl ? "Generato automaticamente dal preventivo collegato" : "Verrà generato in automatico se preventivo collegato, oppure carica PDF", critico: false },
+    { tipo: "tavola_progetto", label: "Tavole CAD / Progetto", done: tavoleProgetto.length > 0, hint: tavoleProgetto.length > 0 ? `${tavoleProgetto.length} tavola/e collegata/e` : "Carica PDF/DWG oppure conferma tavole dal CAD", critico: false },
   ];
-  const okCount = obligatori.filter(o => o.done).length;
-  const totCount = obligatori.length;
+  // Applica skipList (i marcati come "non richiesto" non contano per il totale)
+  const obligatori = obligatoriRaw.map(o => ({ ...o, skipped: skipList.includes(o.tipo) }));
+  const richiestiCount = obligatori.filter(o => !o.skipped).length;
+  const okCount = obligatori.filter(o => !o.skipped && o.done).length;
+  const totCount = richiestiCount;
 
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ tipo: "doc_cliente", name: "", url: "", note: "" });
   const downloadAll = () => {
     const links = docs.filter(d => d.url).map(d => d.url);
     if (contrattoUrl) links.unshift(contrattoUrl);
+    if (preventivoStampaUrl) links.push(preventivoStampaUrl);
     if (!links.length) { toast.error("Nessun documento scaricabile"); return; }
     toast.success(`Apertura di ${links.length} documenti in nuove schede…`);
     links.forEach((u, i) => setTimeout(() => window.open(u, "_blank", "noopener"), i * 150));
@@ -326,34 +376,83 @@ function DocumentiList({ wf, cid, reload, contrattoUrl, contrattoFirmato, allega
 
   return (
     <div className="space-y-3" data-testid="documenti-list-section">
+      {/* Selettore tipo di lavori */}
+      <div className="bg-blue-50 border border-blue-200 rounded p-4" data-testid="tipo-lavori-section">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div>
+            <h3 className="font-semibold text-blue-900">Tipo di lavori</h3>
+            <p className="text-xs text-blue-700">Imposta lo scope dell'intervento per filtrare automaticamente i documenti obbligatori. Puoi anche personalizzare manualmente sotto.</p>
+          </div>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {Object.keys(PRESETS).map(k => (
+            <button
+              key={k}
+              onClick={() => applyPresetLavori(k)}
+              data-testid={`tipo-lavori-${k}`}
+              className={`px-3 py-1.5 rounded text-xs font-semibold border ${tipoLavori === k ? "bg-blue-600 text-white border-blue-600" : "bg-white text-blue-700 border-blue-300 hover:bg-blue-100"}`}
+            >
+              {TIPI_LAVORI_LABEL[k]}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Checklist obbligatori */}
       <div className="bg-white border border-zinc-200 rounded p-5">
         <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="font-semibold">Documenti obbligatori della commessa</h3>
-            <p className="text-xs text-zinc-500">Lista di tutti i documenti richiesti per chiudere la pratica. Tutti possono essere scaricati dal cliente/azienda.</p>
+            <p className="text-xs text-zinc-500">{TIPI_LAVORI_LABEL[tipoLavori]} · richiesti {richiestiCount} su {obligatoriRaw.length} totali. Disabilita singoli documenti per renderli opzionali.</p>
           </div>
           <div className="text-right">
-            <div className={`text-2xl font-bold mono ${okCount === totCount ? "text-emerald-700" : "text-amber-700"}`}>{okCount}/{totCount}</div>
+            <div className={`text-2xl font-bold mono ${okCount === totCount && totCount > 0 ? "text-emerald-700" : "text-amber-700"}`}>{okCount}/{totCount}</div>
             <div className="text-[10px] uppercase text-zinc-500">obbligatori OK</div>
           </div>
         </div>
         <div className="space-y-1.5">
           {obligatori.map((o, i) => (
-            <div key={o.tipo} className={`flex items-center gap-3 p-2.5 rounded border ${o.done ? "bg-emerald-50 border-emerald-200" : o.partial ? "bg-amber-50 border-amber-300" : o.critico ? "bg-rose-50/40 border-rose-200" : "bg-zinc-50 border-zinc-200"}`} data-testid={`doc-obbl-${o.tipo}`}>
+            <div key={o.tipo} className={`flex items-center gap-3 p-2.5 rounded border ${o.skipped ? "bg-zinc-50 border-zinc-200 opacity-50" : o.done ? "bg-emerald-50 border-emerald-200" : o.partial ? "bg-amber-50 border-amber-300" : o.critico ? "bg-rose-50/40 border-rose-200" : "bg-zinc-50 border-zinc-200"}`} data-testid={`doc-obbl-${o.tipo}`}>
               <span className="text-[10px] mono text-zinc-400 w-5 text-right">{i + 1}.</span>
-              <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${o.done ? "bg-emerald-500 text-white" : o.partial ? "bg-amber-500 text-white" : "bg-white border-2 border-zinc-300"}`}>
-                {o.done && <CheckCircle2 size={14} />}
-                {o.partial && !o.done && <Clock size={14} />}
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${o.skipped ? "bg-zinc-200" : o.done ? "bg-emerald-500 text-white" : o.partial ? "bg-amber-500 text-white" : "bg-white border-2 border-zinc-300"}`}>
+                {o.done && !o.skipped && <CheckCircle2 size={14} />}
+                {o.partial && !o.done && !o.skipped && <Clock size={14} />}
+                {o.skipped && <X size={12} className="text-zinc-500" />}
               </div>
               <div className="flex-1 text-sm">
-                <div className="font-medium">{o.label}</div>
-                <div className="text-xs text-zinc-500">{o.hint}</div>
+                <div className={`font-medium ${o.skipped ? "line-through text-zinc-500" : ""}`}>{o.label}</div>
+                <div className="text-xs text-zinc-500">{o.skipped ? "Non richiesto per questo tipo di lavori" : o.hint}</div>
               </div>
-              {o.critico && !o.done && <span className="text-[10px] px-1.5 py-0.5 bg-rose-200 text-rose-800 rounded uppercase font-bold">Obbligatorio</span>}
-              {o.done && <span className="text-[10px] text-emerald-700 mono">OK</span>}
+              {o.critico && !o.done && !o.skipped && <span className="text-[10px] px-1.5 py-0.5 bg-rose-200 text-rose-800 rounded uppercase font-bold">Obbligatorio</span>}
+              {o.done && !o.skipped && <span className="text-[10px] text-emerald-700 mono">OK</span>}
+              <button
+                onClick={() => toggleSkip(o.tipo)}
+                className={`text-[10px] px-2 py-0.5 rounded border ${o.skipped ? "bg-amber-100 border-amber-400 text-amber-800 hover:bg-amber-200" : "bg-white border-zinc-300 text-zinc-600 hover:bg-zinc-100"}`}
+                data-testid={`doc-skip-${o.tipo}`}
+                title={o.skipped ? "Riattiva come richiesto" : "Marca come non richiesto"}
+              >
+                {o.skipped ? "Richiedi" : "Non richiesto"}
+              </button>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Quick action: carica tavole CAD */}
+      <div className="bg-purple-50 border border-purple-200 rounded p-4 flex items-center justify-between flex-wrap gap-2" data-testid="tavole-cad-section">
+        <div>
+          <h3 className="font-semibold text-purple-900">Tavole di progetto / CAD</h3>
+          <p className="text-xs text-purple-700">Carica direttamente PDF/DWG delle tavole, oppure conferma le tavole disegnate nel CAD dal pannello Editor (saranno linkate qui).</p>
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => { setForm({ tipo: "tavola", name: "", url: "", note: "" }); setOpen(true); }} data-testid="tavola-upload-btn" className="border-purple-400 text-purple-700 hover:bg-purple-100">
+            <Plus className="h-4 w-4 mr-1" /> Carica tavola
+          </Button>
+          {com.project_id && (
+            <Button size="sm" variant="outline" onClick={() => window.open(`/editor/${com.project_id}`, "_blank")} data-testid="tavola-cad-link" className="border-purple-400 text-purple-700 hover:bg-purple-100">
+              Apri CAD ↗
+            </Button>
+          )}
         </div>
       </div>
 
@@ -361,12 +460,12 @@ function DocumentiList({ wf, cid, reload, contrattoUrl, contrattoFirmato, allega
       <div className="bg-white border border-zinc-200 rounded">
         <div className="flex items-center justify-between p-4 border-b border-zinc-200 gap-2 flex-wrap">
           <div>
-            <h3 className="font-semibold">Tutti i documenti caricati ({docs.length + (contrattoUrl ? 1 : 0)})</h3>
-            <p className="text-xs text-zinc-500">Contratto, doc cliente, pratiche, tavole, foto, ecc. Click su un link per aprire / scaricare. Bottone "Scarica tutti" apre ogni documento in una nuova scheda.</p>
+            <h3 className="font-semibold">Tutti i documenti caricati ({docs.length + (contrattoUrl ? 1 : 0) + (preventivoStampaUrl ? 1 : 0)})</h3>
+            <p className="text-xs text-zinc-500">Contratto, preventivo, doc cliente, pratiche, tavole, foto, ecc. Click su un link per aprire / scaricare. Bottone "Scarica tutti" apre ogni documento in una nuova scheda.</p>
           </div>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={downloadAll} data-testid="doc-download-all"><Download className="h-4 w-4 mr-1" /> Scarica tutti</Button>
-            <Button size="sm" onClick={() => setOpen(true)} data-testid="doc-add" style={{ background: "var(--brand)", color: "white" }}><Plus className="h-4 w-4 mr-1" /> Aggiungi</Button>
+            <Button size="sm" onClick={() => { setForm({ tipo: "doc_cliente", name: "", url: "", note: "" }); setOpen(true); }} data-testid="doc-add" style={{ background: "var(--brand)", color: "white" }}><Plus className="h-4 w-4 mr-1" /> Aggiungi</Button>
           </div>
         </div>
         <table className="w-full text-sm">
@@ -383,6 +482,15 @@ function DocumentiList({ wf, cid, reload, contrattoUrl, contrattoFirmato, allega
                 <td></td>
               </tr>
             )}
+            {preventivoStampaUrl && (
+              <tr className="bg-blue-50/40" data-testid="doc-row-preventivo">
+                <td className="px-3 py-2 text-xs uppercase"><span className="inline-block text-[9px] mr-1 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-bold">SYS</span>preventivo</td>
+                <td className="px-3 py-2 font-medium">Preventivo accettato — pagina stampabile</td>
+                <td className="px-3 py-2 text-xs"><a href={preventivoStampaUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline" data-testid="doc-preventivo-link">apri ↗</a></td>
+                <td className="px-3 py-2 text-xs text-zinc-500">Generato automaticamente dal preventivo {com.preventivo_id?.slice(0, 8)}…</td>
+                <td></td>
+              </tr>
+            )}
             {docs.map(d => (
               <tr key={d.id}>
                 <td className="px-3 py-2 text-xs uppercase">{d.tipo}</td>
@@ -392,7 +500,7 @@ function DocumentiList({ wf, cid, reload, contrattoUrl, contrattoFirmato, allega
                 <td className="px-3 py-2 text-right"><button className="text-rose-600 hover:bg-rose-50 p-1" onClick={async () => { await api.delete(`/commesse/${cid}/workflow/documenti/${d.id}`); reload(); }} data-testid={`doc-del-${d.id}`}><Trash2 className="h-4 w-4" /></button></td>
               </tr>
             ))}
-            {!docs.length && !contrattoUrl && <tr><td colSpan={5} className="px-3 py-12 text-center text-zinc-500">Nessun documento. Carica contratto sopra, oppure aggiungi documenti vari.</td></tr>}
+            {!docs.length && !contrattoUrl && !preventivoStampaUrl && <tr><td colSpan={5} className="px-3 py-12 text-center text-zinc-500">Nessun documento. Carica contratto sopra, oppure aggiungi documenti vari.</td></tr>}
           </tbody>
         </table>
         <Dialog open={open} onOpenChange={setOpen}>

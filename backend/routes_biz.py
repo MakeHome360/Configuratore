@@ -1185,7 +1185,24 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
         await db.preventivi.update_one({"id": prev["id"]}, {"$set": {"commessa_id": doc["id"]}})
         # Auto-genera computo metrico
         try:
-            voci_prev = prev.get("items") or prev.get("voci_dettaglio") or prev.get("computo") or []
+            # Voci principali dal preventivo (escludendo quelle che il venditore ha rimosso)
+            raw_items = prev.get("items") or prev.get("voci_dettaglio") or prev.get("computo") or []
+            voci_prev = [it for it in raw_items if not (isinstance(it, dict) and it.get("excluded"))]
+            # OPTIONAL: aggiungi al computo come voci dedicate
+            for op in (prev.get("optional") or []):
+                q = float(op.get("qty") or 0)
+                pu = float(op.get("unit_price") or 0)
+                if q <= 0 and pu <= 0:
+                    continue
+                voci_prev.append({
+                    "voce_id": op.get("id"),
+                    "name": (op.get("name") or "Optional") + " (optional)",
+                    "qty": q if q > 0 else 1,
+                    "unit": op.get("unit") or "pz",
+                    "unit_price": pu,
+                    "total": round((q if q > 0 else 1) * pu, 2),
+                    "category": "OPTIONAL",
+                })
             # COMPOSITE: deriva da composite_selections (può essere LIST [{voce_id, qty, ...}] o DICT legacy {voce_id: {qty, ...}})
             if not voci_prev and prev.get("composite_selections"):
                 csel = prev.get("composite_selections") or {}
@@ -1252,7 +1269,16 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
                         })
                     voci_prev = derived
             # LISTINI FORNITORI (aggiunti SEMPRE dopo derive, per composite e pacchetto)
-            for ls in (prev.get("listini_selections") or []):
+            # Combina selezioni del venditore + pre-inclusi nel pacchetto (snapshot al preventivo)
+            listini_all = []
+            listini_all.extend(prev.get("listini_selections") or [])
+            listini_all.extend(prev.get("package_listini_items") or [])
+            seen_ls = set()
+            for ls in listini_all:
+                key = (ls.get("listino_id"), ls.get("id"))
+                if key in seen_ls:
+                    continue
+                seen_ls.add(key)
                 qty = float(ls.get("qty") or 1)
                 pu = float(ls.get("prezzo_rivendita") or 0)
                 voci_prev.append({

@@ -237,11 +237,15 @@ export default function PreventivoPacchetto() {
   }, [prev.mq]);
 
   const totals = useMemo(() => {
-    if (!pkg) return { base: 0, extras: 0, optional: 0, bagno: 0, subtotal: 0, sconto: 0, iva: 0, total: 0, mqAdjustment };
+    if (!pkg) return { base: 0, extras: 0, optional: 0, bagno: 0, subtotal: 0, sconto: 0, iva: 0, total: 0, mqAdjustment, hasOverride: false };
     // Voci ESCLUSE dal preventivo (rimosse dall'utente): non contano né come base né come extras
     const activeItems = (prev.items || []).filter((it) => !it.excluded);
-    // BASE: applica multiplier mq adjustment usando mq_effettivi (forfait per <40mq, mq reali per gli altri)
-    const base = pkg.price_per_m2 * mqAdjustment.mq_effettivi * mqAdjustment.multiplier;
+    // BASE: se l'admin ha definito un PREZZO TOTALE FISSO sul pacchetto (price_override),
+    // usa quello e ignora €/mq e maggiorazione mq. Altrimenti applica €/mq × mq_effettivi × multiplier.
+    const hasOverride = pkg.price_override != null && Number(pkg.price_override) > 0;
+    const base = hasOverride
+      ? Number(pkg.price_override)
+      : pkg.price_per_m2 * mqAdjustment.mq_effettivi * mqAdjustment.multiplier;
     const extras = activeItems.reduce((s, it) => {
       const incl = it.included_qty || 0;
       const reqs = Math.max(0, it.qty_richiesta || 0);
@@ -287,13 +291,17 @@ export default function PreventivoPacchetto() {
       bagno = prev.bathroom_surcharge || 0;
     }
     // Totale finiture da listini fornitori (porte, piastrelle, sanitari, ecc.)
-    const listini = (prev.listini_selections || []).reduce((s, p) => s + ((parseFloat(p.qty) || 0) * (parseFloat(p.prezzo_rivendita) || 0)), 0);
+    // = pre-inclusi nel pacchetto (pkg.listini_items) + scelti dal venditore (prev.listini_selections)
+    // Se il pacchetto ha price_override, i pre-inclusi sono GIÀ contenuti nel prezzo forfait, non si sommano.
+    const listiniPkg = hasOverride ? 0 : ((pkg.listini_items || []).reduce((s, p) => s + ((parseFloat(p.qty) || 0) * (parseFloat(p.prezzo_rivendita) || 0)), 0));
+    const listiniSel = (prev.listini_selections || []).reduce((s, p) => s + ((parseFloat(p.qty) || 0) * (parseFloat(p.prezzo_rivendita) || 0)), 0);
+    const listini = listiniPkg + listiniSel;
     const subtotal = base + extras + optional + bagno + listini;
     const sconto = subtotal * (prev.sconto_pct || 0) / 100;
     const afterDisc = subtotal - sconto;
     const iva = afterDisc * (prev.iva_pct || 10) / 100;
     const total = afterDisc + iva;
-    return { base, extras, optional, bagno, listini, subtotal, sconto, iva, total, mqAdjustment };
+    return { base, extras, optional, bagno, listini, listiniPkg, listiniSel, subtotal, sconto, iva, total, mqAdjustment, hasOverride };
   }, [prev, pkg, bathroomTiers, mqAdjustment]);
 
   const save = async () => {
@@ -307,9 +315,20 @@ export default function PreventivoPacchetto() {
       optional: prev.optional,
       bathroom_tier: prev.bathroom_tier, // legacy
       bathrooms: prev.bathrooms || [],   // nuovo: bagni multipli
+      // Prodotti scelti dai listini fornitori (porte, piastrelle, sanitari…)
+      // VANNO SALVATI sul preventivo per essere propagati al Computo Metrico della commessa.
+      listini_selections: prev.listini_selections || [],
+      // Infissi extra aggiunti dal modal (calcolo automatico)
+      infissi_extras: prev.infissi_extras || [],
+      // Pre-inclusi nel pacchetto (snapshot per tracciabilità futura)
+      package_listini_items: pkg?.listini_items || [],
+      // Flag override prezzo forfait (snapshot del pacchetto al momento del preventivo)
+      package_price_override: pkg?.price_override ?? null,
+      package_base_total: totals.base,
       note: prev.note,
       sconto_pct: prev.sconto_pct,
       iva_pct: prev.iva_pct,
+      modalita_pagamento: prev.modalita_pagamento || null,
       totale_iva_incl: totals.total,
       totale_iva_escl: totals.subtotal - totals.sconto,
     };
@@ -429,17 +448,28 @@ export default function PreventivoPacchetto() {
                   <div className="mono text-xs text-zinc-500 mt-2">La superficie calpestabile totale dell'immobile.</div>
                 </div>
                 {pkg && prev.mq > 0 && (
-                  <div className="mt-8 border border-zinc-200 p-6 max-w-md">
+                  <div className="mt-8 border border-zinc-200 p-6 max-w-md" data-testid="preview-base">
                     <div className="label-kicker mb-2">Preview base</div>
-                    <div className="mono text-3xl">{fmtEuro(pkg.price_per_m2 * mqAdjustment.mq_effettivi * mqAdjustment.multiplier)}</div>
-                    <div className="text-xs text-zinc-500 mono mt-1">
-                      {pkg.name} · {fmtNum(pkg.price_per_m2, 0)} €/m² × {fmtNum(mqAdjustment.mq_effettivi, 1)} m²
-                      {mqAdjustment.multiplier !== 1 && <> · <span className="text-amber-700 font-semibold">×{mqAdjustment.multiplier.toFixed(2)} (maggiorazione mq piccole)</span></>}
-                    </div>
+                    {totals.hasOverride ? (
+                      <>
+                        <div className="mono text-3xl">{fmtEuro(Number(pkg.price_override))}</div>
+                        <div className="text-xs text-zinc-500 mono mt-1">
+                          {pkg.name} · <span className="text-amber-700 font-semibold">prezzo forfait pacchetto</span> (€/m² ignorato)
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="mono text-3xl">{fmtEuro(pkg.price_per_m2 * mqAdjustment.mq_effettivi * mqAdjustment.multiplier)}</div>
+                        <div className="text-xs text-zinc-500 mono mt-1">
+                          {pkg.name} · {fmtNum(pkg.price_per_m2, 0)} €/m² × {fmtNum(mqAdjustment.mq_effettivi, 1)} m²
+                          {mqAdjustment.multiplier !== 1 && <> · <span className="text-amber-700 font-semibold">×{mqAdjustment.multiplier.toFixed(2)} (maggiorazione mq piccole)</span></>}
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
-                {/* Banner maggiorazione mq piccole */}
-                {prev.mq > 0 && mqAdjustment.mode !== "normal" && (
+                {/* Banner maggiorazione mq piccole — non si applica se override */}
+                {prev.mq > 0 && !totals.hasOverride && mqAdjustment.mode !== "normal" && (
                   <div className={`mt-4 max-w-md border-l-4 p-4 text-sm ${mqAdjustment.mode === "a_corpo" ? "bg-rose-50 border-rose-500 text-rose-900" : "bg-amber-50 border-amber-500 text-amber-900"}`} data-testid="mq-adjustment-banner">
                     <div className="flex items-start gap-2">
                       <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5" />
@@ -673,6 +703,45 @@ export default function PreventivoPacchetto() {
                     </div>
                     <Button size="sm" onClick={() => setListinoPickerOpen(true)} style={{ background: "var(--brand)", color: "white" }} data-testid="pack-listini-add"><Plus className="h-4 w-4 mr-1" />Aggiungi finiture</Button>
                   </div>
+
+                  {/* Prodotti PRE-INCLUSI nel pacchetto (definiti dall'admin in AdminPacchetti) */}
+                  {(pkg.listini_items || []).length > 0 && (
+                    <div className="mb-4 border border-blue-200 bg-blue-50 rounded p-3" data-testid="pack-listini-included">
+                      <div className="text-[11px] uppercase tracking-widest font-bold text-blue-900 mb-2">Finiture incluse nel pacchetto {pkg.name}</div>
+                      <table className="w-full text-sm">
+                        <thead className="text-[10px] uppercase text-blue-700"><tr>
+                          <th className="px-2 py-1 text-left">Prodotto</th>
+                          <th className="px-2 py-1 text-left">Fornitore</th>
+                          <th className="px-2 py-1 text-right w-16">Qty</th>
+                          <th className="px-2 py-1 text-right w-24">€/u</th>
+                          <th className="px-2 py-1 text-right w-24">Totale</th>
+                          <th className="px-2 py-1 text-center w-20">Mod.</th>
+                        </tr></thead>
+                        <tbody>
+                          {(pkg.listini_items || []).map((li, i) => (
+                            <tr key={`pkg-li-${i}`} className="text-xs">
+                              <td className="px-2 py-1"><div className="font-medium">{li.nome}</div><div className="text-[10px] text-blue-700">{li.categoria}</div></td>
+                              <td className="px-2 py-1">{li.fornitore_nome}</td>
+                              <td className="px-2 py-1 text-right mono">{li.qty}</td>
+                              <td className="px-2 py-1 text-right mono">€ {(li.prezzo_rivendita || 0).toFixed(2)}</td>
+                              <td className="px-2 py-1 text-right mono font-bold">€ {((li.qty || 0) * (li.prezzo_rivendita || 0)).toFixed(2)}</td>
+                              <td className="px-2 py-1 text-center">{li.modificabile_dal_venditore ? <span className="text-amber-700" title="Il venditore può sostituire questo prodotto">✏</span> : <span className="text-zinc-400" title="Bloccato dall'admin">🔒</span>}</td>
+                            </tr>
+                          ))}
+                          <tr className="border-t border-blue-200 font-bold text-xs">
+                            <td colSpan={4} className="px-2 py-1 text-right text-blue-900">Subtotale pre-incluso{totals.hasOverride ? " (già nel forfait)" : ""}:</td>
+                            <td className="px-2 py-1 text-right mono text-blue-900" data-testid="pack-listini-included-tot">€ {(totals.listiniPkg || 0).toFixed(2)}</td>
+                            <td></td>
+                          </tr>
+                        </tbody>
+                      </table>
+                      <p className="text-[10px] text-blue-700 mt-2">
+                        ✏ = il venditore può sostituire/aggiornare il prodotto in fase di trattativa · 🔒 = bloccato dall'admin
+                        {totals.hasOverride ? " · Il pacchetto ha prezzo forfait: questi prodotti sono già compresi nel totale." : ""}
+                      </p>
+                    </div>
+                  )}
+
                   {(prev.listini_selections || []).length === 0 ? (
                     <div className="text-zinc-400 text-sm text-center py-6 border border-dashed border-zinc-300 rounded">Nessuna finitura da listino scelta. (Opzionale)</div>
                   ) : (

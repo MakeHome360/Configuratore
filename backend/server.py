@@ -1450,7 +1450,13 @@ async def list_packages(user: Dict[str, Any] = Depends(get_current_user)):
                     "modificabile_dal_venditore": bool(v.get("modificabile_dal_venditore")),
                 })
             items.sort(key=_voci_sort_key)
-            out.append({"id": p["id"], "name": p["name"], "subtitle": p["subtitle"], "price_per_m2": p["price_per_m2"], "color": p["color"], "description": p["description"], "items": items})
+            out.append({
+                "id": p["id"], "name": p["name"], "subtitle": p["subtitle"],
+                "price_per_m2": p["price_per_m2"], "color": p["color"],
+                "description": p["description"], "items": items,
+                "listini_items": [],
+                "price_override": None,
+            })
         return out
     out = []
     for p in docs:
@@ -1471,7 +1477,14 @@ async def list_packages(user: Dict[str, Any] = Depends(get_current_user)):
                 "modificabile_dal_venditore": bool(v.get("modificabile_dal_venditore")),
             })
         items.sort(key=_voci_sort_key)
-        out.append({"id": p["id"], "name": p["name"], "subtitle": p.get("subtitle", ""), "price_per_m2": p["price_per_m2"], "color": p.get("color", "#475569"), "description": p.get("description", ""), "items": items})
+        out.append({
+            "id": p["id"], "name": p["name"], "subtitle": p.get("subtitle", ""),
+            "price_per_m2": p["price_per_m2"], "color": p.get("color", "#475569"),
+            "description": p.get("description", ""), "items": items,
+            # NEW: prodotti pre-inclusi dai Listini Fornitori e override prezzo totale
+            "listini_items": p.get("listini_items") or [],
+            "price_override": p.get("price_override"),
+        })
     return out
 
 
@@ -1876,15 +1889,24 @@ async def _auto_populate_commessa_from_preventivo(prev_id: str, user: Dict[str, 
     com = await db.commesse.find_one({"preventivo_id": prev_id}, {"_id": 0})
     now_iso_v = datetime.now(timezone.utc).isoformat()
     voci_back = {v["id"]: v for v in await db.voci_backoffice.find({}, {"_id": 0}).to_list(3000)}
-    # 2) Estrai righe dal preventivo (items+extra+composite+infissi)
+    # 2) Estrai righe dal preventivo (items+extra+optional+composite+infissi+listini)
     righe = []
     for it in (prev.get("items") or []):
+        # Skip voci esplicitamente escluse dal venditore
+        if it.get("excluded"):
+            continue
+        # Pacchetto usa qty_richiesta / unit_price; fallback su qty / prezzo_unit per altri tipi
+        qty_val = float(it.get("qty_richiesta") or it.get("qty") or 0)
+        prezzo_val = float(it.get("unit_price") or it.get("prezzo_unit") or it.get("price") or 0)
+        if qty_val <= 0 and prezzo_val <= 0:
+            continue
         righe.append({
             "voce_id": it.get("voce_id") or it.get("id"),
             "name": it.get("name") or it.get("voce") or "Voce",
-            "qty": float(it.get("qty") or 0),
+            "qty": qty_val,
             "unit": it.get("unit") or "pz",
-            "prezzo_unit": float(it.get("prezzo_unit") or it.get("price") or 0),
+            "prezzo_unit": prezzo_val,
+            "category": it.get("category") or "",
         })
     for it in (prev.get("extra_voci") or []):
         righe.append({
@@ -1894,6 +1916,20 @@ async def _auto_populate_commessa_from_preventivo(prev_id: str, user: Dict[str, 
             "unit": it.get("unit") or "pz",
             "prezzo_unit": float(it.get("prezzo_unit") or it.get("price") or 0),
         })
+    # Optional selezionati nel preventivo (climatizzatori, portoncini, ecc.)
+    for op in (prev.get("optional") or []):
+        q = float(op.get("qty") or 0)
+        pu = float(op.get("unit_price") or 0)
+        if q <= 0 and pu <= 0:
+            continue
+        righe.append({
+            "voce_id": op.get("id"),
+            "name": (op.get("name") or "Optional") + " (optional)",
+            "qty": q if q > 0 else 1,
+            "unit": op.get("unit") or "pz",
+            "prezzo_unit": pu,
+            "category": "OPTIONAL",
+        })
     for inf in (prev.get("infissi") or []):
         righe.append({
             "voce_id": None,
@@ -1901,6 +1937,20 @@ async def _auto_populate_commessa_from_preventivo(prev_id: str, user: Dict[str, 
             "qty": float(inf.get("qty") or 1),
             "unit": "pz",
             "prezzo_unit": float(inf.get("prezzo") or inf.get("prezzo_unit") or 0),
+        })
+    # Infissi extras dal modal del Pacchetto
+    for inf in (prev.get("infissi_extras") or []):
+        q = float(inf.get("qty") or 1)
+        pu = float(inf.get("unit_price") or inf.get("price") or inf.get("prezzo") or 0)
+        if q <= 0 and pu <= 0:
+            continue
+        righe.append({
+            "voce_id": inf.get("id"),
+            "name": inf.get("name") or "Infisso",
+            "qty": q,
+            "unit": inf.get("unit") or "pz",
+            "prezzo_unit": pu,
+            "category": "INFISSI",
         })
     # Composite selections (lista) — voci scelte voce-per-voce nel preventivo composite
     csel = prev.get("composite_selections") or []
@@ -1921,9 +1971,18 @@ async def _auto_populate_commessa_from_preventivo(prev_id: str, user: Dict[str, 
             "category": sel.get("category") or "",
         })
     # Listini fornitori (porte, piastrelle, sanitari, ecc.) selezionati nel preventivo
-    for ls in (prev.get("listini_selections") or []):
+    # Combina selezioni del venditore + pre-inclusi nel pacchetto (snapshot al salvataggio)
+    listini_all = []
+    listini_all.extend(prev.get("listini_selections") or [])
+    listini_all.extend(prev.get("package_listini_items") or [])
+    seen_ls_keys = set()
+    for ls in listini_all:
         if not isinstance(ls, dict):
             continue
+        key = (ls.get("listino_id"), ls.get("id"))
+        if key in seen_ls_keys:
+            continue
+        seen_ls_keys.add(key)
         q = float(ls.get("qty") or 1)
         righe.append({
             "voce_id": ls.get("id"),

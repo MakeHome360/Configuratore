@@ -1,0 +1,30 @@
+{
+  "summary": "Round 71 — Full test pass. Backend pytest 3/3 PASS (test_round71_packages_listini_computo.py: packages persist listini_items+price_override, computo metrico from accept include 4 categorie, commessa tipo_lavori+documenti_skip persist). Regression round68/69/70: 34 passed, 1 skipped (RBAC), 0 failed — quindi il fix di server.py._auto_populate_commessa_from_preventivo da iteration_22 ora persiste e include composite_selections + listini_selections + optional + package_listini_items. Frontend manuale via Playwright: (a) AdminPacchetti BASIC — modifica price_override=9999, salva, riapri modal: persiste correttamente ✓. (b) CommessaWorkflow tab '1. Documenti & Contratto' (data-testid=tab-documenti) — verificati TUTTI i testid: doc-row-preventivo OK, doc-preventivo-link OK con href /preventivi/{prev_id}/stampa corretto, tipo-lavori-section OK, tipo-lavori-{ristrutturazione_completa,parziale,manutenzione,infissi_only,custom} OK (5/5 presets), tavole-cad-section OK, tavola-upload-btn OK. Click 'manutenzione' → toast 'Tipo lavori impostato: Manutenzione / piccoli lavori' e righe pratica + tavola_progetto mostrate opacity-50 (Non richiesto / grayed) ✓. (c) PUT /api/packages/pkg-smart price_override=12345 via API → mq-adjustment-banner NON presente (corretto, override attivo). Override pulito a fine test.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_round71_packages_listini_computo.py",
+    "/app/test_reports/pytest/round71_iter23.xml",
+    "/app/test_reports/pytest/regression_iter23.xml"
+  ],
+  "action_items": [
+    "NOTE per main agent: il review request menzionava 'tipo_lavori=ristrutturazione_parziale' ma il codice FE (CommessaWorkflow.jsx L310) e le chiavi PRESETS usano `parziale` (label 'Ristrutturazione parziale'). Il data-testid risultante è quindi `tipo-lavori-parziale` (NON `tipo-lavori-ristrutturazione_parziale`). Allineato con il behavior atteso ma se in futuro si vuole uniformità con il prefisso `ristrutturazione_*`, valutare rename."
+  ],
+  "critical_code_review_comments": [
+    "CommessaWorkflow.jsx è 2509 righe → considera split in DocumentiList/TavoleCad/ChecklistVenditore separate file. Già >700 LOC threshold.",
+    "PreventivoPacchetto.jsx >700 LOC anche — stesso suggerimento di refactor.",
+    "Logica computo metrico ora corretta solo in server.py._auto_populate_commessa_from_preventivo, ma routes_biz.py.create_commessa ha implementazione parallela. Consolidare in funzione condivisa (iteration_22 action item ancora aperto come miglioramento non bloccante)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (3/3 round71 + 34/34 regression)", "frontend": "100% testid e flow verificati"},
+  "test_credentials": "admin@admin.it / admin",
+  "seed_data_creation": "Test in test_round71_packages_listini_computo.py creano preventivi + commesse temporanee con cleanup automatico. PUT pkg-smart price_override=12345 settato e poi resettato a null dal Playwright test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Round 71 completo e verde su entrambi i lati. Tutti i test backend Round 68/69/70/71 passano. Frontend: AdminPacchetti override+listini persistono, CommessaWorkflow Documenti tab ha tutti i nuovi testid (tipo-lavori-section con 5 presets {ristrutturazione_completa, parziale, manutenzione, infissi_only, custom}, doc-row-preventivo, tavole-cad-section/tavola-upload-btn), preventivo override flow funzionante. NB: testid preset 'parziale' non 'ristrutturazione_parziale'.",
+  "rca of the issue": "Nessun bug aperto. Iteration_22 RCA risolto: server.py._auto_populate_commessa_from_preventivo ora include optional + listini_selections + package_listini_items + composite_selections nel computo metrico (test_round71::test_computo_includes_optional_and_pkg_listini PASS verifica esplicitamente i 4 nomi nel cm: Demolizione, Climatizzatore (optional), Porta Garofoli R71 (listino selection), Piastrella Marazzi R71 (pkg listino))."
+}

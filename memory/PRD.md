@@ -1,6 +1,64 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 74 — Dashboard dettaglio Sub/Negozi + Preventivi multipli su commessa + RBAC docs (Feb 2026)
+
+**Richieste utente** chiuse in questo round:
+1. "ho notato che la dashboard subappaltatore va bene ma c'è sia la voce dashboard subappaltatore che la voce subappaltatore" → consolidate in unica voce.
+2. "non posso vedere lo stato di ogni singolo subappaltatore (visura, DURC, cantieri in corso, preventivi, incassato/da incassare)" → nuova pagina dettaglio.
+3. "nella sezione negozi voglio più dettagli, voglio vedere quali venditori ci lavorano e come stanno andando" → nuova pagina dettaglio.
+4. "il preventivo mi apre il link ma devo poterlo modificare (nuova accettazione) oppure creare nuovi preventivi sulla stessa commessa per gli extra" → preventivi multipli + clone + re-acceptance.
+5. "ci sono interventi in cui i venditori non devono poter modificare i documenti obbligatori" → RBAC admin-only.
+
+### Backend (`routes_biz.py`, `server.py`)
+- **`GET /api/subappaltatori/{sid}`** + **`GET /api/subappaltatori/{sid}/dashboard`**: ritorna dati + check di 6 documenti standard (DURC, Visura, CCIAA, Polizza RC, Idoneità Tecnica, Contratto Subappalto) con stato `valid | expiring (≤30gg) | expired | missing` + KPI (cantieri attivi, preventivi inviati, incassato, da incassare) + lista cantieri con totali per cantiere.
+- **`POST /api/subappaltatori/{sid}/documenti`** / **`DELETE .../documenti/{did}`**: gestione documenti aziendali (admin/gestore).
+- **`GET /api/negozi/{nid}`** + **`GET /api/negozi/{nid}/dashboard`**: venditori del negozio (filtro `store_id`/`negozio_id`) con KPI individuali (lead, conversion rate, preventivi totali e ultimo mese, commesse attive/concluse, fatturato venduto da preventivi accettati). Aggregati negozio.
+- **`GET /api/commesse/{cid}/preventivi`**: lista preventivo principale (`commessa.preventivo_id`) + extra (`commessa_id={cid}`), ordinati con principale per primo.
+- **`POST /api/commesse/{cid}/preventivi/clone-from/{prev_id}`**: clona preventivo come extra con `is_extra=true`, `parent_preventivo_id`, `commessa_id`, `stato=bozza`, titolo nella nota tra `[…]`. Rimuove firma/accettazione esistenti.
+- **`PUT /api/preventivi/{prev_id}`**: se il preventivo era `accettato`, dopo update torna a `bozza` con flag `needs_reacceptance=true` (richiede nuova firma cliente).
+
+### Frontend
+- **Bug menu duplicato fix**: rimossa voce `Dashboard Sub.` da `Cantieri` in `AppLayout.jsx`. Rimane solo "Subappaltatori" in Amministrazione → click su un sub apre il dettaglio.
+- **`AdminSubappaltatori.jsx`**: righe cliccabili (`sub-row-{id}`), bottone Eye (`sub-open-{id}`), `useNavigate`.
+- **`SubappaltatoreDetail.jsx`** (NUOVO ~280 LOC, `/adminsubappaltatori/:sid`):
+  - Header con nome, badge (subappaltatore/fornitore), stato attivo, alert doc critici mancanti.
+  - 4 KPI card (cantieri attivi, preventivi inviati, incassato, da incassare).
+  - Tabella cantieri con totale lavori / pagato / residuo per cantiere (cliccabile → `/commessa/{id}/workflow`).
+  - Sidebar Contatti (tel:/mailto:) + Documenti aziendali (6 standard con status icon) + lista documenti caricati con delete.
+  - Dialog "Aggiungi documento" (`sub-doc-add` → `sub-doc-dialog`): tipo dropdown, nome, URL, scadenza, note.
+- **`AdminNegozi.jsx`**: card ora cliccabile (`neg-card-{id}`) con hover effect.
+- **`NegozioDetail.jsx`** (NUOVO ~120 LOC, `/adminnegozi/:nid`):
+  - 6 KPI card aggregati (`negozio-kpi`).
+  - Tabella venditori (`negozio-venditori-table`) sortata per fatturato venduto, classifica 1/2/3, trofeo per top performer, KPI individuali (lead, vinti, conv%, preventivi totali e mese, commesse attive/concluse, fatturato).
+- **`CommessaWorkflow.jsx`** nuovo tab "2. Preventivi (originale + extra)" (`tab-preventivi`):
+  - Componente `PreventiviCommessa` carica `/api/commesse/{cid}/preventivi`.
+  - Per ogni preventivo: badge Principale/Extra, stato, totale, bottoni Stampa/Modifica/+Extra (admin: anche Delete).
+  - Footer con totale commessa (originale + tutti gli extra).
+  - Banner esplicativo sulla logica e sul re-acceptance richiesto.
+- **`CommessaWorkflow.jsx` RBAC documenti**: se `user.role !== "admin"`, i bottoni `tipo-lavori-{preset}` sono disabilitati e i toggle `doc-skip-{tipo}` sono sostituiti da label 🔒 locked.
+- **`ui-kit.jsx` PageHeader fix**: subtitle ora usa `<div>` se è React node (no più `<p>` con `<div>` figlio → fix hydration warning).
+
+### Testing
+- `tests/test_round74_sub_neg_prev.py`: **4/4 PASS** (sub dashboard, sub documenti scadenze, negozio dashboard, preventivi multipli + re-acceptance).
+- Regression Round 68-73: **48/48 PASS**.
+- `testing_agent_v3_fork` iteration_25: tutti i flussi principali OK, solo minor issues (HTML hydration risolto, prev-action buttons non testati perché serviva una commessa con preventivo_id valido).
+
+### File modificati/creati
+- `backend/routes_biz.py` (sub + negozio endpoints)
+- `backend/server.py` (multi-preventivi commessa + PUT re-acceptance)
+- `frontend/src/components/AppLayout.jsx` (rimossa voce duplicata)
+- `frontend/src/components/ui-kit.jsx` (PageHeader subtitle fix)
+- `frontend/src/pages/admin/AdminSubappaltatori.jsx`, `AdminNegozi.jsx` (cliccabili)
+- `frontend/src/pages/admin/SubappaltatoreDetail.jsx` (NUOVO)
+- `frontend/src/pages/admin/NegozioDetail.jsx` (NUOVO)
+- `frontend/src/pages/CommessaWorkflow.jsx` (tab Preventivi + RBAC)
+- `frontend/src/App.js` (route)
+- `backend/tests/test_round74_sub_neg_prev.py` (NUOVO)
+
+
+
+
 ## Round 73 — Composite da backoffice + Override pacchetto chiarito + Bug picker (Feb 2026)
 
 **Richieste utente** (P0 di 8 punti totali ricevuti):

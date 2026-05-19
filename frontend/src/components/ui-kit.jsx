@@ -6,7 +6,11 @@ export function PageHeader({ title, subtitle, actions, children }) {
     <div className="border-b border-zinc-200 bg-white px-6 py-5 flex items-start justify-between gap-4" data-testid="page-header">
       <div className="min-w-0">
         <h1 className="text-2xl font-semibold text-zinc-900 tracking-tight">{title}</h1>
-        {subtitle && <p className="text-sm text-zinc-500 mt-1">{subtitle}</p>}
+        {subtitle && (
+          typeof subtitle === "string"
+            ? <p className="text-sm text-zinc-500 mt-1">{subtitle}</p>
+            : <div className="text-sm text-zinc-500 mt-1">{subtitle}</div>
+        )}
         {children}
       </div>
       {actions && <div className="shrink-0 flex items-center gap-2">{actions}</div>}

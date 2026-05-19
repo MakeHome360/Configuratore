@@ -1,6 +1,49 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 71 — Pacchetti override + Listini inclusi + Documenti per tipo lavori + Computo completo (Feb 2026)
+
+**Richieste utente** (4 punti):
+1. AdminPacchetti deve persistere `listini_items[]` e `price_override`.
+2. Computo metrico nella commessa non importava tutte le voci dal preventivo (mancavano optional + pkg listini).
+3. Tra i documenti della commessa non si vedeva il Preventivo PDF.
+4. Documenti obbligatori troppo rigidi: per ristrutturazioni parziali alcuni doc non sono pertinenti. Servono anche tavole di progetto/CAD caricabili.
+
+### Fix Backend
+- **`GET /api/packages` (server.py ~1425)**: ricostruiva la response per ogni pacchetto da MongoDB ma **scartava `listini_items` e `price_override`**. Aggiunti questi due campi nella response (sia dal seed che dai docs DB). Bug confermato e fixato.
+- **`_auto_populate_commessa_from_preventivo` (server.py ~1869)**: leggeva `it.get("qty")` ma per i preventivi pacchetto il campo è `qty_richiesta`; idem per `unit_price`/`prezzo_unit`. Risultato: tutte le voci venivano scartate (qty=0). Ora legge `qty_richiesta` con fallback su `qty`. Aggiunti anche **optional** del preventivo + **package_listini_items** (snapshot dei listini pre-inclusi nel pacchetto) + **infissi_extras** + skip voci `excluded`.
+- **`routes_biz.py:create_commessa`**: applicato lo stesso fix (filtra `excluded`, include `optional`, dedup `package_listini_items`).
+
+### Fix Frontend Preventivo Pacchetto
+- `totals` useMemo ora rileva `pkg.price_override` → se valorizzato, `base = price_override` (no €/mq, no maggiorazione mq).
+- Banner maggiorazione mq nascosto in modalità override.
+- Preview base aggiornata con label "prezzo forfait pacchetto".
+- Step 3 (Optional): nuova sezione blue `data-testid=pack-listini-included` che mostra i prodotti dei listini pre-inclusi nel pacchetto (definiti dall'admin in AdminPacchetti), con icone ✏ (modificabile dal venditore) / 🔒 (bloccato).
+- `save()` payload arricchito: ora include `listini_selections`, `infissi_extras`, `package_listini_items` (snapshot), `package_price_override`, `package_base_total`, `modalita_pagamento`.
+
+### Fix Frontend CommessaWorkflow Documenti
+- **Selettore Tipo Lavori** in alto (data-testid=`tipo-lavori-section`): 5 preset (ristrutturazione_completa, parziale, manutenzione, infissi_only, custom). Ogni preset definisce automaticamente quali documenti sono richiesti.
+- **Toggle "Non richiesto" per singolo documento** (`doc-skip-{tipo}`): sposta automaticamente il preset a "custom" e salva in `commessa.documenti_skip[]`.
+- **Riga SYS Preventivo PDF** (`doc-row-preventivo`): linka direttamente a `/preventivi/{preventivo_id}/stampa`. Sempre visibile se la commessa ha `preventivo_id`.
+- **Sezione Tavole CAD/Progetto** (`tavole-cad-section`): bottone "Carica tavola" che apre dialog con tipo="tavola" preselezionato + bottone "Apri CAD" se `com.project_id` valorizzato.
+- Documento "tavola_progetto" rinominato in "Tavole CAD / Progetto" con hint che indica entrambe le modalità (upload PDF/DWG o conferma dal CAD).
+
+### Testing
+- `tests/test_round71_packages_listini_computo.py`: **3/3 PASS** (persistenza listini+override, computo completo dopo accettazione, tipo_lavori+skip persistenza).
+- Regression round66/67/68/69/70: **50/50 PASS** (1 skipped pre-esistente).
+- E2E `testing_agent_v3_fork` iteration_23.json: 0 issue critici, frontend testid completi (tipo-lavori, doc-row-preventivo, tavole-cad-section, pack-listini-included tutti OK), override pkg verificato (banner mq scompare).
+
+### File modificati
+- `backend/server.py` (GET /packages + _auto_populate_commessa_from_preventivo)
+- `backend/routes_biz.py` (create_commessa: optional + package_listini_items)
+- `frontend/src/pages/PreventivoPacchetto.jsx` (totals.hasOverride, preview-base, pack-listini-included, payload arricchito)
+- `frontend/src/pages/CommessaWorkflow.jsx` (DocumentiList: tipo_lavori, skipList, SYS preventivo, tavole CAD)
+- `frontend/src/pages/admin/AdminPacchetti.jsx` (già pronto da sessione precedente — solo backend mancava)
+- `backend/tests/test_round71_packages_listini_computo.py` (NUOVO)
+
+
+
+
 ## Round 70 — Integrazione Listini Fornitori in Preventivi (Feb 2026)
 
 **Utente**: "fai tutto e poi faccio deploy".

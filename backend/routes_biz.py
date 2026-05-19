@@ -1041,8 +1041,72 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
 
     # ---------- Configurazioni riferimento ----------
     @r.get("/composite-sections")
-    async def composite(user=Depends(get_current_user)):
-        return COMPOSITE_SECTIONS
+    async def composite(source: str = "backoffice", user=Depends(get_current_user)):
+        """Sezioni del PreventivoComposite. Di default ora le serve dal `voci_backoffice`
+        raggruppate per categoria; passa `source=hardcoded` per il vecchio comportamento.
+        Per ogni voce viene fornito: id, name, unit, price, modificabile_dal_venditore.
+        """
+        if source == "hardcoded":
+            return COMPOSITE_SECTIONS
+        # Source = backoffice (default). Raggruppa per category, ordinando per tipo (DEMOLIZIONI prima)
+        voci = await db.voci_backoffice.find({}, {"_id": 0}).to_list(3000)
+        # Etichette user-friendly per categoria
+        CAT_LABELS = {
+            "MURATURA": "Muratura",
+            "IMPIANTI": "Impianti",
+            "INFISSI": "Infissi",
+            "SERVIZI": "Servizi e Pratiche",
+            "PAVIMENTAZIONE_GRES": "Pavimentazione Gres",
+            "PAVIMENTAZIONE_PARQUET": "Pavimentazione Parquet",
+            "PAVIMENTAZIONE_LAMINATO": "Pavimentazione Laminato",
+            "PAVIMENTAZIONE_MARMO": "Pavimentazione Marmo",
+            "RIVESTIMENTO_PIASTRELLE": "Rivestimento Piastrelle",
+            "TERMO_IDRAULICO": "Termo-Idraulico",
+            "ELETTRICO": "Elettrico",
+            "DEMOLIZIONI": "Demolizioni",
+        }
+        # Ordine preferito delle sezioni
+        ORDER = ["DEMOLIZIONI", "MURATURA", "IMPIANTI", "TERMO_IDRAULICO", "ELETTRICO",
+                 "INFISSI", "PAVIMENTAZIONE_GRES", "PAVIMENTAZIONE_PARQUET",
+                 "PAVIMENTAZIONE_LAMINATO", "PAVIMENTAZIONE_MARMO",
+                 "RIVESTIMENTO_PIASTRELLE", "SERVIZI"]
+
+        grouped: Dict[str, List[Dict[str, Any]]] = {}
+        for v in voci:
+            cat = v.get("category") or "ALTRO"
+            # Estrai voci di "demolizione" in una sezione virtuale dedicata
+            name_lc = (v.get("name") or "").lower()
+            if any(k in name_lc for k in ("demoliz", "smaltim", "rimoz")) and cat == "MURATURA":
+                cat = "DEMOLIZIONI"
+            prezzo_riv = v.get("prezzo_rivendita")
+            if prezzo_riv is None or prezzo_riv == 0:
+                prezzo_riv = round(float(v.get("prezzo_acquisto") or 0) * float(v.get("ricarico") or 1.8), 2)
+            grouped.setdefault(cat, []).append({
+                "id": v.get("id"),
+                "name": v.get("name") or "—",
+                "unit": v.get("unit") or "pz",
+                "price": prezzo_riv,
+                "prezzo_acquisto": v.get("prezzo_acquisto"),
+                "ricarico": v.get("ricarico"),
+                "modificabile_dal_venditore": bool(v.get("modificabile_dal_venditore")),
+                "category": v.get("category"),
+                "cad_category": v.get("cad_category"),
+            })
+        # Ordina voci dentro ogni sezione per nome
+        for cat in grouped:
+            grouped[cat].sort(key=lambda x: (x.get("name") or "").lower())
+        # Build sections array ordinato
+        sections = []
+        added = set()
+        for cat in ORDER:
+            if cat in grouped:
+                sections.append({"id": f"sec-{cat.lower()}", "name": CAT_LABELS.get(cat, cat.title()), "category": cat, "voci": grouped[cat]})
+                added.add(cat)
+        # Aggiungi eventuali categorie non in ORDER (per non perdere voci)
+        for cat in grouped:
+            if cat not in added:
+                sections.append({"id": f"sec-{cat.lower()}", "name": CAT_LABELS.get(cat, cat.title()), "category": cat, "voci": grouped[cat]})
+        return sections
 
     @r.get("/infissi-config")
     async def infissi_conf(user=Depends(get_current_user)):

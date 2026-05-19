@@ -141,12 +141,14 @@ export default function ListinoProdottoPicker({ open, onOpenChange, onConfirm, d
             </tr></thead>
             <tbody className="divide-y divide-zinc-100">
               {loading && <tr><td colSpan={6} className="px-3 py-8 text-center text-zinc-500 text-xs">Ricerca…</td></tr>}
-              {!loading && !results.length && <tr><td colSpan={6} className="px-3 py-12 text-center text-zinc-400 text-xs">{categoria ? "Nessun prodotto trovato. Carica un listino in questa categoria." : "Scegli una categoria o digita una parola chiave."}</td></tr>}
+              {!loading && !results.length && <tr><td colSpan={6} className="px-3 py-12 text-center text-zinc-400 text-xs">Nessun prodotto in archivio. Carica un listino fornitori per iniziare.</td></tr>}
               {!loading && results.map(p => {
                 const sel = !!selected[p.id];
                 return (
-                  <tr key={p.id} className={sel ? "bg-blue-50" : "hover:bg-zinc-50"}>
-                    <td className="px-2 py-1.5 text-center"><input type="checkbox" checked={sel} onChange={() => toggle(p)} className="h-4 w-4" data-testid={`lpp-sel-${p.id}`} /></td>
+                  <tr key={p.id} className={`cursor-pointer ${sel ? "bg-blue-50" : "hover:bg-zinc-50"}`} onClick={() => toggle(p)} data-testid={`lpp-row-${p.id}`}>
+                    <td className="px-2 py-1.5 text-center" onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" checked={sel} onChange={() => toggle(p)} className="h-4 w-4 cursor-pointer" data-testid={`lpp-sel-${p.id}`} />
+                    </td>
                     <td className="px-2 py-1.5">
                       <div className="font-medium text-xs">{p.nome}</div>
                       <div className="text-[10px] text-zinc-500">{p.codice ? `[${p.codice}] ` : ""}{p.categoria_dettaglio || "—"} · {p.unit}</div>
@@ -157,7 +159,7 @@ export default function ListinoProdottoPicker({ open, onOpenChange, onConfirm, d
                     </td>
                     <td className="px-2 py-1.5 text-right mono font-semibold text-blue-700">€ {(p.prezzo_rivendita || 0).toFixed(2)}</td>
                     <td className="px-2 py-1.5 text-center"><span className={`text-[9px] px-1.5 py-0.5 rounded uppercase font-bold ${FASCIA_BADGE[p.fascia_prezzo] || ""}`}>{FASCIA_LABEL[p.fascia_prezzo] || "—"}</span></td>
-                    <td className="px-2 py-1.5">
+                    <td className="px-2 py-1.5" onClick={e => e.stopPropagation()}>
                       {sel && <Input type="number" min={0.01} step="0.01" value={selected[p.id].qty} onChange={e => setQty(p.id, e.target.value)} className="h-7 text-xs text-right mono" data-testid={`lpp-qty-${p.id}`} />}
                     </td>
                   </tr>

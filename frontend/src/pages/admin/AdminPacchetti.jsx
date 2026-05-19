@@ -169,9 +169,12 @@ function PackageDialog({ pkg, voci, onClose, onSaved, isNew }) {
             <div><Label className="text-xs">Nome *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="pkg-form-name" /></div>
             <div><Label className="text-xs">Prezzo €/mq *</Label><Input type="number" value={form.price_per_m2} onChange={(e) => setForm({ ...form, price_per_m2: Number(e.target.value) })} data-testid="pkg-form-price" /></div>
             <div className="bg-amber-50 border border-amber-200 rounded p-2 space-y-1">
-              <Label className="text-xs text-amber-900 font-semibold">⚙ Override prezzo totale (€ fisso)</Label>
+              <Label className="text-xs text-amber-900 font-semibold">⚙ Prezzo TOTALE forfait (alternativa al €/mq)</Label>
               <Input type="number" step="0.01" placeholder="Lascia vuoto per usare €/mq" value={form.price_override ?? ""} onChange={(e) => { const n = parseFloat(e.target.value); setForm({ ...form, price_override: isNaN(n) || n <= 0 ? null : n }); }} data-testid="pkg-form-override" className="mono text-right" />
-              <p className="text-[10px] text-amber-700">Se compilato, sovrascrive il calcolo per mq. Utile per pacchetti "tutto incluso" a forfait.</p>
+              <p className="text-[10px] text-amber-700 leading-tight">
+                💡 <strong>A cosa serve:</strong> se vuoi vendere il pacchetto a un <strong>prezzo fisso "chiavi in mano"</strong> (es. 35.000 €) <strong>indipendentemente dai m²</strong> dell'immobile, scrivi qui il totale.<br/>
+                Lascia vuoto per usare il calcolo standard <strong>€/mq × superficie</strong>. La maggiorazione mq piccole non viene applicata se è impostato un forfait.
+              </p>
             </div>
             <div><Label className="text-xs">Sottotitolo</Label><Input value={form.subtitle} onChange={(e) => setForm({ ...form, subtitle: e.target.value })} /></div>
             <div><Label className="text-xs">Descrizione</Label><Textarea rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
@@ -180,10 +183,13 @@ function PackageDialog({ pkg, voci, onClose, onSaved, isNew }) {
             {/* PRODOTTI DA LISTINI FORNITORI inclusi nel pacchetto */}
             <div className="border-t pt-3 mt-3">
               <div className="flex items-center justify-between mb-2">
-                <Label className="text-xs font-semibold">🛒 Listini inclusi ({(form.listini_items || []).length})</Label>
+                <Label className="text-xs font-semibold">🛒 Prodotti di default del pacchetto ({(form.listini_items || []).length})</Label>
                 <Button size="sm" variant="outline" onClick={() => setListinoPickerOpen(true)} className="h-7 text-xs" data-testid="pkg-listini-add"><Plus className="h-3 w-3 mr-1" />Aggiungi</Button>
               </div>
-              <p className="text-[10px] text-zinc-500 mb-2">Prodotti pre-inclusi nel pacchetto (porte, piastrelle, sanitari, ecc.). Verranno proposti al venditore in fase di preventivo.</p>
+              <p className="text-[10px] text-zinc-500 mb-2 leading-snug">
+                ℹ️ <strong>Tutti i listini fornitori sono sempre disponibili al venditore</strong> in fase di preventivo.<br/>
+                Qui scegli <strong>quali prodotti specifici (e in che quantità)</strong> sono <strong>inclusi di default</strong> nel pacchetto. Il venditore può sostituirli/aggiungerne altri se hai messo il flag "Modificabile".
+              </p>
               {(form.listini_items || []).length === 0 ? (
                 <div className="text-[11px] text-zinc-400 italic text-center py-3 border border-dashed border-zinc-200 rounded">Nessun prodotto incluso</div>
               ) : (

@@ -1,6 +1,49 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 73 — Composite da backoffice + Override pacchetto chiarito + Bug picker (Feb 2026)
+
+**Richieste utente** (P0 di 8 punti totali ricevuti):
+1. **Composite rimodulato** con voci del backoffice (non più hardcoded).
+2. **Prezzi modificabili solo per voci con flag `modificabile_dal_venditore`**.
+3. **Override prezzo pacchetto** chiarito con tooltip esplicativo (utente non capiva a cosa servisse).
+4. **Logica listini↔pacchetti** ribaltata: tutti i listini sempre disponibili al venditore; il pacchetto definisce solo i **prodotti di default**.
+5. **Bug picker listini**: click su prodotto chiudeva il dialog senza selezionare.
+
+### Backend
+- **`GET /api/composite-sections`** (`routes_biz.py`): ora serve di default dal `voci_backoffice` raggruppate per `category`, con label user-friendly e ordine preferito. Estrae le voci di "demolizione/smaltimento" in una sezione virtuale "Demolizioni" anche se categorizzate come MURATURA in DB. Per ogni voce propaga: `id, name, unit, price (prezzo_rivendita), prezzo_acquisto, ricarico, modificabile_dal_venditore (bool), category, cad_category`. Query param `?source=hardcoded` mantiene retrocompatibilità (vecchia struttura statica).
+- **Risultato**: 10 sezioni dinamiche con 113 voci totali (vs 13 sezioni hardcoded di prima).
+
+### Frontend
+- **`ListinoProdottoPicker.jsx`**:
+  - Bug fix: click su intera riga della tabella ora seleziona il prodotto (prima solo la checkbox era cliccabile).
+  - `e.stopPropagation()` su cella checkbox e cella qty per evitare double-toggle.
+  - Empty state migliorato: "Nessun prodotto in archivio. Carica un listino fornitori per iniziare." invece del messaggio confondente "Scegli categoria o digita…".
+- **`AdminPacchetti.jsx`**:
+  - Label override cambiata da "Override prezzo totale" a **"Prezzo TOTALE forfait (alternativa al €/mq)"** con helper inline esplicativo (es. "se vuoi vendere il pacchetto a 35.000 € chiavi in mano indipendentemente dai m²…").
+  - Sezione listini rinominata in **"Prodotti di default del pacchetto"** con descrizione che chiarisce: tutti i listini sono sempre disponibili al venditore, qui scegli SOLO quali sono pre-inclusi di default (qty consigliata).
+- **`PreventivoComposite.jsx`** (già rispettava `modificabile_dal_venditore`): ora carica automaticamente dal backoffice, badge verde "prezzo editabile" + 🔒 "lavorazione" funzionanti.
+
+### Testing
+- `tests/test_round73_composite_backoffice.py` **2/2 PASS** (sezioni da backoffice + retrocompat hardcoded).
+- Regression Round 68-72: **44/44 PASS** (1 skip pre-esistente).
+- Smoke test frontend: 10 sezioni visibili, 7 voci demolizioni con badge `lavorazione` (non editabili), 1 voce muratura con badge `prezzo editabile`.
+
+### P1/P2 ancora da fare nel prossimo round (richieste utente)
+- RBAC documenti obbligatori: admin sblocca, venditore vede readonly.
+- Preventivi multipli sulla stessa commessa (per gestire extra) + modifica preventivo accettato.
+- Dashboard dettaglio Subappaltatore (DURC, visura, commesse in corso, marginalità).
+- Dashboard dettaglio Negozio (venditori + performance).
+
+### File modificati
+- `backend/routes_biz.py` (composite-sections riscritto)
+- `frontend/src/components/ListinoProdottoPicker.jsx` (click su riga)
+- `frontend/src/pages/admin/AdminPacchetti.jsx` (UX override + helper testi)
+- `backend/tests/test_round73_composite_backoffice.py` (NUOVO)
+
+
+
+
 ## Round 72 — CRM potenziato: dettaglio lead + import lista CSV/Excel (Feb 2026)
 
 **Richieste utente** (testuale):

@@ -2281,6 +2281,32 @@ async def delete_materiali_template(tpl_id: str, user: Dict[str, Any] = Depends(
     return {"ok": True}
 
 
+# -----------------------------------------------------------------------------
+# PUBLIC endpoints (no auth) — esposti al sito pubblico
+# -----------------------------------------------------------------------------
+@api.get("/public/packages")
+async def public_packages():
+    """Pacchetti pubblici per landing page del sito. Ritorna SOLO i campi sicuri da esporre:
+    name, subtitle, price_per_m2, price_override, color, description, public_features.
+    Esclude voci interne (items, listini, ricarichi)."""
+    docs = await db.packages.find({"public": {"$ne": False}}, {"_id": 0}).sort("price_per_m2", 1).to_list(50)
+    out = []
+    for p in docs:
+        out.append({
+            "id": p.get("id"),
+            "name": p.get("name"),
+            "subtitle": p.get("subtitle") or "",
+            "description": p.get("description") or "",
+            "price_per_m2": p.get("price_per_m2"),
+            "price_override": p.get("price_override"),
+            "color": p.get("color") or "#0A0A0A",
+            "highlight": p.get("highlight", False),
+            "public_features": p.get("public_features") or [],
+        })
+    return out
+
+
+
 app.include_router(api)
 
 # Business/CRM/Commesse router

@@ -48,28 +48,33 @@ const VALORI = [
   { icon: ShieldCheck, title: "Processo trasparente", text: "Ogni fase tracciata, documenti firmabili online, accesso sempre attivo al tuo cantiere." },
 ];
 
-const PACCHETTI = [
+const PACCHETTI_META = [
   {
-    name: "BASIC", tag: "Standard di legge", price: 380, color: "#0A0A0A",
+    name: "BASIC", tag: "Standard di legge", color: "#0A0A0A",
     desc: "Tutto a norma con materiali affidabili. Perfetto per investimento o prima ristrutturazione.",
     feats: ["Demolizioni e smaltimento", "Impianti certificati", "Pavimenti gres 30×60", "Sanitari filo muro", "Tinteggiatura bianca", "Porte interne laminate"],
   },
   {
-    name: "SMART", tag: "Il più scelto", price: 490, color: "#1FAE52", highlight: true,
+    name: "SMART", tag: "Il più scelto", color: "#1FAE52", highlight: true,
     desc: "Il giusto equilibrio qualità-prezzo. La scelta della maggior parte dei nostri clienti.",
     feats: ["Tutto del Basic", "Pavimenti gres 60×60 effetto", "Porte laminato premium", "Infissi doppio vetro", "Controsoffitti design", "Domotica base predisposta"],
   },
   {
-    name: "PREMIUM", tag: "Lusso elegante", price: 790, color: "#0A0A0A",
+    name: "PREMIUM", tag: "Lusso elegante", color: "#0A0A0A",
     desc: "Materiali e finiture di alta gamma per chi cerca eleganza senza compromessi.",
     feats: ["Tutto dello Smart", "Parquet rovere 100% legno", "Sanitari sospesi design", "Infissi triplo vetro", "Domotica base attiva", "Illuminazione progettata"],
   },
   {
-    name: "ELITE", tag: "Senza compromessi", price: 1180, color: "#0A0A0A",
+    name: "ELITE", tag: "Senza compromessi", color: "#0A0A0A",
     desc: "L'eccellenza assoluta. Materiali di pregio, design d'autore, esecuzione sartoriale.",
     feats: ["Tutto del Premium", "Marmi e pietre naturali", "Domotica avanzata", "Progetto illuminotecnico", "Arredi su misura inclusi", "Concierge dedicato"],
   },
 ];
+
+// Fallback statico finché il fetch non risponde
+const PACCHETTI_FALLBACK = PACCHETTI_META.map((m, i) => ({
+  ...m, price: [380, 490, 790, 1180][i],
+}));
 
 const PROCESSO = [
   { n: "01", title: "Sopralluogo gratuito", text: "Un tecnico viene a casa tua, prende le misure e ascolta le tue esigenze. Senza impegno." },
@@ -148,9 +153,10 @@ function PackageCard({ p, i }) {
       <div className="border-t border-b border-zinc-200/30 py-4 mb-5">
         <div className="flex items-baseline gap-1">
           <span className={`text-[11px] uppercase tracking-wider mr-1 ${isHi ? 'text-zinc-500' : 'text-zinc-500'}`}>da</span>
-          <span className="text-4xl font-black" style={{ fontFamily: "Outfit" }}>{p.price}</span>
+          <span className="text-4xl font-black" style={{ fontFamily: "Outfit" }}>{p.forfait ? new Intl.NumberFormat("it-IT").format(p.price) : p.price}</span>
           <span className="text-base font-bold">€</span>
-          <span className={`text-[12px] ${isHi ? 'text-zinc-500' : 'text-zinc-500'}`}>/m²</span>
+          {!p.forfait && <span className={`text-[12px] ${isHi ? 'text-zinc-500' : 'text-zinc-500'}`}>/m²</span>}
+          {p.forfait && <span className={`text-[10px] ml-1 uppercase tracking-wider ${isHi ? 'text-zinc-500' : 'text-zinc-500'}`}>forfait</span>}
         </div>
         <div className={`text-[11px] mt-1 ${isHi ? 'text-zinc-500' : 'text-zinc-500'}`}>chiavi in mano · IVA 10% inclusa</div>
       </div>
@@ -192,6 +198,35 @@ function FaqItem({ q, a, i }) {
 
 export default function Landing() {
   const [contactSent, setContactSent] = useState(false);
+  const [pacchetti, setPacchetti] = useState(PACCHETTI_FALLBACK);
+  // Fetch prezzi live dal backend (admin → sito sync automatico)
+  useEffect(() => {
+    const BACKEND = process.env.REACT_APP_BACKEND_URL || "";
+    fetch(`${BACKEND}/api/public/packages`)
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(live => {
+        if (!Array.isArray(live) || !live.length) return;
+        // Merge: per ogni meta statico, trova il pacchetto live con name corrispondente
+        const merged = PACCHETTI_META.map(m => {
+          const found = live.find(l => (l.name || "").toUpperCase() === m.name.toUpperCase());
+          if (!found) return { ...m, price: PACCHETTI_FALLBACK.find(f => f.name === m.name)?.price || 0 };
+          // Se ha override (€ fissi), mostra "da €X" senza /mq; altrimenti €/mq
+          const isForfait = found.price_override != null && Number(found.price_override) > 0;
+          return {
+            ...m,
+            price: isForfait ? Math.round(Number(found.price_override)) : Math.round(Number(found.price_per_m2 || 0)),
+            forfait: isForfait,
+            tag: found.subtitle || m.tag,
+            desc: found.description || m.desc,
+            color: m.highlight ? m.color : (found.color || m.color),
+            // public_features dall'admin sostituisce feats default se valorizzato
+            feats: (found.public_features?.length ? found.public_features : m.feats),
+          };
+        });
+        setPacchetti(merged);
+      })
+      .catch(() => { /* fallback resta */ });
+  }, []);
   return (
     <div className="bg-white text-[#0A0A0A]" data-testid="landing-page" style={{ fontFamily: "Outfit, system-ui, sans-serif" }}>
       {/* TOP STRIP — PROSSIME APERTURE */}
@@ -514,7 +549,7 @@ export default function Landing() {
             </p>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5 mb-12">
-            {PACCHETTI.map((p, i) => <PackageCard key={p.name} p={p} i={i} />)}
+            {pacchetti.map((p, i) => <PackageCard key={p.name} p={p} i={i} />)}
           </div>
           <div className="text-center text-[13px] text-zinc-500 max-w-2xl mx-auto leading-relaxed">
             * Prezzo indicativo per ristrutturazione completa di abitazione esistente sopra i 60 m². Ti forniremo un preventivo dettagliato e bloccato dopo il sopralluogo gratuito.

@@ -1,6 +1,66 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 75 — Sito pacchetti live + Optional avanzati con listino backoffice (Feb 2026)
+
+**Richieste utente** (3 punti):
+1. "i prezzi dei pacchetti sul sito devono essere quelli che metto io in gestione pacchetti, se modifico il prezzo li si deve modificare automaticamente anche sul sito".
+2. "gli optional sono carenti, dammi più variabili: se metto pavimento gres come optional, non puoi fare un prezzo forfettario ma deve essere il costo di listino di quella lavorazione, scontata di quanto voglio, applicata in mq/punti/pz a seconda".
+3. "quando metto come optional gli infissi, NON devi contarli come extra nel momento in cui li vado a creare nel preventivo".
+
+### Backend
+- **NUOVO endpoint pubblico** `GET /api/public/packages` (no auth) in `server.py`: ritorna SOLO i campi pubblici (id, name, subtitle, description, price_per_m2, price_override, color, highlight, public_features). Esclude voci interne (items, listini, ricarichi). Filtra `public != false` per permettere all'admin di nascondere pacchetti dal sito.
+- **Optional schema esteso** (model `OptionalIn` con `extra="allow"`, già supportato): nuovi campi accettati e ritornati:
+  - `tipo_prezzo: "forfait" | "listino_scontato"` (default forfait, retrocompatibile)
+  - `voce_backoffice_id` (riferimento alla voce listino dal backoffice)
+  - `prezzo_unitario_listino` (snapshot al momento)
+  - `sconto_pct` (percentuale da applicare)
+  - `unit` (m² | ml | pz | punti)
+  - `exclude_extras_categories: string[]` (es. `["infissi"]`)
+
+### Frontend
+- **`Landing.jsx` sync live**:
+  - Refactor: separato `PACCHETTI_META` (tag, desc, feats statici lato sito) dai prezzi.
+  - `useEffect` chiama `GET /api/public/packages` e fa merge per `name` (BASIC/SMART/PREMIUM/ELITE). Se l'admin modifica `price_per_m2` o `price_override` su un pacchetto, il sito si aggiorna automaticamente alla ricarica.
+  - Se `price_override` valorizzato, mostra "da X € forfait" (no `/m²`).
+  - Fallback statico se l'API non risponde.
+- **`AdminOptional.jsx` riscritto** (~250 LOC):
+  - Selezione tipo prezzo come PRIMO step: 11 tipi predefiniti (forfait, pavimento_gres, pavimento_parquet, pavimento_laminato, pavimento_marmo, rivestimento, punto_acqua, punto_luce, condizionatore, infissi, porte_interne).
+  - Ogni tipo ha label, unit di default (m²/punti/pz), `category_filter` (categoria backoffice da cui pescare le voci), helper testuale, e flag `excludes_extras` (es. infissi).
+  - Branch dinamico nel dialog:
+    - **Forfait** → mostra campi `price_listino` + `price_scontato` (come prima).
+    - **Listino scontato** → mostra select voci backoffice filtrate per categoria, prezzo unitario letto live, input `sconto_pct`, unit dropdown. Prezzo finale calcolato e mostrato in tempo reale con "Risparmio cliente: X€".
+  - Banner amber automatico se il tipo ha `excludes_extras`: spiega che gli extras della categoria saranno esclusi.
+  - Tabella aggiornata con colonne: Tipo/Unità, Listino, Sconto %, Prezzo finale, Esclude Extra.
+- **`PreventivoPacchetto.jsx` totale + extras**:
+  - `optional.reduce` ora calcola:
+    - `listino_scontato`: `prezzo_unitario_listino * (1 - sconto_pct/100) * qty` (qty inserita dal venditore).
+    - Forfait/legacy: `o.total` o `qty * unit_price` (retrocompat).
+  - Costruisce `excludedExtraCats` da `optional[].exclude_extras_categories` attivi.
+  - `extras = activeItems.reduce` ora SALTA le voci la cui `category` o `name` contiene una categoria esclusa → es. se optional "Infissi" attivo, gli infissi extra del pacchetto **non vengono conteggiati** nel subtotale.
+  - UI Optional step 3: badge "listino live" + "no-extra: infissi" quando applicabile, mostra prezzo unitario + sconto + finale dinamicamente, qty editabile dal venditore con unità corretta.
+  - Quando un optional viene attivato, salva nel payload anche `tipo_prezzo`, `prezzo_unitario_listino`, `sconto_pct`, `voce_backoffice_id`, `exclude_extras_categories` (per ricalcolo coerente).
+
+### Testing
+- `tests/test_round75_public_optional_avanzato.py`: **4/4 PASS**
+  - GET /public/packages senza auth.
+  - Modifica `price_per_m2` admin → propagata a /public/packages.
+  - `price_override` propagato a /public/packages.
+  - Optional `tipo_prezzo=listino_scontato` con `voce_backoffice_id`, `sconto_pct`, `exclude_extras_categories` persisted round-trip.
+- Regression Round 68-74: **52/52 PASS**.
+- Smoke test Landing: prezzi caricati live dal backend (380, 490, 790, 1180 oggi).
+- Smoke test AdminOptional: dialog mostra correttamente 14 voci gres filtrate quando tipo="pavimento_gres".
+
+### File modificati
+- `backend/server.py` (endpoint /public/packages)
+- `frontend/src/pages/Landing.jsx` (fetch live + PACCHETTI_META)
+- `frontend/src/pages/admin/AdminOptional.jsx` (riscritto)
+- `frontend/src/pages/PreventivoPacchetto.jsx` (totals listino_scontato + exclude_extras + UI)
+- `backend/tests/test_round75_public_optional_avanzato.py` (NUOVO)
+
+
+
+
 ## Round 74 — Dashboard dettaglio Sub/Negozi + Preventivi multipli su commessa + RBAC docs (Feb 2026)
 
 **Richieste utente** chiuse in questo round:

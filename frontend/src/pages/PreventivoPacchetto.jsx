@@ -246,21 +246,46 @@ export default function PreventivoPacchetto() {
     const base = hasOverride
       ? Number(pkg.price_override)
       : pkg.price_per_m2 * mqAdjustment.mq_effettivi * mqAdjustment.multiplier;
+    // OPTIONAL avanzati: calcolo del totale.
+    //   - forfait: usa o.total (qty*unit_price impostato dall'admin in price_scontato)
+    //   - listino_scontato: prezzo_unitario_listino * (1 - sconto_pct/100) * qty (qty inserita dal venditore)
+    const optional = (prev.optional || []).reduce((s, o) => {
+      if (o.tipo_prezzo === "listino_scontato" && o.prezzo_unitario_listino) {
+        const unit = (o.prezzo_unitario_listino || 0) * (1 - (o.sconto_pct || 0) / 100);
+        const qty = parseFloat(o.qty) || 0;
+        return s + unit * qty;
+      }
+      if (o.total != null) return s + (o.total || 0);
+      const qty = parseFloat(o.qty) || 1;
+      const unit = parseFloat(o.unit_price) || parseFloat(o.price_scontato) || 0;
+      return s + unit * qty;
+    }, 0);
+    // Categorie escluse dagli extras (es. "infissi"): se c'è un optional attivo che include una categoria,
+    // gli extras di voci di quella categoria NON vengono conteggiati nel subtotale.
+    const excludedExtraCats = new Set();
+    (prev.optional || []).forEach(o => {
+      (o.exclude_extras_categories || []).forEach(c => excludedExtraCats.add(String(c).toLowerCase()));
+    });
+    const isExcludedItem = (it) => {
+      if (!excludedExtraCats.size) return false;
+      const cat = (it.category || "").toLowerCase();
+      const name = (it.name || "").toLowerCase();
+      for (const c of excludedExtraCats) {
+        if (cat.includes(c) || name.includes(c)) return true;
+      }
+      return false;
+    };
     const extras = activeItems.reduce((s, it) => {
+      if (isExcludedItem(it)) return s; // voci infissi (o altra categoria) coperte da optional → no extra
       const incl = it.included_qty || 0;
       const reqs = Math.max(0, it.qty_richiesta || 0);
       const unitPrice = Math.max(0, it.unit_price || 0);
-      // Extras = (eccedenza qty + eccedenza prezzo sopra soglia).
-      // L'eccedenza prezzo si applica SOLO ai MATERIALI (modificabile_dal_venditore=true),
-      // mai alle LAVORAZIONI (muratura/impianti/etc che NON sono modificabili).
       let extraVal = 0;
       if (incl === 0) {
-        // Voce non inclusa → tutta extra (qty × prezzo)
         extraVal = reqs * unitPrice;
       } else {
         const extraQty = Math.max(0, reqs - incl);
         extraVal = extraQty * unitPrice;
-        // Eccedenza prezzo SOLO per materiali modificabili sopra soglia
         if (it.modificabile_dal_venditore) {
           const soglia = it.unit_price_pkg;
           if (soglia != null && soglia > 0 && unitPrice > soglia) {
@@ -270,7 +295,6 @@ export default function PreventivoPacchetto() {
       }
       return s + extraVal;
     }, 0);
-    const optional = (prev.optional || []).reduce((s, o) => s + (o.total || 0), 0);
     // Calcolo bagni multipli: per ogni bagno incluso → surcharge = max(0, tier.price - silver.price);
     // per ogni bagno extra → costo intero del tier scelto
     const silverBase = (bathroomTiers && bathroomTiers[0]?.price) || 0;
@@ -643,18 +667,35 @@ export default function PreventivoPacchetto() {
                 <div className="space-y-3">
                   {optFiltered.map((o) => {
                     const selected = prev.optional.find((x) => x.id === o.id);
+                    const isListinoScontato = o.tipo_prezzo === "listino_scontato";
+                    // Prezzo unitario corrente (listino_scontato: live da backoffice; forfait: scontato dall'admin)
+                    const unitPriceScontato = isListinoScontato
+                      ? (o.prezzo_unitario_listino || 0) * (1 - (o.sconto_pct || 0) / 100)
+                      : (o.per_m2 ? (o.unit_price_scontato || 0) : (o.price_scontato || 0));
                     const qty = selected?.qty ?? 0;
-                    const unitPriceScontato = o.per_m2 ? (o.unit_price_scontato || 0) : (o.price_scontato || 0);
                     const total = selected ? (qty * unitPriceScontato) : 0;
+                    const opUnit = o.unit || (o.per_m2 ? "m²" : "pz");
+                    const hasExcludeExtras = (o.exclude_extras_categories || []).length > 0;
                     return (
                       <div key={o.id} className={`border p-4 flex items-start gap-4 ${selected ? "border-zinc-900 bg-zinc-50" : "border-zinc-200"}`} data-testid={`optional-${o.id}`}>
                         <Switch
                           checked={!!selected}
                           onCheckedChange={(v) => {
                             if (v) {
-                              const defaultQty = o.per_m2 ? prev.mq : 1;
+                              const defaultQty = isListinoScontato ? (o.unit === "m²" ? prev.mq : 0) : (o.per_m2 ? prev.mq : 1);
                               const t = defaultQty * unitPriceScontato;
-                              setPrev((s) => ({ ...s, optional: [...s.optional, { id: o.id, name: o.name, qty: defaultQty, unit_price: unitPriceScontato, total: t, per_m2: o.per_m2, unit: o.unit || (o.per_m2 ? "m²" : "pz"), descrizione: o.descrizione || o.description || "" }] }));
+                              setPrev((s) => ({ ...s, optional: [...s.optional, {
+                                id: o.id, name: o.name,
+                                qty: defaultQty, unit_price: unitPriceScontato, total: t,
+                                per_m2: o.per_m2, unit: opUnit,
+                                descrizione: o.descrizione || o.description || "",
+                                // FLAG avanzati per ricalcolo corretto e exclude_extras
+                                tipo_prezzo: o.tipo_prezzo || "forfait",
+                                prezzo_unitario_listino: o.prezzo_unitario_listino,
+                                sconto_pct: o.sconto_pct,
+                                voce_backoffice_id: o.voce_backoffice_id,
+                                exclude_extras_categories: o.exclude_extras_categories || [],
+                              }] }));
                             } else {
                               setPrev((s) => ({ ...s, optional: s.optional.filter((x) => x.id !== o.id) }));
                             }
@@ -662,18 +703,30 @@ export default function PreventivoPacchetto() {
                           data-testid={`optional-switch-${o.id}`}
                         />
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium">{o.name}</div>
+                          <div className="font-medium flex items-center gap-2">
+                            {o.name}
+                            {hasExcludeExtras && <span className="text-[9px] px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded font-bold uppercase">no-extra: {(o.exclude_extras_categories || []).join(", ")}</span>}
+                            {isListinoScontato && <span className="text-[9px] px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded font-bold uppercase">listino live</span>}
+                          </div>
+                          {o.descrizione && <div className="text-[10px] text-zinc-500 mt-0.5">{o.descrizione}</div>}
                           <div className="mono text-xs text-zinc-500 mt-1">
-                            Listino {fmtEuro(o.price_listino)} · Pacchetto {fmtEuro(o.price_scontato)}
-                            {o.per_m2 && <> · {fmtEuro(o.unit_price_scontato)}/m²</>}
-                            {!o.per_m2 && <> · {fmtEuro(o.price_scontato)}/{o.unit || "pz"}</>}
+                            {isListinoScontato ? (
+                              <>Listino {fmtEuro(o.prezzo_unitario_listino || 0)}/{opUnit}
+                                {(o.sconto_pct || 0) > 0 && <> · sconto {o.sconto_pct}% → <strong>{fmtEuro(unitPriceScontato)}/{opUnit}</strong></>}
+                              </>
+                            ) : (
+                              <>Listino {fmtEuro(o.price_listino)} · Pacchetto {fmtEuro(o.price_scontato)}
+                                {o.per_m2 && <> · {fmtEuro(o.unit_price_scontato)}/m²</>}
+                                {!o.per_m2 && <> · {fmtEuro(o.price_scontato)}/{opUnit}</>}
+                              </>
+                            )}
                           </div>
                         </div>
                         {selected && (
                           <div className="flex items-center gap-2">
                             <Label className="text-[10px] uppercase tracking-widest text-zinc-500">Qty</Label>
                             <Input
-                              type="number" min={0} step={o.per_m2 ? "0.5" : "1"}
+                              type="number" min={0} step={(opUnit === "m²" || opUnit === "ml") ? "0.5" : "1"}
                               value={qty}
                               onChange={(e) => {
                                 const v = Math.max(0, parseFloat(e.target.value) || 0);
@@ -683,7 +736,7 @@ export default function PreventivoPacchetto() {
                               className="rounded-sm h-9 text-right mono w-24"
                               data-testid={`optional-qty-${o.id}`}
                             />
-                            <span className="text-xs text-zinc-500 mono">{o.unit || (o.per_m2 ? "m²" : "pz")}</span>
+                            <span className="text-xs text-zinc-500 mono">{opUnit}</span>
                           </div>
                         )}
                         <div className="mono text-right font-medium min-w-[110px]">

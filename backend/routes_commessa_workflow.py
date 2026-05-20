@@ -198,6 +198,25 @@ def build_commessa_workflow_router(db, get_current_user):
                 "unit_price": float(ls.get("prezzo_rivendita") or 0),
                 "category": (ls.get("categoria") or "FORNITURA").upper(),
             })
+        # Composite selections — voci scelte dal venditore nel preventivo COMPOSITE (dict o lista)
+        csel = prev.get("composite_selections") or []
+        if isinstance(csel, dict):
+            csel = [{"voce_id": k, **(v if isinstance(v, dict) else {})} for k, v in csel.items()]
+        for sel in csel:
+            if not isinstance(sel, dict):
+                continue
+            q = float(sel.get("qty") or 0)
+            pu = float(sel.get("price") or sel.get("unit_price") or sel.get("prezzo_unit") or 0)
+            if q <= 0 and pu <= 0:
+                continue
+            voci_prev.append({
+                "voce_id": sel.get("voce_id") or sel.get("id"),
+                "name": sel.get("name") or sel.get("descrizione") or "Voce composite",
+                "qty": q if q > 0 else 1,
+                "unit": sel.get("unit") or "pz",
+                "unit_price": pu,
+                "category": sel.get("category") or sel.get("section_id") or "",
+            })
         # Se PACCHETTO senza items → deriva dal package
         if not voci_prev and prev.get("package_id"):
             pkg = await db.packages.find_one({"id": prev["package_id"]}, {"_id": 0})
@@ -273,6 +292,15 @@ def build_commessa_workflow_router(db, get_current_user):
         computo = {"items": items, "totale": prev.get("totale_iva_incl") or prev.get("totale") or 0,
                    "generated_at": NOW(), "generated_by": user.get("id")}
         await db.commesse.update_one({"id": cid}, {"$set": {"computo_metrico": computo}})
+        if not items:
+            # Restituisce comunque un diagnostico chiaro per l'UI
+            return {**computo, "warning": (
+                "Computo vuoto. Verifica che il preventivo contenga voci con qty>0 e prezzo>0. "
+                f"Tipo: {prev.get('tipo','?')} · items={len(prev.get('items') or [])} · "
+                f"composite_selections={len(prev.get('composite_selections') or [])} · "
+                f"listini={len((prev.get('listini_selections') or []))+len((prev.get('package_listini_items') or []))} · "
+                f"optional={len(prev.get('optional') or [])} · infissi={len((prev.get('infissi') or []))+len((prev.get('infissi_extras') or []))}"
+            )}
         return computo
 
     # ---------- 4b. ASSEGNAZIONE VOCI COMPUTO METRICO ----------

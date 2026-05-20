@@ -174,12 +174,13 @@ function ListinoDetail({ listino: initialListino, onBack, reload: reloadParent }
     setListino(data);
   };
 
-  const prodotti = listino.prodotti || [];
+  const prodotti = Array.isArray(listino.prodotti) ? listino.prodotti : [];
   const filtered = useMemo(() => {
     return prodotti.filter(p => {
+      if (!p) return false;
       if (fasciaFilter && p.fascia_prezzo !== fasciaFilter) return false;
       if (q) {
-        const blob = `${p.nome} ${p.codice || ""} ${p.descrizione || ""} ${p.categoria_dettaglio || ""}`.toLowerCase();
+        const blob = `${p.nome || ""} ${p.codice || ""} ${p.descrizione || ""} ${p.categoria_dettaglio || ""}`.toLowerCase();
         if (!blob.includes(q.toLowerCase())) return false;
       }
       return true;
@@ -232,7 +233,7 @@ function ListinoDetail({ listino: initialListino, onBack, reload: reloadParent }
     <div data-testid="admin-listino-detail-page">
       <PageHeader
         title={`${listino.fornitore_nome} · ${listino.nome}`}
-        subtitle={`Categoria: ${listino.categoria} · ${prodotti.length} prodotti · Ricarico default ×${listino.ricarico_default}`}
+        subtitle={`Categoria: ${listino.categoria} · ${prodotti.length} prodotti · Ricarico default ×${Number(listino.ricarico_default || 1.8).toFixed(2)}`}
       />
       <Page>
         <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
@@ -279,10 +280,10 @@ function ListinoDetail({ listino: initialListino, onBack, reload: reloadParent }
                   <td className="px-3 py-2 mono text-xs text-zinc-500">{p.codice || "—"}</td>
                   <td className="px-3 py-2"><div className="font-medium">{p.nome}</div>{p.descrizione && <div className="text-[11px] text-zinc-500">{p.descrizione}</div>}</td>
                   <td className="px-3 py-2 text-xs">{p.categoria_dettaglio || "—"}</td>
-                  <td className="px-3 py-2 text-xs">{p.unit}</td>
-                  <td className="px-3 py-2 text-right mono">€ {(p.prezzo_netto || 0).toFixed(2)}</td>
-                  <td className="px-3 py-2 text-right mono text-xs">×{(p.ricarico || listino.ricarico_default).toFixed(2)}</td>
-                  <td className="px-3 py-2 text-right mono font-semibold text-blue-700">€ {(p.prezzo_rivendita || 0).toFixed(2)}</td>
+                  <td className="px-3 py-2 text-xs">{p.unit || "pz"}</td>
+                  <td className="px-3 py-2 text-right mono">€ {Number(p.prezzo_netto || 0).toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right mono text-xs">×{Number(p.ricarico || listino.ricarico_default || 1.8).toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right mono font-semibold text-blue-700">€ {Number(p.prezzo_rivendita || (Number(p.prezzo_netto || 0) * Number(p.ricarico || listino.ricarico_default || 1.8))).toFixed(2)}</td>
                   <td className="px-3 py-2 text-center"><span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-bold ${FASCIA_BADGE[p.fascia_prezzo] || ""}`}>{FASCIA_LABEL[p.fascia_prezzo] || "—"}</span></td>
                   <td className="px-3 py-2 text-center">{p.attivo ? "✓" : "—"}</td>
                   <td className="px-3 py-2 text-right">

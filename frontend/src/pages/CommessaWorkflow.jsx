@@ -911,7 +911,19 @@ function ComputoTab({ wf, cid, reload }) {
           </div>
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" onClick={printAndExport} data-testid="cm-print">Stampa / PDF</Button>
-            <Button size="sm" onClick={async () => { await api.post(`/commesse/${cid}/workflow/computo`); toast.success("Computo rigenerato dal preventivo"); reload(); }} data-testid="cm-gen"><Sparkles className="h-4 w-4 mr-1" /> Rigenera dal preventivo</Button>
+            <Button size="sm" onClick={async () => {
+              try {
+                const { data } = await api.post(`/commesse/${cid}/workflow/computo`);
+                if (data?.warning) {
+                  toast.error(data.warning);
+                } else if (!data?.items?.length) {
+                  toast.error("Il preventivo non contiene voci utilizzabili");
+                } else {
+                  toast.success(`Computo rigenerato: ${data.items.length} voci`);
+                }
+                reload();
+              } catch (e) { toast.error("Errore: " + (e?.response?.data?.detail || e.message)); }
+            }} data-testid="cm-gen"><Sparkles className="h-4 w-4 mr-1" /> Rigenera dal preventivo</Button>
           </div>
         </div>
         {/* Tabs vista */}

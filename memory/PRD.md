@@ -1,6 +1,56 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 79 — Fix critici: Listini Fornitori, Override eliminato, Computo Composite (Feb 2026)
+
+**4 lamentele utente** (frustrazione alta, da chiudere subito):
+1. "i listini dei fornitori continuano a crashare quando li seleziono (in produzione)"
+2. "tutti i listini fornitori devono SEMPRE essere presenti nei pacchetti e io scelgo in che quantità e cosa"
+3. "cosa cazzo è override prezzo? te l'ho già chiesto"
+4. "il computo NON FUNZIONA! è vuoto e non ci sono le voci"
+
+### Fix 1 — Crash listini fornitori (`AdminListiniFornitori.jsx`)
+- **Root cause**: `(p.ricarico || listino.ricarico_default).toFixed(2)` crashava se ricarico era stringa o null.
+- Wrap di tutti i campi numerici in `Number(… || 0)` prima di `.toFixed(2)`.
+- Aggiunto `Array.isArray(listino.prodotti)` guard, filter ignora prodotti null.
+- Funziona in preview (i dati erano OK). Devi **redeployare** per il fix in produzione.
+
+### Fix 2 — Listini fornitori SEMPRE presenti nei pacchetti (`AdminPacchetti.jsx`)
+- Sostituito il vecchio picker pop-up con un **widget integrato permanente** dentro il dialog del pacchetto.
+- Carica tutti i prodotti da `/api/fornitori-listini-prodotti/cerca?max_results=2000` all'apertura.
+- Raggruppamento gerarchico: `📂 Categoria → 🏭 Fornitore → prodotti`.
+- Ogni categoria è espandibile/collassabile; mostra contatore prodotti totali + selezionati.
+- Per ogni prodotto: checkbox (per includere) + qty inline + flag "modificabile dal venditore" (per dire se può sostituirlo).
+- Search bar in cima per filtrare prodotti/fornitori/categorie.
+- Quando aggiungi un nuovo listino in "Listini Fornitori", appare **automaticamente** in tutti i pacchetti.
+
+### Fix 3 — Override prezzo eliminato (`AdminPacchetti.jsx`)
+- Rimossa la sezione "⚙ Prezzo TOTALE forfait" che confondeva l'utente.
+- Backend retro-compatibile (accetta ancora `price_override` per pacchetti esistenti); frontend non lo invia più.
+
+### Fix 4 — Computo metrico vuoto da preventivo Composite (`routes_commessa_workflow.py`)
+- **Root cause**: `gen_computo` leggeva solo `prev["items"]` e `package_id` fallback. **NON leggeva `composite_selections`**.
+- Aggiunto blocco esplicito che legge `composite_selections` (dict o lista) e converte in voci con `qty/unit_price/category`.
+- Aggiunto **diagnostico in caso di computo vuoto**: ritorna `warning` con conteggio items/composite/listini/optional/infissi del preventivo, mostrato come toast nel frontend.
+- `CommessaWorkflow.jsx` aggiornato per leggere `data.warning` e mostrarlo come toast d'errore esplicito.
+
+### Test (verde)
+- `tests/test_round79_computo_composite.py` — 3/3 PASS
+  - computo da composite: 2 items, totale 3000€ ✓
+  - computo vuoto ritorna warning diagnostico ✓
+  - optional nuovo schema (tipo_prezzo/sorgente_prezzo/listino_categoria) persistito ✓
+- Regression: 19/19 PASS (round 73–77).
+
+### File modificati / creati
+- `frontend/src/pages/admin/AdminListiniFornitori.jsx` (difese Number/Array)
+- `frontend/src/pages/admin/AdminPacchetti.jsx` (widget listini integrato + rimozione override)
+- `frontend/src/pages/CommessaWorkflow.jsx` (warning su rigenera computo)
+- `backend/routes_commessa_workflow.py` (lettura composite_selections + warning)
+- `backend/tests/test_round79_computo_composite.py` (NUOVO)
+
+
+
+
 ## Round 78 — Optional semplificato + Riordino Fasi/Checklist in Impostazioni (Feb 2026)
 
 **Richieste utente** (3 punti):

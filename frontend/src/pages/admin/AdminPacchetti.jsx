@@ -197,6 +197,32 @@ function PackageDialog({ pkg, voci, onClose, onSaved, isNew }) {
     return groups;
   }, [voci, form.items, search]);
 
+  // Cross-search: se la query in "Voci disponibili" non trova nulla nel backoffice,
+  // cerca tra i prodotti dei listini fornitori e suggerisci di andare lì.
+  const matchingListiniFornitori = useMemo(() => {
+    if (!search || !allProdotti.length) return [];
+    const q = search.toLowerCase();
+    return allProdotti.filter(p =>
+      `${p.nome || ""} ${p.codice || ""} ${p.fornitore_nome || ""} ${p.categoria || ""}`.toLowerCase().includes(q)
+    ).slice(0, 6);
+  }, [search, allProdotti]);
+
+  // Quando clicco "Vai al prodotto": setta search nel widget listini + espande tutte le categorie con match + scroll
+  const jumpToListini = (categoriaToOpen) => {
+    setListiniSearch(search);
+    const cats = new Set();
+    if (categoriaToOpen) cats.add(categoriaToOpen);
+    matchingListiniFornitori.forEach(p => p.categoria && cats.add(p.categoria));
+    const map = { ...listiniExpandedCat };
+    cats.forEach(c => { map[c] = true; });
+    setListiniExpandedCat(map);
+    // Scroll
+    setTimeout(() => {
+      const el = document.querySelector('[data-testid="pkg-listini-search"]');
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+  };
+
   const selectedItems = (form.items || []).map((it) => ({ ...it, voce: voci.find((v) => v.id === it.voce_id) })).filter((i) => i.voce).sort((a, b) => sortVoce(a.voce, b.voce));
   const addVoce = (v) => setForm({ ...form, items: [...(form.items || []), { voce_id: v.id, qty_mode: v.unit === "pz" || v.unit === "punto" || v.unit === "forfait" ? "fissa" : "mq", qty_value: 1, qty_ratio: 1 }] });
   const removeVoce = (i) => setForm({ ...form, items: form.items.filter((_, j) => j !== i) });
@@ -320,14 +346,41 @@ function PackageDialog({ pkg, voci, onClose, onSaved, isNew }) {
                 </div>
               ))}
               {Object.keys(groupedAvail).length === 0 && (
-                <div className="text-center py-8 px-3">
+                <div className="text-center py-6 px-3">
                   <div className="text-sm text-zinc-600 font-medium mb-1">Nessuna voce backoffice trovata</div>
                   {search ? (
-                    <div className="text-[11px] text-zinc-500 leading-snug">
-                      "<strong>{search}</strong>" non corrisponde a nessuna voce del Listino Opere.<br/><br/>
-                      🛒 Se cerchi un <strong>prodotto fornitore</strong> (porte, piastrelle, sanitari, infissi…) usa la sezione <strong>"Listini Fornitori inclusi"</strong> qui sotto.<br/><br/>
-                      🛠 Le voci del Listino Opere si gestiscono in <strong>Voci Backoffice</strong> (menu laterale).
-                    </div>
+                    <>
+                      <div className="text-[11px] text-zinc-500 leading-snug mb-3">
+                        "<strong>{search}</strong>" non corrisponde a nessuna voce del Listino Opere.
+                      </div>
+                      {matchingListiniFornitori.length > 0 ? (
+                        <div className="bg-amber-50 border border-amber-300 rounded p-2 text-left">
+                          <div className="text-[11px] font-bold text-amber-900 mb-1.5">
+                            🛒 Trovato in <strong>Listini Fornitori</strong> ({matchingListiniFornitori.length}):
+                          </div>
+                          <div className="space-y-1">
+                            {matchingListiniFornitori.map(p => (
+                              <button key={`${p.listino_id}-${p.id}`} onClick={() => jumpToListini(p.categoria)}
+                                className="w-full text-left bg-white border border-amber-200 hover:border-amber-500 rounded p-1.5 transition" data-testid={`pkg-jump-${p.id}`}>
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-[11px] font-medium truncate">{p.codice ? `[${p.codice}] ` : ""}{p.nome}</div>
+                                    <div className="text-[9px] text-zinc-500">📂 {p.categoria} · 🏭 {p.fornitore_nome || p.listino_nome || "—"} · € {Number(p.prezzo_rivendita || 0).toFixed(2)}/{p.unit || "pz"}</div>
+                                  </div>
+                                  <span className="text-[10px] text-amber-700 font-bold shrink-0">↓ Vai</span>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                          <div className="text-[9px] text-amber-700 italic mt-2 text-center">Clicca un risultato per scorrere alla sezione listini fornitori e selezionarlo.</div>
+                        </div>
+                      ) : (
+                        <div className="text-[11px] text-zinc-500 leading-snug">
+                          🛒 Nessun prodotto fornitore corrisponde a "<strong>{search}</strong>".<br/>
+                          Carica i listini in <strong>Listini Fornitori</strong> oppure crea una voce in <strong>Voci Backoffice</strong>.
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div className="text-[11px] text-zinc-500">Non hai ancora voci nel Listino Opere. Vai a <strong>Voci Backoffice</strong> per crearle.</div>
                   )}

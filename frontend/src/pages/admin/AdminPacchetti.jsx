@@ -297,8 +297,9 @@ function PackageDialog({ pkg, voci, onClose, onSaved, isNew }) {
           {/* MIDDLE: Available voci picker */}
           <div className="col-span-4 border-r flex flex-col overflow-hidden">
             <div className="px-4 py-3 border-b bg-zinc-50">
-              <div className="font-semibold text-sm mb-2">Voci disponibili</div>
-              <Input placeholder="Cerca voce..." value={search} onChange={(e) => setSearch(e.target.value)} data-testid="pkg-voce-search" />
+              <div className="font-semibold text-sm mb-1">Voci disponibili <span className="text-[10px] text-zinc-400 font-normal">(dal Listino Opere)</span></div>
+              <p className="text-[10px] text-zinc-500 mb-2 leading-tight">Solo voci tecniche del backoffice (manodopera+materiali). Per i prodotti fornitori scorri sotto.</p>
+              <Input placeholder="Cerca voce... (es: demolizione, pavimento)" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="pkg-voce-search" />
             </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-3">
               {["DEMOLIZIONI", "MURATURA", "IMPIANTI", "INFISSI", "SERVIZI"].map((k) => groupedAvail[k] && (
@@ -318,7 +319,20 @@ function PackageDialog({ pkg, voci, onClose, onSaved, isNew }) {
                   </div>
                 </div>
               ))}
-              {Object.keys(groupedAvail).length === 0 && <div className="text-sm text-zinc-500 text-center py-8">Nessuna voce disponibile</div>}
+              {Object.keys(groupedAvail).length === 0 && (
+                <div className="text-center py-8 px-3">
+                  <div className="text-sm text-zinc-600 font-medium mb-1">Nessuna voce backoffice trovata</div>
+                  {search ? (
+                    <div className="text-[11px] text-zinc-500 leading-snug">
+                      "<strong>{search}</strong>" non corrisponde a nessuna voce del Listino Opere.<br/><br/>
+                      🛒 Se cerchi un <strong>prodotto fornitore</strong> (porte, piastrelle, sanitari, infissi…) usa la sezione <strong>"Listini Fornitori inclusi"</strong> qui sotto.<br/><br/>
+                      🛠 Le voci del Listino Opere si gestiscono in <strong>Voci Backoffice</strong> (menu laterale).
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-zinc-500">Non hai ancora voci nel Listino Opere. Vai a <strong>Voci Backoffice</strong> per crearle.</div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

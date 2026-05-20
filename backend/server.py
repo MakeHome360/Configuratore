@@ -574,11 +574,32 @@ async def create_project_from_preventivo(preventivo_id: str, user: Dict[str, Any
         return {"id": prev["project_id"], "existed": True}
     now = datetime.now(timezone.utc).isoformat()
     nome_cliente = (prev.get("cliente") or {}).get("nome") or "Cliente"
+    # Snapshot del preventivo per il CAD: l'editor potrà sottrarre questi
+    # interventi già preventivati dagli extra calcolati live.
+    baseline_preventivo = {
+        "preventivo_id": preventivo_id,
+        "numero": prev.get("numero"),
+        "tipo": prev.get("tipo"),
+        "package_id": prev.get("package_id"),
+        "mq": prev.get("mq"),
+        "totale_iva_incl": prev.get("totale_iva_incl"),
+        "totale_iva_escl": prev.get("totale_iva_escl"),
+        "package_base_total": prev.get("package_base_total"),
+        "items": prev.get("items") or [],
+        "extra_voci": prev.get("extra_voci") or [],
+        "composite_selections": prev.get("composite_selections") or [],
+        "infissi": prev.get("infissi") or [],
+        "infissi_extras": prev.get("infissi_extras") or [],
+        "optional": prev.get("optional") or [],
+        "listini_selections": prev.get("listini_selections") or [],
+        "package_listini_items": prev.get("package_listini_items") or [],
+        "snapshot_at": now,
+    }
     project_doc = {
         "id": str(uuid.uuid4()),
         "user_id": user["id"],
         "name": f"Progetto {nome_cliente} ({prev.get('numero', '')})",
-        "data": {"mq": prev.get("mq", 70), "rooms": [], "walls": [], "doors": [], "windows": [], "items": [], "electrical": [], "plumbing": [], "gas": [], "hvac": [], "stairs": [], "texts": [], "demolitions": [], "tiling": [], "roomHeight": 270},
+        "data": {"mq": prev.get("mq", 70), "rooms": [], "walls": [], "doors": [], "windows": [], "items": [], "electrical": [], "plumbing": [], "gas": [], "hvac": [], "stairs": [], "texts": [], "demolitions": [], "tiling": [], "roomHeight": 270, "baseline_preventivo": baseline_preventivo},
         "thumbnail": None,
         "preventivo_id": preventivo_id,
         "created_at": now,

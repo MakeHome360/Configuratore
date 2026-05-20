@@ -26,6 +26,7 @@ export default function AdminImpostazioni() {
         actions={<Button onClick={save} data-testid="imp-save" style={{ background: "var(--brand)", color: "white" }}>Salva</Button>} />
       <Page>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 max-w-5xl">
+          <DatiAzienda imp={imp} setImp={setImp} />
           <div className="bg-white border border-zinc-200 rounded-lg p-5 space-y-4">
             <h3 className="font-semibold">Generale</h3>
             <F label="Margine minimo richiesto" k="margine_minimo" unit="%" />
@@ -62,6 +63,9 @@ export default function AdminImpostazioni() {
 
           {/* --- Round 76: Fasi cantiere + Checklist per tipo lavori --- */}
           <FasiETipoLavori imp={imp} setImp={setImp} />
+
+          {/* --- Round 81: Preset modalità di pagamento --- */}
+          <PresetPagamenti imp={imp} setImp={setImp} />
         </div>
         <div className="mt-4 text-xs text-zinc-500 bg-amber-50 border border-amber-200 p-3 rounded max-w-5xl">
           <strong>Nota:</strong> Le modifiche avranno effetto solo sui nuovi preventivi. I preventivi esistenti non verranno modificati.
@@ -219,3 +223,145 @@ function ListaConfig({ titolo, items, setItems, testidPrefix }) {
   );
 }
 
+
+
+// --------- Dati Azienda (Ragione sociale, P.IVA, Sedi) ---------
+function DatiAzienda({ imp, setImp }) {
+  const sedi = imp.sedi_operative || [];
+  const setSedi = (next) => setImp({ ...imp, sedi_operative: next });
+  const addSede = () => setSedi([...sedi, { id: `sede-${Date.now()}`, nome: "Nuova sede", indirizzo: "", citta: "", cap: "", provincia: "", telefono: "", email: "", referente: "" }]);
+  const updSede = (i, k, v) => setSedi(sedi.map((s, idx) => idx === i ? { ...s, [k]: v } : s));
+  const delSede = (i) => setSedi(sedi.filter((_, idx) => idx !== i));
+  return (
+    <div className="bg-white border border-zinc-200 rounded-lg p-5 space-y-4 lg:col-span-2" data-testid="dati-azienda-section">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold">🏢 Dati Azienda</h3>
+        <span className="text-[10px] text-zinc-500 italic">Usati in PDF preventivi, contratti, fatture</span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+          <Label className="text-xs">Ragione Sociale *</Label>
+          <Input value={imp.ragione_sociale || ""} onChange={(e) => setImp({ ...imp, ragione_sociale: e.target.value })} placeholder="es. RELA SRLS" data-testid="imp-ragione-sociale" />
+        </div>
+        <div>
+          <Label className="text-xs">Marchio commerciale</Label>
+          <Input value={imp.marchio_commerciale || ""} onChange={(e) => setImp({ ...imp, marchio_commerciale: e.target.value })} placeholder="es. Sa di casa" data-testid="imp-marchio" />
+        </div>
+        <div>
+          <Label className="text-xs">Partita IVA</Label>
+          <Input value={imp.partita_iva || ""} onChange={(e) => setImp({ ...imp, partita_iva: e.target.value })} placeholder="01234567890" data-testid="imp-piva" />
+        </div>
+        <div>
+          <Label className="text-xs">Codice Fiscale</Label>
+          <Input value={imp.codice_fiscale || ""} onChange={(e) => setImp({ ...imp, codice_fiscale: e.target.value })} placeholder="RBNRSS80A01H501Z" data-testid="imp-cf" />
+        </div>
+        <div>
+          <Label className="text-xs">REA / N° iscrizione CCIAA</Label>
+          <Input value={imp.rea || ""} onChange={(e) => setImp({ ...imp, rea: e.target.value })} placeholder="MI-1234567" data-testid="imp-rea" />
+        </div>
+        <div>
+          <Label className="text-xs">PEC</Label>
+          <Input type="email" value={imp.pec || ""} onChange={(e) => setImp({ ...imp, pec: e.target.value })} placeholder="azienda@pec.it" data-testid="imp-pec" />
+        </div>
+      </div>
+      {/* Sede legale */}
+      <div className="border-t pt-3">
+        <Label className="text-xs font-semibold">📍 Sede Legale</Label>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mt-2">
+          <Input placeholder="Indirizzo (via, civico)" value={imp.sede_legale_indirizzo || ""} onChange={(e) => setImp({ ...imp, sede_legale_indirizzo: e.target.value })} className="md:col-span-2" data-testid="imp-sl-indirizzo" />
+          <Input placeholder="Città" value={imp.sede_legale_citta || ""} onChange={(e) => setImp({ ...imp, sede_legale_citta: e.target.value })} data-testid="imp-sl-citta" />
+          <Input placeholder="CAP" value={imp.sede_legale_cap || ""} onChange={(e) => setImp({ ...imp, sede_legale_cap: e.target.value })} data-testid="imp-sl-cap" />
+          <Input placeholder="Provincia (sigla)" value={imp.sede_legale_provincia || ""} onChange={(e) => setImp({ ...imp, sede_legale_provincia: e.target.value })} data-testid="imp-sl-prov" />
+          <Input placeholder="Telefono" value={imp.telefono_principale || ""} onChange={(e) => setImp({ ...imp, telefono_principale: e.target.value })} data-testid="imp-sl-tel" />
+          <Input placeholder="Email" value={imp.email_principale || ""} onChange={(e) => setImp({ ...imp, email_principale: e.target.value })} className="md:col-span-2" data-testid="imp-sl-email" />
+        </div>
+      </div>
+      {/* Sedi operative multiple */}
+      <div className="border-t pt-3">
+        <div className="flex items-center justify-between mb-2">
+          <Label className="text-xs font-semibold">🏬 Sedi operative aggiuntive ({sedi.length})</Label>
+          <button onClick={addSede} className="text-[10px] px-2 py-0.5 bg-zinc-900 text-white rounded" data-testid="imp-sede-add">+ Aggiungi sede</button>
+        </div>
+        {!sedi.length && <p className="text-[10px] text-zinc-400 italic">Nessuna sede aggiuntiva. Aggiungi se hai showroom, depositi o filiali.</p>}
+        <div className="space-y-2">
+          {sedi.map((s, i) => (
+            <div key={s.id || i} className="bg-zinc-50 border border-zinc-200 rounded p-2 grid grid-cols-12 gap-1.5" data-testid={`imp-sede-row-${i}`}>
+              <Input className="col-span-3 h-7 text-xs" placeholder="Nome sede (es. Showroom Milano)" value={s.nome} onChange={(e) => updSede(i, "nome", e.target.value)} />
+              <Input className="col-span-3 h-7 text-xs" placeholder="Indirizzo" value={s.indirizzo} onChange={(e) => updSede(i, "indirizzo", e.target.value)} />
+              <Input className="col-span-2 h-7 text-xs" placeholder="Città" value={s.citta} onChange={(e) => updSede(i, "citta", e.target.value)} />
+              <Input className="col-span-1 h-7 text-xs" placeholder="CAP" value={s.cap} onChange={(e) => updSede(i, "cap", e.target.value)} />
+              <Input className="col-span-1 h-7 text-xs" placeholder="PR" value={s.provincia} onChange={(e) => updSede(i, "provincia", e.target.value)} />
+              <Input className="col-span-1 h-7 text-xs" placeholder="Tel" value={s.telefono} onChange={(e) => updSede(i, "telefono", e.target.value)} />
+              <button className="col-span-1 text-rose-600 text-xs" onClick={() => delSede(i)} data-testid={`imp-sede-del-${i}`}>✕ Elimina</button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// --------- Preset Modalità di Pagamento ---------
+function PresetPagamenti({ imp, setImp }) {
+  const presets = imp.preset_modalita_pagamento || [];
+  const setPresets = (next) => setImp({ ...imp, preset_modalita_pagamento: next });
+  const addPreset = () => setPresets([...presets, { id: `pmt-${Date.now()}`, nome: "Nuovo preset", descrizione: "", rate: [{ etichetta: "Acconto", pct: 30, scadenza_giorni: 0 }, { etichetta: "Saldo", pct: 70, scadenza_giorni: 30 }], default: false }]);
+  const updPreset = (i, k, v) => setPresets(presets.map((p, idx) => idx === i ? { ...p, [k]: v } : p));
+  const delPreset = (i) => setPresets(presets.filter((_, idx) => idx !== i));
+  const addRata = (i) => updPreset(i, "rate", [...(presets[i].rate || []), { etichetta: `Rata ${(presets[i].rate || []).length + 1}`, pct: 0, scadenza_giorni: 0 }]);
+  const updRata = (i, j, k, v) => updPreset(i, "rate", presets[i].rate.map((r, rIdx) => rIdx === j ? { ...r, [k]: v } : r));
+  const delRata = (i, j) => updPreset(i, "rate", presets[i].rate.filter((_, rIdx) => rIdx !== j));
+
+  return (
+    <div className="bg-white border border-zinc-200 rounded-lg p-5 space-y-4 lg:col-span-2" data-testid="preset-pagamenti-section">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold">💳 Preset Modalità di Pagamento</h3>
+        <button onClick={addPreset} className="text-[11px] px-2 py-1 bg-zinc-900 text-white rounded" data-testid="imp-preset-add">+ Nuovo preset</button>
+      </div>
+      <p className="text-xs text-zinc-500 -mt-2">Crea qui i preset (es. 30/40/30, 50/50, Bonus fiscali). Il venditore in fase di preventivo sceglie quello più indicato dalla tendina.</p>
+      {!presets.length && <p className="text-xs text-zinc-400 italic text-center py-3">Nessun preset. Aggiungine almeno uno.</p>}
+      <div className="space-y-3">
+        {presets.map((p, i) => {
+          const total = (p.rate || []).reduce((s, r) => s + (parseFloat(r.pct) || 0), 0);
+          const valid = Math.abs(total - 100) < 0.01;
+          return (
+            <div key={p.id || i} className="border border-zinc-200 rounded p-3 bg-zinc-50/30 space-y-2" data-testid={`imp-preset-${i}`}>
+              <div className="flex items-center gap-2">
+                <Input className="flex-1 h-8 text-sm font-semibold" placeholder="Nome preset (es. 30/40/30)" value={p.nome} onChange={(e) => updPreset(i, "nome", e.target.value)} data-testid={`imp-preset-nome-${i}`} />
+                <label className="flex items-center gap-1 text-[10px] text-zinc-600 cursor-pointer">
+                  <input type="checkbox" checked={!!p.default} onChange={(e) => setPresets(presets.map((x, idx) => ({ ...x, default: idx === i ? e.target.checked : false })))} />
+                  <span>Default</span>
+                </label>
+                <button onClick={() => delPreset(i)} className="text-rose-600 text-sm px-2" data-testid={`imp-preset-del-${i}`}>✕</button>
+              </div>
+              <Input className="h-7 text-[11px]" placeholder="Descrizione (visibile al venditore: quando usarlo)" value={p.descrizione || ""} onChange={(e) => updPreset(i, "descrizione", e.target.value)} />
+              <div className="space-y-1">
+                <div className="grid grid-cols-12 gap-1 text-[9px] uppercase tracking-widest text-zinc-500 px-1">
+                  <span className="col-span-5">Etichetta rata</span>
+                  <span className="col-span-2 text-right">%</span>
+                  <span className="col-span-4 text-right">Scadenza (gg)</span>
+                  <span className="col-span-1"></span>
+                </div>
+                {(p.rate || []).map((r, j) => (
+                  <div key={j} className="grid grid-cols-12 gap-1 items-center">
+                    <Input className="col-span-5 h-7 text-xs" placeholder="Es. Acconto" value={r.etichetta} onChange={(e) => updRata(i, j, "etichetta", e.target.value)} />
+                    <Input className="col-span-2 h-7 text-xs text-right mono" type="number" step="0.5" value={r.pct} onChange={(e) => updRata(i, j, "pct", parseFloat(e.target.value) || 0)} />
+                    <Input className="col-span-4 h-7 text-xs text-right mono" type="number" placeholder="0 = subito" value={r.scadenza_giorni} onChange={(e) => updRata(i, j, "scadenza_giorni", parseInt(e.target.value) || 0)} />
+                    <button onClick={() => delRata(i, j)} className="col-span-1 text-rose-600 text-xs">✕</button>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between">
+                  <button onClick={() => addRata(i)} className="text-[10px] text-blue-700 underline">+ Aggiungi rata</button>
+                  <span className={`text-[11px] mono font-semibold ${valid ? "text-emerald-700" : "text-rose-700"}`}>
+                    Totale: {total.toFixed(1)}% {valid ? "✓" : "⚠ deve fare 100%"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

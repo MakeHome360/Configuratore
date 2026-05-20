@@ -18,15 +18,28 @@ export default function ModalitaPagamentoPicker({ prev, setPrev, totale }) {
   const [presets, setPresets] = useState([]);
   const [custom, setCustom] = useState(false);
   useEffect(() => {
-    api.get("/dati-azienda").then(r => {
-      const ps = (r.data || {}).payment_presets || [];
+    Promise.all([
+      api.get("/dati-azienda").catch(() => ({ data: {} })),
+      api.get("/impostazioni").catch(() => ({ data: {} })),
+    ]).then(([daRes, impRes]) => {
+      const legacy = (daRes.data || {}).payment_presets || [];
+      const fromImp = ((impRes.data || {}).preset_modalita_pagamento || []).map(p => ({
+        id: p.id,
+        nome: p.nome,
+        descrizione: p.descrizione || "",
+        rate: (p.rate || []).map(r => ({ descrizione: r.etichetta || r.descrizione || "Rata", pct: parseFloat(r.pct) || 0, scadenza_giorni: parseInt(r.scadenza_giorni) || 0 })),
+        default: !!p.default,
+      }));
+      // Merge: imp first (nuovi), poi legacy (filtra duplicati per id)
+      const seen = new Set(fromImp.map(p => p.id));
+      const ps = [...fromImp, ...legacy.filter(p => !seen.has(p.id))];
       setPresets(ps);
       // Auto-selezione del default se nessuna modalità scelta
       if (!prev.modalita_pagamento?.preset_id && !prev.modalita_pagamento?.rate?.length && ps.length) {
         const def = ps.find(p => p.default) || ps[0];
         if (def) applyPreset(def.id, ps);
       }
-    }).catch(() => {});
+    });
     // eslint-disable-next-line
   }, []);
   const mp = prev.modalita_pagamento || { preset_id: "", label: "", rate: [] };

@@ -1,6 +1,66 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 81 — Dati Azienda + Preset Pagamento + Sync CAD↔Preventivo (Feb 2026)
+
+**4 richieste utente** (frustrazione alta su produzione):
+1. "voglio poter mettere la ragione sociale con la partita iva e più sedi se ho più sedi e la sede legale. ma il punto è che la ragione sociale è rela srls mentre il marchio è sa di casa"
+2. "per quanto concerne i pagamenti, io nelle impostazioni creo i pre set e il venditore o chi fa il preventivo seleziona quello migliore o più indicato"
+3. "se vado su un preventivo che ho fatto e voglio fare il progetto non me lo fa fare. manca proprio il bottone per andare"
+4. "se sto preventivando un pacchetto con il cad gli extra li conti solo quando gli interventi che sto facendo in cad eccedono da ciò che è previsto nel pacchetto. se parto dal preventivo … e vado nel cad quegli extra ci devono essere e conti eventuali altri extra solo se gli interventi differiscono"
+
+### Frontend — `AdminImpostazioni.jsx`
+- **NUOVO blocco `Dati Azienda`** (full width, 2 colonne):
+  - Ragione Sociale (separata dal Marchio commerciale: es. "RELA SRLS" vs "Sa di casa").
+  - Partita IVA + Codice Fiscale + REA + PEC.
+  - **Sede Legale**: indirizzo, città, CAP, provincia, telefono, email.
+  - **Sedi operative multiple** (showroom, depositi, filiali): aggiungi/elimina con nome + indirizzo + città + CAP + provincia + telefono.
+  - Tutti questi campi sono utilizzati nei PDF preventivi, contratti, fatture.
+- **NUOVO blocco `Preset Modalità di Pagamento`**:
+  - Crea N preset (es. "30/40/30", "50/50", "Bonus fiscali 110") con:
+    - Nome + descrizione (visibile al venditore: quando usarlo)
+    - Rate dinamiche con etichetta + % + scadenza in giorni
+    - Flag "Default" (radio: solo uno default alla volta)
+  - Validazione live: il totale % delle rate deve fare 100 (badge verde/rosso).
+- `ModalitaPagamentoPicker.jsx` ora **legge i preset sia dalle vecchie `payment_presets` (`dati-azienda`) sia dai nuovi `preset_modalita_pagamento` (`impostazioni`)** e li unisce. Mapping automatico `{etichetta → descrizione, pct, scadenza_giorni}`.
+
+### Backend — Sync CAD↔Preventivo (`create_project_from_preventivo`)
+- Quando l'utente clicca **🖋 Apri/Crea Progetto CAD** dal preventivo, il backend snapshotta il preventivo dentro `project.data.baseline_preventivo`:
+  - `preventivo_id`, `numero`, `tipo`, `package_id`, `mq`, `totale_iva_incl/escl`, `package_base_total`
+  - Tutte le liste: `items`, `extra_voci`, `composite_selections`, `infissi`, `infissi_extras`, `optional`, `listini_selections`, `package_listini_items`
+  - `snapshot_at` timestamp.
+
+### Frontend — CAD `Editor.jsx`
+- Nuovo banner **"🔄 Sync preventivo PRV-XXXX"** nel pannello costi:
+  - Confronto live tra `Già preventivato` (totale preventivo) vs `Live nel CAD` (estimate.total).
+  - Status colorato:
+    - 🟢 ✅ in linea (delta < ±2%)
+    - 🟠 +X € (CAD ha ecceduto preventivo)
+    - 🟢 −X € (CAD è sotto preventivo)
+  - Nota informativa: "📋 N extra già nel preventivo — i nuovi interventi CAD vengono conteggiati come extra solo se differiscono da quelli già preventivati".
+- Bottoni "Apri Progetto CAD" già presenti nei preventivi (verificato 69 bottoni cliccabili nel preview).
+
+### Testing
+- `tests/test_round81_azienda_pagamenti_sync.py` — **3/3 PASS**:
+  - Dati Azienda + Sedi multiple persistono correttamente ✓
+  - Preset pagamento (3 rate, default flag, etichette custom) persistono ✓
+  - Create-project-from-preventivo snapshotta baseline_preventivo completo (preventivo_id, tipo, package_id, extras, totali) ✓
+- Regression complessiva: **14/14 PASS** sui round 77-81.
+- Smoke E2E Playwright:
+  - Impostazioni: ragione_sociale + marchio + sede + sede_add + preset_section + preset_add tutti presenti ✓
+  - Preventivi: 69 bottoni "Apri CAD" cliccabili, click apre editor con "Progetto creato e collegato" toast ✓
+  - Console errors: **0** ✓
+
+### File modificati / creati
+- `frontend/src/pages/admin/AdminImpostazioni.jsx` (Dati Azienda + Preset Pagamento)
+- `frontend/src/components/ModalitaPagamentoPicker.jsx` (legge da entrambi)
+- `frontend/src/pages/Editor.jsx` (banner sync preventivo)
+- `backend/server.py` (baseline_preventivo snapshot in create-project)
+- `backend/tests/test_round81_azienda_pagamenti_sync.py` (NUOVO)
+
+
+
+
 ## Round 80 — Bug critici: Computo nomi/categorie, Listini salvati, Soglia MAX rimossa, Crash widget (Feb 2026)
 
 **4 problemi gravi segnalati dall'utente in produzione** (sadicasa.it):

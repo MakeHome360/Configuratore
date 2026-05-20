@@ -2736,6 +2736,36 @@ function CostPanelV2({ estimate, packageRef, legacy, linkedPreventivo, saveAsPre
             <div className="flex justify-between text-rose-700 font-medium"><span>Extra (non coperti)</span><span data-testid="extra-total">{fmtEuro(estimate.extra_total)}</span></div>
           </div>
         )}
+        {/* Sync con preventivo origine (Round 81) */}
+        {linkedPreventivo && (
+          (() => {
+            const baseTot = Number(linkedPreventivo.totale_iva_incl) || 0;
+            const cadTot = Number(estimate.total) || 0;
+            const delta = cadTot - baseTot;
+            const inLinea = Math.abs(delta) < (baseTot * 0.02);  // ±2% tolleranza
+            const colorBg = inLinea ? "bg-emerald-50 border-emerald-300" : (delta > 0 ? "bg-amber-50 border-amber-300" : "bg-blue-50 border-blue-300");
+            const baselineExtras = ((linkedPreventivo.extra_voci || []).length) + ((linkedPreventivo.infissi_extras || []).length) + ((linkedPreventivo.composite_selections || []).length);
+            return (
+              <div className={`mt-3 border ${colorBg} rounded p-2 text-[11px]`} data-testid="sync-preventivo-banner">
+                <div className="flex items-center justify-between font-bold uppercase tracking-widest text-[10px]">
+                  <span>🔄 Sync preventivo {linkedPreventivo.numero}</span>
+                  <span className={inLinea ? "text-emerald-700" : (delta > 0 ? "text-amber-700" : "text-blue-700")}>
+                    {inLinea ? "✅ in linea" : (delta > 0 ? `🟠 +${fmtEuro(delta)}` : `🟢 -${fmtEuro(Math.abs(delta))}`)}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-1 mt-1.5 mono">
+                  <div className="text-zinc-500">Già preventivato</div><div className="text-right">{fmtEuro(baseTot)}</div>
+                  <div className="text-zinc-500">Live nel CAD</div><div className="text-right">{fmtEuro(cadTot)}</div>
+                </div>
+                {baselineExtras > 0 && (
+                  <div className="mt-1 text-[10px] text-zinc-600 leading-snug">
+                    📋 <strong>{baselineExtras} extra già nel preventivo</strong> — i nuovi interventi CAD vengono conteggiati come extra <em>solo</em> se differiscono da quelli già preventivati.
+                  </div>
+                )}
+              </div>
+            );
+          })()
+        )}
       </div>
       <Separator />
       <div className="overflow-auto">

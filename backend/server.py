@@ -25,6 +25,7 @@ from packages_seed import LAVORAZIONI_CATALOG, DEFAULT_PACKAGES, DEFAULT_OPTIONA
 from routes_biz import build_biz_router
 from routes_round10 import build_round10_router
 from routes_render import build_render_router
+from audit import build_audit_router, audit_log
 
 # ---------------- Setup ----------------
 mongo_url = os.environ["MONGO_URL"]
@@ -342,6 +343,7 @@ async def login(body: LoginReq, response: Response, request: Request):
     access = create_access_token(user["id"], email)
     refresh = create_refresh_token(user["id"])
     set_auth_cookies(response, access, refresh)
+    await audit_log(db, user=user, action="login", entity="auth", entity_id=user["id"], description=f"Login {email}", request=request)
     return {
         "id": user["id"],
         "email": user["email"],
@@ -1557,6 +1559,9 @@ async def create_preventivo(body: PreventivoIn, user: Dict[str, Any] = Depends(g
     }
     await db.preventivi.insert_one(doc)
     doc.pop("_id", None)
+    await audit_log(db, user=user, action="create", entity="preventivo", entity_id=doc["id"],
+                    description=f"Creato preventivo {doc.get('numero')} ({doc.get('tipo') or '?'}) cliente={(doc.get('cliente') or {}).get('nome', '')}",
+                    after={"numero": doc.get("numero"), "tipo": doc.get("tipo"), "totale": doc.get("totale_iva_incl")})
     return doc
 
 
@@ -1649,7 +1654,7 @@ async def update_preventivo(prev_id: str, body: PreventivoIn, user: Dict[str, An
     update_doc = {**body.model_dump(exclude_none=False), "updated_at": datetime.now(timezone.utc).isoformat()}
     update_doc.pop("id", None)
     # Se il preventivo era accettato e l'utente lo modifica, richiede NUOVA accettazione (torna a bozza)
-    existing = await db.preventivi.find_one({"id": prev_id, "user_id": user["id"]}, {"_id": 0, "stato": 1})
+    existing = await db.preventivi.find_one({"id": prev_id, "user_id": user["id"]}, {"_id": 0})
     if existing and existing.get("stato") == "accettato":
         update_doc["stato"] = "bozza"
         update_doc["needs_reacceptance"] = True
@@ -1657,12 +1662,20 @@ async def update_preventivo(prev_id: str, body: PreventivoIn, user: Dict[str, An
     doc = await db.preventivi.find_one({"id": prev_id, "user_id": user["id"]}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Preventivo non trovato")
+    await audit_log(db, user=user, action="update", entity="preventivo", entity_id=prev_id,
+                    description=f"Aggiornato preventivo {doc.get('numero')}",
+                    before={"totale": (existing or {}).get("totale_iva_incl"), "stato": (existing or {}).get("stato")},
+                    after={"totale": doc.get("totale_iva_incl"), "stato": doc.get("stato")})
     return doc
 
 
 @api.delete("/preventivi/{prev_id}")
 async def delete_preventivo(prev_id: str, user: Dict[str, Any] = Depends(get_current_user)):
+    existing = await db.preventivi.find_one({"id": prev_id, "user_id": user["id"]}, {"_id": 0})
     await db.preventivi.delete_one({"id": prev_id, "user_id": user["id"]})
+    await audit_log(db, user=user, action="delete", entity="preventivo", entity_id=prev_id,
+                    description=f"Eliminato preventivo {(existing or {}).get('numero', prev_id)}",
+                    before={"numero": (existing or {}).get("numero"), "totale": (existing or {}).get("totale_iva_incl")})
     return {"ok": True}
 
 
@@ -1807,6 +1820,9 @@ async def request_sconto(prev_id: str, body: Dict[str, Any], user: Dict[str, Any
                 )
     except Exception as e:
         logger.warning(f"[EMAIL sconto-request] errore: {e}")
+    await audit_log(db, user=user, action="sconto_request", entity="preventivo", entity_id=prev_id,
+                    description=f"Richiesto sconto {pct}% su {doc['preventivo_numero']} — motivo: {motivo[:80]}",
+                    after={"pct_richiesto": pct, "motivo": motivo})
     return doc
 
 
@@ -1875,6 +1891,10 @@ async def decide_sconto(rid: str, body: Dict[str, Any], user: Dict[str, Any] = D
             )
     except Exception as e:
         logger.warning(f"[EMAIL sconto-decision] errore: {e}")
+    await audit_log(db, user=user, action=f"sconto_{new_stato}", entity="preventivo", entity_id=r["preventivo_id"],
+                    description=f"Sconto {new_stato} {pct_finale}% su {r.get('preventivo_numero')}",
+                    before={"pct_richiesto": r.get("pct_richiesto")},
+                    after={"pct_approvato": pct_finale, "stato": new_stato, "admin_note": update["admin_note"]})
     return {"ok": True, **update}
 
 
@@ -2326,6 +2346,10 @@ import routes_listini_fornitori as _lf_mod
 _lf_router = _APIRouterListini()
 _lf_mod.register(_lf_router, db, get_current_user)
 app.include_router(_lf_router, prefix="/api")
+
+# Audit trail (admin only)
+_audit_router = build_audit_router(db, get_current_user)
+app.include_router(_audit_router, prefix="/api")
 
 
 # ============ BLOG (pubblico + admin) ============

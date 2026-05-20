@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { InfissoQuickConfigurator } from "@/components/InfissoQuickConfigurator";
 import ModalitaPagamentoPicker from "@/components/ModalitaPagamentoPicker";
 import ListinoProdottoPicker from "@/components/ListinoProdottoPicker";
+import MarginalitaWidget from "@/components/MarginalitaWidget";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -100,6 +101,30 @@ export default function PreventivoComposite() {
   }, [sections, selections]);
 
   const totaleListini = useMemo(() => listiniSelections.reduce((s, p) => s + ((parseFloat(p.qty) || 0) * (parseFloat(p.prezzo_rivendita) || 0)), 0), [listiniSelections]);
+
+  // Costo diretto reale = sommatoria di prezzi_acquisto (voci) + netti listini + stima infissi (price/1.6)
+  const costoDirettoReale = useMemo(() => {
+    let tot = 0;
+    sections.forEach((s) => {
+      s.voci.forEach((v) => {
+        const sel = selections[v.id];
+        if (sel && sel.qty > 0) {
+          const cost = Number(v.prezzo_acquisto) || (Number(v.price) || 0) / 1.6;
+          tot += (sel.qty || 0) * cost;
+        }
+      });
+    });
+    listiniSelections.forEach((p) => {
+      const qty = parseFloat(p.qty) || 0;
+      const netto = Number(p.prezzo_netto) || Number(p.netto) || (Number(p.prezzo_rivendita) || 0) / 1.6;
+      tot += qty * netto;
+    });
+    infissiExtras.forEach((i) => {
+      const cost = Number(i.prezzo_acquisto) || (Number(i.price) || 0) / 1.6;
+      tot += cost;
+    });
+    return Math.round(tot);
+  }, [sections, selections, listiniSelections, infissiExtras]);
 
   const sicurezzaAmt = (totaleVoci + totaleListini) * (sicurezzaPct / 100);
   const direzioneAmt = (totaleVoci + totaleListini) * (direzionePct / 100);
@@ -415,6 +440,10 @@ export default function PreventivoComposite() {
           )}
         </div>
         <div className="mt-3"><Label className="text-xs">Note</Label><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></div>
+        {/* Widget marginalità live (solo admin/responsabili) */}
+        <div className="bg-white border border-zinc-200 rounded-lg p-4 mt-3">
+          <MarginalitaWidget totaleIvaEscl={imponibile} ricaricoDefault={1.8} costiDirettiOverride={costoDirettoReale} />
+        </div>
         {/* Modalità di pagamento (preset admin / personalizzata) */}
         <div className="bg-white border border-zinc-200 rounded-lg p-4 mt-3">
           <ModalitaPagamentoPicker

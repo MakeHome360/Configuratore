@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel, ConfigDict, EmailStr
+from audit import audit_log
 
 from packages_seed import (
     DEFAULT_VOCI_BACKOFFICE, DEFAULT_FASI_COMMESSA, DEFAULT_TEMPLATE_EMAIL,
@@ -616,8 +617,12 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
         if user.get("role") != "admin":
             raise HTTPException(403, "Solo admin")
         body.pop("_id", None)
+        before = await db.impostazioni.find_one({}, {"_id": 0})
         await db.impostazioni.update_one({}, {"$set": body}, upsert=True)
         doc = await db.impostazioni.find_one({}, {"_id": 0})
+        await audit_log(db, user=user, action="update", entity="impostazioni", entity_id="global",
+                        description="Aggiornate impostazioni aziendali",
+                        before=before, after=body)
         return doc
 
     # ------- Calcolo marginalità (costi fissi globali + provvigione venditore) -------
@@ -1284,6 +1289,9 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
             await seed_user_catalog(uid)
         except Exception:
             pass
+        await audit_log(db, user=user, action="invite_user", entity="user", entity_id=uid,
+                        description=f"Invitato {body.role} {email} ({body.name})",
+                        after={"email": email, "role": body.role, "name": body.name, "venditore_level": doc.get("venditore_level")})
         # Invio email di invito con password temporanea
         try:
             from email_service import send_invite_email
@@ -1319,6 +1327,9 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
         if target.get("email") == "admin@admin.it":
             raise HTTPException(400, "Non puoi cancellare l'admin di sistema")
         await db.users.delete_one({"id": user_id})
+        await audit_log(db, user=user, action="delete", entity="user", entity_id=user_id,
+                        description=f"Eliminato utente {target.get('email')} ({target.get('role')})",
+                        before={"email": target.get("email"), "role": target.get("role"), "name": target.get("name")})
         return {"ok": True}
 
     # --- Extend / modify expiration ---
@@ -1695,6 +1706,9 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
             print(f"[create_commessa] auto-gen computo failed: {ex}")
             traceback.print_exc()
         doc.pop("_id", None)
+        await audit_log(db, user=user, action="create", entity="commessa", entity_id=doc["id"],
+                        description=f"Creata commessa {doc.get('codice') or doc.get('id')} — cliente: {(doc.get('cliente') or {}).get('nome', '')}",
+                        after={"codice": doc.get("codice"), "preventivo_id": doc.get("preventivo_id"), "totale_lavori": doc.get("totale_lavori")})
         return doc
 
     @r.get("/commesse")
@@ -1724,6 +1738,10 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
             body["avanzamento_pct"] = round(done / total * 100, 1)
         await db.commesse.update_one({"id": cid}, {"$set": body})
         doc = await db.commesse.find_one({"id": cid}, {"_id": 0})
+        # Log conciso: solo chiavi modificate (no full body per non saturare)
+        await audit_log(db, user=user, action="update", entity="commessa", entity_id=cid,
+                        description=f"Aggiornata commessa {(doc or {}).get('codice', cid)} (campi: {', '.join(list(body.keys())[:10])})",
+                        after={k: body[k] for k in list(body.keys())[:8] if k != "checklist"})
         return doc
 
     @r.patch("/commesse/{cid}/stato")
@@ -1740,6 +1758,9 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
         if stato == "completata":
             upd["data_fine"] = now_iso()
         await db.commesse.update_one({"id": cid}, {"$set": upd})
+        await audit_log(db, user=user, action="update_stato", entity="commessa", entity_id=cid,
+                        description=f"Stato commessa → {stato}",
+                        after={"stato": stato})
         return {"ok": True, "stato": stato}
 
     # ---------- Leads (CRM) ----------

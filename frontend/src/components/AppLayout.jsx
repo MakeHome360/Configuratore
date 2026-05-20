@@ -7,7 +7,7 @@ import {
   Settings, Package, Sparkles, UserCircle2, LogOut, Store,
   ClipboardList, BarChart3, Mail, Layers, Hammer, Target, Pencil, Receipt,
   Wallet, FileText, Newspaper, ListChecks, ShieldCheck, FileSpreadsheet,
-  ChevronLeft, ChevronRight, Menu
+  ChevronLeft, ChevronRight, Menu, History
 } from "lucide-react";
 
 const NAV = [
@@ -52,6 +52,7 @@ const NAV = [
     { to: "/adminutenti", label: "Utenti & Ruoli", icon: UserCircle2, roles: ["admin"] },
     { to: "/admindatiazienda", label: "Dati Azienda", icon: Building2, roles: ["admin"] },
     { to: "/adminimpostazioni", label: "Impostazioni", icon: Settings, roles: ["admin"] },
+    { to: "/adminaudittrail", label: "Audit Trail", icon: History, roles: ["admin"] },
   ]},
 ];
 

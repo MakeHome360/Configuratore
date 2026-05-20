@@ -1,6 +1,66 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 77 — Marginalità Composite + Audit Trail completo (Feb 2026)
+
+**Richieste utente** (chiuse in questo round):
+1. "completa la marginalità anche sul preventivo composite" (era già su Pacchetto, mancava su Composite).
+2. "voglio sapere chi ha fatto cosa nel sistema, in ogni momento" → Audit Trail backend con UI admin.
+
+### Backend
+- **NUOVO modulo** `/app/backend/audit.py`:
+  - `audit_log(db, user, action, entity, entity_id, description, before, after, request)` — helper async best-effort (errori loggati ma non sollevati).
+  - Schema log: `{id, ts, user_id, user_email, user_role, action, entity, entity_id, description, before, after, ip}` salvato in collection `audit_logs`.
+  - Sanitize automatico: rimuove campi sensibili (`password`, `password_hash`, `_id`).
+  - **Router admin** `GET /api/audit-logs` con filtri (entity, entity_id, action, user_id, limit) + `GET /api/audit-logs/entity/{entity}/{entity_id}`.
+  - RBAC: solo `admin/responsabile/gestore`.
+- **Hook installati su 10 azioni critiche**:
+  - `POST /auth/login` → audit "login"
+  - `POST /preventivi` → "create" + numero + tipo + totale
+  - `PUT /preventivi/{id}` → "update" con before/after stato e totale
+  - `DELETE /preventivi/{id}` → "delete" con numero
+  - `POST /preventivi/{id}/sconto-richiesta` → "sconto_request" con pct + motivo
+  - `PUT /sconto-richieste/{id}/decide` → "sconto_approvato"/"sconto_rifiutato"
+  - `PUT /impostazioni` → "update" entity=impostazioni con before/after
+  - `POST /users/invite` → "invite_user" con email + role
+  - `DELETE /users/{id}` → "delete" user
+  - `POST /commesse` → "create" commessa
+  - `PUT /commesse/{id}` → "update" commessa (campi modificati)
+  - `PATCH /commesse/{id}/stato` → "update_stato"
+
+### Frontend
+- **`PreventivoComposite.jsx`**:
+  - Calcolo `costoDirettoReale` (useMemo): somma `voce.prezzo_acquisto × qty` + `listino.prezzo_netto × qty` + stima infissi (`price/1.6`). Fallback `price/1.6` se acquisto non disponibile.
+  - `MarginalitaWidget` montato nella sidebar inferiore con `totaleIvaEscl=imponibile` (post-sconto) e `costiDirettiOverride=costoDirettoReale`. Visibile solo ad admin/responsabile/gestore (RBAC interno al widget).
+- **NUOVA pagina** `/app/frontend/src/pages/admin/AdminAuditTrail.jsx` (~165 LOC):
+  - Filtri: Entità (dropdown), Azione (dropdown), Cerca (descrizione/email/ID).
+  - Tabella eventi con badge colorati per azione (create=verde, delete=rosso, update=blu, sconto_approvato=verde, sconto_request=ambra, login=violetto).
+  - Click su riga → espande dettagli (Entity ID, IP, JSON before/after side-by-side colorati rosso/verde).
+  - Route `/adminaudittrail` + voce sidebar "Audit Trail" (icona History) nella sezione Amministrazione.
+
+### Testing
+- `tests/test_round77_audit_marginalita.py`: **5/5 PASS**
+  - audit login viene loggato
+  - audit preventivo CRUD (create + delete)
+  - audit impostazioni update
+  - RBAC: cliente non admin riceve 403 su /audit-logs
+  - endpoint /marginalita/calcola funziona
+- Regression round 73-76: **19/19 PASS**.
+- Smoke test frontend: Audit Trail mostra 6 eventi reali (login + create/delete preventivo) con badge colorati.
+
+### File modificati / creati
+- `backend/audit.py` (NUOVO)
+- `backend/server.py` (import audit + hook login + preventivo CRUD + sconto)
+- `backend/routes_biz.py` (hook impostazioni + invite/delete user + commessa create/update/stato)
+- `frontend/src/pages/PreventivoComposite.jsx` (costoDirettoReale + MarginalitaWidget)
+- `frontend/src/pages/admin/AdminAuditTrail.jsx` (NUOVO)
+- `frontend/src/App.js` (route)
+- `frontend/src/components/AppLayout.jsx` (voce sidebar + icona History)
+- `backend/tests/test_round77_audit_marginalita.py` (NUOVO)
+
+
+
+
 ## Round 75 — Sito pacchetti live + Optional avanzati con listino backoffice (Feb 2026)
 
 **Richieste utente** (3 punti):

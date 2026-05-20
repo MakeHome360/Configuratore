@@ -359,18 +359,6 @@ function PackageDialog({ pkg, voci, onClose, onSaved, isNew }) {
                         <Input type="number" step="0.001" className="h-8 text-xs" value={it.qty_mode === "fissa" ? (it.qty_value ?? 1) : (it.qty_ratio ?? 1)} onChange={(e) => updateItem(i, it.qty_mode === "fissa" ? "qty_value" : "qty_ratio", Number(e.target.value))} />
                       </div>
                     </div>
-                    <div className={`${v.modificabile_dal_venditore ? "bg-amber-50 border-amber-300" : "bg-blue-50 border-blue-300"} border p-1.5 rounded mt-2`}>
-                      <Label className={`text-[10px] font-semibold ${v.modificabile_dal_venditore ? "text-amber-900" : "text-blue-900"}`}>
-                        ⚙ Soglia prezzo MAX <span className="opacity-70">per QUESTO pacchetto</span> (€/{v.unit})
-                      </Label>
-                      <Input type="number" step="0.01" min="0" className="h-7 text-xs mono mt-1" placeholder={`default: ${(v.prezzo_rivendita || 0).toFixed(2)}€`} value={it.unit_price_pkg ?? ""} onChange={(e) => { const n = parseFloat(e.target.value); updateItem(i, "unit_price_pkg", isNaN(n) || n <= 0 ? null : n); }} data-testid={`pkg-maxprice-${i}`} />
-                      <div className={`text-[9px] mt-0.5 ${v.modificabile_dal_venditore ? "text-amber-800" : "text-blue-800"}`}>
-                        {v.modificabile_dal_venditore
-                          ? "Voce modificabile: se il venditore sceglie un prezzo superiore alla soglia, l'eccedenza × qty inclusa viene contata come extra."
-                          : "Voce non modificabile dal venditore: questo campo definisce solo la soglia di costo coperta dal pacchetto, utile per pacchetti diversi con costi diversi."}
-                        {" "}Lascia vuoto per usare il prezzo_rivendita standard dal Backoffice.
-                      </div>
-                    </div>
                     <div className="text-[10px] text-zinc-500 mt-1.5 italic">
                       Prezzo {v.prezzo_rivendita?.toFixed(2)}€/{v.unit} (acq {v.prezzo_acquisto?.toFixed(2)}€ × {v.ricarico}x) ← <strong>dal Backoffice</strong>
                     </div>

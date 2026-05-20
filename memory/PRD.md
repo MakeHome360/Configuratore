@@ -1,6 +1,52 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 80 — Bug critici: Computo nomi/categorie, Listini salvati, Soglia MAX rimossa, Crash widget (Feb 2026)
+
+**4 problemi gravi segnalati dall'utente in produzione** (sadicasa.it):
+1. "se aggiungo le voci dal listino fornitori quando modifico il pacchetto non me lo aggiunge"
+2. "hai aggiunto nei pacchetti una roba della soglia max dei prezzi che non ho minimamente capito che cazzo è"
+3. "te lo giuro io non so più come dirti che il computo non funziona" → screenshot mostra 13 voci con CATEGORIA/VOCE = "—"
+4. "il preventivo crassa di nuovo"
+
+### Root cause analisi (per smettere di fallire)
+1. **Listini si salvavano già** lato backend (verificato con curl PUT+GET). Test E2E: spunta prodotto → Salva → Riapri → spunta MANTENUTA → verificato in screenshot.
+2. **Soglia MAX**: era una sezione confusionaria aggiunta in passato, da eliminare.
+3. **Computo "—"**: nel `gen_computo` di `routes_commessa_workflow.py` la voce composite veniva inserita con `name="Voce composite"` (fallback generico). Quel fallback NON era nella whitelist GENERIC_NAMES dell'enrichment → name restava generico anziché essere risolto da `voci_backoffice`. Stesso problema con "Optional", "Infisso", "Prodotto da listino".
+4. **Crash widget marginalità**: `data.costi_fissi_breakdown.map()` crashava se backend non restituiva quel campo (es. config non popolata).
+
+### Fix backend
+- `routes_commessa_workflow.gen_computo`: dopo aver costruito `items`, fa un secondo pass di **enrichment**:
+  - Carica `voci_back` da `voci_backoffice` e `listini_back` da `fornitori_listini` (id → prodotto).
+  - Per ogni item con `name in GENERIC_NAMES` (`""`, `"—"`, `"-"`, `"Voce"`, `"Voce composite"`, `"Voce senza nome"`, `"Prodotto"`, `"Prodotto da listino"`, `"Optional"`, `"Optional (optional)"`, `"Infisso"`, `"Extra"`) → ricerca nel catalogo per `voce_id` e arricchisce `name`, `category`, `unit`.
+- `POST /api/commesse-bulk-regen-computo?force=true`: rigenera computo per TUTTE le commesse anche se già hanno items (utile dopo questo fix).
+
+### Fix frontend
+- `AdminPacchetti.jsx` — Rimossa sezione "⚙ Soglia prezzo MAX per QUESTO pacchetto" sui singoli items (campo `unit_price_pkg` non più mostrato).
+- `MarginalitaWidget.jsx` — `(data.costi_fissi_breakdown || []).map()` per evitare crash su backend incompleto.
+- `CommessaWorkflow.jsx` — Nuovo bottone **"↻ Rigenera tutti"** accanto a Stampa/PDF nel tab Computo. Chiama il bulk regen con `force=true` e mostra il conteggio `fixed/total`.
+
+### Testing
+- `tests/test_round80_critical_bugs.py`: **3/3 PASS**
+  - `test_computo_enriches_missing_name_from_voci_backoffice` — preventivo con `composite_selections` senza `name` → il computo arricchisce dal catalogo ✓
+  - `test_package_listini_items_persistence` — PUT con 3 listini_items → GET ritorna esattamente i 3 con qty/modificabile_dal_venditore corretti ✓
+  - `test_marginalita_returns_required_fields` — backend ritorna sempre `costi_fissi_breakdown` come lista ✓
+- **Smoke E2E Playwright** (verificato con screenshot):
+  - Soglia prezzo MAX: 0 occorrenze ✓
+  - Spunta listino fornitori → Salva → Riapri → spunta mantenuta + qty + "1 selezionato" + subtot mostrato ✓
+  - Widget marginalità toggle: 0 errori console ✓
+- Regression: **15/15 PASS** sui round 76-80.
+
+### File modificati / creati
+- `backend/routes_commessa_workflow.py` (enrichment + bulk_regen force)
+- `frontend/src/pages/admin/AdminPacchetti.jsx` (rimossa Soglia MAX)
+- `frontend/src/components/MarginalitaWidget.jsx` (guard `|| []`)
+- `frontend/src/pages/CommessaWorkflow.jsx` (bottone Rigenera tutti)
+- `backend/tests/test_round80_critical_bugs.py` (NUOVO)
+
+
+
+
 ## Round 79 — Fix critici: Listini Fornitori, Override eliminato, Computo Composite (Feb 2026)
 
 **4 lamentele utente** (frustrazione alta, da chiudere subito):

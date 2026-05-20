@@ -911,6 +911,14 @@ function ComputoTab({ wf, cid, reload }) {
           </div>
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" onClick={printAndExport} data-testid="cm-print">Stampa / PDF</Button>
+            <Button size="sm" variant="outline" title="Rigenera computo per TUTTE le commesse (utile dopo fix nomi/categorie)" onClick={async () => {
+              if (!window.confirm("Rigenera il computo per TUTTE le commesse (i nomi/categorie verranno arricchiti dal catalogo). Procedere?")) return;
+              try {
+                const { data } = await api.post(`/commesse-bulk-regen-computo?force=true`);
+                toast.success(`Rigenerate ${data.fixed} commesse su ${data.total} totali (saltate ${data.skipped})`);
+                reload();
+              } catch (e) { toast.error("Errore: " + (e?.response?.data?.detail || e.message)); }
+            }} data-testid="cm-bulk-regen">↻ Rigenera tutti</Button>
             <Button size="sm" onClick={async () => {
               try {
                 const { data } = await api.post(`/commesse/${cid}/workflow/computo`);

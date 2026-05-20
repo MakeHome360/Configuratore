@@ -101,14 +101,16 @@ def build_commessa_workflow_router(db, get_current_user):
 
     # ---------- 4. COMPUTO METRICO (auto-genera dal preventivo) ----------
     @r.post("/commesse-bulk-regen-computo")
-    async def bulk_regen_computo(user=Depends(get_current_user)):
-        """One-time: rigenera computo metrico per TUTTE le commesse senza computo. Solo admin."""
+    async def bulk_regen_computo(force: bool = False, user=Depends(get_current_user)):
+        """One-time: rigenera computo metrico per TUTTE le commesse senza computo. Solo admin.
+        Se force=true, rigenera anche per commesse che HANNO già un computo (utile dopo fix enrichment)."""
         if user.get("role") != "admin":
             raise HTTPException(403, "Solo admin")
         commesse = await db.commesse.find({}, {"_id": 0}).to_list(5000)
         fixed = 0; skipped = 0
         for c in commesse:
-            if ((c.get("computo_metrico") or {}).get("items") or []):
+            has_items = bool(((c.get("computo_metrico") or {}).get("items") or []))
+            if has_items and not force:
                 skipped += 1; continue
             prev_id = c.get("preventivo_id")
             if not prev_id:
@@ -119,7 +121,7 @@ def build_commessa_workflow_router(db, get_current_user):
                 else: skipped += 1
             except Exception:
                 skipped += 1
-        return {"fixed": fixed, "skipped": skipped, "total": len(commesse)}
+        return {"fixed": fixed, "skipped": skipped, "total": len(commesse), "force": force}
 
     @r.post("/commesse/{cid}/workflow/computo")
     async def gen_computo(cid: str, user=Depends(get_current_user)):
@@ -130,6 +132,13 @@ def build_commessa_workflow_router(db, get_current_user):
         prev = await db.preventivi.find_one({"id": prev_id}, {"_id": 0})
         if not prev:
             raise HTTPException(404, "Preventivo non trovato")
+        # Carica catalogo voci backoffice per arricchire eventuali voci con name/category mancanti
+        voci_back = {v["id"]: v for v in await db.voci_backoffice.find({}, {"_id": 0}).to_list(3000)}
+        # Carica anche tutti i prodotti listini fornitori (id → dati) per arricchire i listini
+        listini_back = {}
+        async for ldoc in db.fornitori_listini.find({}, {"_id": 0}):
+            for p in (ldoc.get("prodotti") or []):
+                listini_back[p.get("id")] = {**p, "_listino_id": ldoc.get("id"), "_listino_nome": ldoc.get("nome"), "_categoria": ldoc.get("categoria")}
         # Normalizza voci preventivo in computo metrico
         # Sorgenti: items (escludendo excluded), extra_voci, optional, infissi, infissi_extras,
         #          listini_selections + package_listini_items
@@ -289,6 +298,25 @@ def build_commessa_workflow_router(db, get_current_user):
                 "assigned_at": kept.get("assigned_at"),
                 "assigned_by": kept.get("assigned_by"),
             })
+        # ENRICHMENT FINALE: arricchisce name/category/unit da voci_backoffice o listini_back se mancanti o generici
+        GENERIC_NAMES = {"", "—", "-", "Voce", "voce", "Voce senza nome", "Voce composite",
+                         "Prodotto", "Prodotto da listino", "Optional", "Optional (optional)",
+                         "Infisso", "Extra"}
+        for it in items:
+            vid = it.get("voce_id")
+            need_enrich = (not it.get("name")) or (it.get("name") in GENERIC_NAMES)
+            need_cat = not it.get("category")
+            if vid and (need_enrich or need_cat):
+                vb = voci_back.get(vid) or listini_back.get(vid)
+                if vb:
+                    if need_enrich:
+                        it["name"] = vb.get("name") or vb.get("nome") or it.get("name") or "Voce"
+                    if need_cat:
+                        it["category"] = vb.get("category") or vb.get("categoria") or vb.get("_categoria") or it.get("category") or ""
+                    if not it.get("unit") or it.get("unit") == "pz":
+                        new_unit = vb.get("unit")
+                        if new_unit:
+                            it["unit"] = new_unit
         computo = {"items": items, "totale": prev.get("totale_iva_incl") or prev.get("totale") or 0,
                    "generated_at": NOW(), "generated_by": user.get("id")}
         await db.commesse.update_one({"id": cid}, {"$set": {"computo_metrico": computo}})

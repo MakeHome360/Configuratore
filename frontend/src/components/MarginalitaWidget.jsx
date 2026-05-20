@@ -62,7 +62,7 @@ export default function MarginalitaWidget({ totaleIvaEscl, ricaricoDefault = 1.8
           <div className="flex justify-between text-emerald-700"><span>Ricavo</span><span>{fmtEur(data.ricavo)}</span></div>
           <div className="flex justify-between text-rose-700"><span>− Costi diretti</span><span>− {fmtEur(data.costi_diretti)}</span></div>
           <div className="flex justify-between text-blue-700 border-t border-zinc-200 pt-1"><span>= Margine lordo</span><span>{fmtEur(data.margine_lordo)} ({data.margine_lordo_pct}%)</span></div>
-          {data.costi_fissi_breakdown.map(cf => (
+          {(data.costi_fissi_breakdown || []).map(cf => (
             <div key={cf.id} className="flex justify-between text-zinc-600 text-[10px]"><span>− {cf.nome} {cf.tipo === "percentuale" ? `(${cf.valore_config}%)` : ""}</span><span>− {fmtEur(cf.importo)}</span></div>
           ))}
           <div className="flex justify-between text-amber-700"><span>− Provvigione venditore ({data.provvigione_venditore_pct}%)</span><span>− {fmtEur(data.provvigione_venditore)}</span></div>

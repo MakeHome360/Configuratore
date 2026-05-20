@@ -314,6 +314,99 @@ DEFAULT_IMPOSTAZIONI = {
     # Override manageriali sulle vendite del team / area (% sul totale dei colleghi)
     "provvigione_responsabile_override_pct": 1.0,
     "provvigione_area_manager_override_pct": 1.5,
+    # ---- NUOVI (Round 76): costi fissi globali per marginalità ----
+    # Tipi: "fisso" (€ assoluto) | "percentuale" (% del subtotale IVA escl)
+    "costi_fissi_globali": [
+        {"id": "cf-sede", "nome": "Affitto sede / utenze", "tipo": "fisso", "valore": 300.0, "attivo": True, "descrizione": "Quota di costi sede ripartita per commessa"},
+        {"id": "cf-amm", "nome": "Costi amministrativi", "tipo": "fisso", "valore": 200.0, "attivo": True, "descrizione": "Contabilità, software, segreteria"},
+        {"id": "cf-mkt", "nome": "Marketing & acquisizione", "tipo": "percentuale", "valore": 2.0, "attivo": True, "descrizione": "% sul valore commessa per attività marketing/lead gen"},
+        {"id": "cf-garanzia", "nome": "Fondo garanzia post-vendita", "tipo": "percentuale", "valore": 1.5, "attivo": True, "descrizione": "Riserva per assistenza post-cantiere"},
+    ],
+    # ---- Documenti subappaltatore configurabili dall'admin (Round 76) ----
+    "documenti_subappaltatore": [
+        {"tipo": "durc", "label": "DURC", "obbligatorio": True, "scadenza_alert_gg": 30, "descrizione": "Documento Unico Regolarità Contributiva (validità 120 giorni)"},
+        {"tipo": "visura", "label": "Visura Camerale", "obbligatorio": True, "scadenza_alert_gg": 90, "descrizione": "Visura camerale aggiornata"},
+        {"tipo": "cciaa", "label": "Iscrizione CCIAA", "obbligatorio": True, "scadenza_alert_gg": 90, "descrizione": "Iscrizione Camera di Commercio"},
+        {"tipo": "polizza_rc", "label": "Polizza RC", "obbligatorio": True, "scadenza_alert_gg": 60, "descrizione": "Responsabilità Civile aziendale"},
+        {"tipo": "idoneita_tecnica", "label": "Idoneità Tecnica", "obbligatorio": True, "scadenza_alert_gg": 60, "descrizione": "Attestazione idoneità tecnico-professionale"},
+        {"tipo": "contratto_subappalto", "label": "Contratto Subappalto", "obbligatorio": True, "scadenza_alert_gg": 0, "descrizione": "Contratto firmato"},
+        {"tipo": "pos", "label": "POS", "obbligatorio": False, "scadenza_alert_gg": 365, "descrizione": "Piano Operativo di Sicurezza"},
+        {"tipo": "soa", "label": "Attestato SOA", "obbligatorio": False, "scadenza_alert_gg": 90, "descrizione": "Attestato di qualificazione per lavori pubblici"},
+    ],
+    # ---- Fasi cantiere configurabili per tipo lavori (Round 76) ----
+    # Per ogni tipo di lavori (ristrutturazione_completa/parziale/manutenzione/infissi_only/custom)
+    # definiamo quali fasi sono obbligatorie e quali opzionali
+    "fasi_per_tipo_lavori": {
+        "ristrutturazione_completa": [
+            {"key": "consegna_chiavi", "label": "Consegna chiavi & sopralluogo", "obbligatoria": True},
+            {"key": "demolizioni", "label": "Demolizioni e smaltimento", "obbligatoria": True},
+            {"key": "impianti_tracce", "label": "Tracce impianti", "obbligatoria": True},
+            {"key": "impianti_idrico", "label": "Impianto idraulico", "obbligatoria": True},
+            {"key": "impianti_elettrico", "label": "Impianto elettrico", "obbligatoria": True},
+            {"key": "intonaci", "label": "Intonaci", "obbligatoria": True},
+            {"key": "pavimenti", "label": "Pavimenti & rivestimenti", "obbligatoria": True},
+            {"key": "infissi", "label": "Posa infissi", "obbligatoria": False},
+            {"key": "tinteggiatura", "label": "Tinteggiatura", "obbligatoria": True},
+            {"key": "porte_interne", "label": "Posa porte interne", "obbligatoria": True},
+            {"key": "sanitari", "label": "Posa sanitari", "obbligatoria": True},
+            {"key": "pulizia_finale", "label": "Pulizia finale & consegna", "obbligatoria": True},
+        ],
+        "parziale": [
+            {"key": "consegna_chiavi", "label": "Consegna chiavi & sopralluogo", "obbligatoria": True},
+            {"key": "demolizioni", "label": "Demolizioni e smaltimento", "obbligatoria": True},
+            {"key": "intonaci", "label": "Intonaci", "obbligatoria": False},
+            {"key": "pavimenti", "label": "Pavimenti & rivestimenti", "obbligatoria": False},
+            {"key": "tinteggiatura", "label": "Tinteggiatura", "obbligatoria": False},
+            {"key": "pulizia_finale", "label": "Pulizia finale & consegna", "obbligatoria": True},
+        ],
+        "manutenzione": [
+            {"key": "consegna_chiavi", "label": "Consegna chiavi & sopralluogo", "obbligatoria": True},
+            {"key": "tinteggiatura", "label": "Tinteggiatura", "obbligatoria": False},
+            {"key": "pulizia_finale", "label": "Pulizia finale & consegna", "obbligatoria": True},
+        ],
+        "infissi_only": [
+            {"key": "consegna_chiavi", "label": "Consegna chiavi & sopralluogo", "obbligatoria": True},
+            {"key": "rimozione_vecchi_infissi", "label": "Rimozione vecchi infissi", "obbligatoria": True},
+            {"key": "infissi", "label": "Posa nuovi infissi", "obbligatoria": True},
+            {"key": "ripristino", "label": "Ripristino e rifiniture", "obbligatoria": True},
+            {"key": "pulizia_finale", "label": "Pulizia finale & consegna", "obbligatoria": True},
+        ],
+    },
+    # ---- Checklist venditore configurabile per tipo lavori (Round 76) ----
+    "checklist_per_tipo_lavori": {
+        "ristrutturazione_completa": [
+            {"key": "sopralluogo", "label": "Sopralluogo effettuato", "obbligatoria": True},
+            {"key": "misure", "label": "Misurazioni rilevate", "obbligatoria": True},
+            {"key": "foto_stato_fatto", "label": "Foto stato di fatto caricate", "obbligatoria": True},
+            {"key": "esigenze_cliente", "label": "Esigenze cliente raccolte", "obbligatoria": True},
+            {"key": "budget_concordato", "label": "Budget concordato", "obbligatoria": True},
+            {"key": "tempi_concordati", "label": "Tempi di consegna concordati", "obbligatoria": True},
+            {"key": "preventivo_consegnato", "label": "Preventivo consegnato", "obbligatoria": True},
+            {"key": "contratto_firmato", "label": "Contratto firmato", "obbligatoria": True},
+            {"key": "acconto_ricevuto", "label": "Acconto ricevuto", "obbligatoria": True},
+            {"key": "permessi_avviati", "label": "Permessi edilizi avviati (CILA/SCIA)", "obbligatoria": False},
+        ],
+        "parziale": [
+            {"key": "sopralluogo", "label": "Sopralluogo effettuato", "obbligatoria": True},
+            {"key": "misure", "label": "Misurazioni rilevate", "obbligatoria": True},
+            {"key": "preventivo_consegnato", "label": "Preventivo consegnato", "obbligatoria": True},
+            {"key": "contratto_firmato", "label": "Contratto firmato", "obbligatoria": True},
+            {"key": "acconto_ricevuto", "label": "Acconto ricevuto", "obbligatoria": True},
+        ],
+        "manutenzione": [
+            {"key": "sopralluogo", "label": "Sopralluogo effettuato", "obbligatoria": True},
+            {"key": "preventivo_consegnato", "label": "Preventivo consegnato", "obbligatoria": True},
+            {"key": "contratto_firmato", "label": "Contratto firmato", "obbligatoria": False},
+        ],
+        "infissi_only": [
+            {"key": "sopralluogo", "label": "Sopralluogo effettuato", "obbligatoria": True},
+            {"key": "misure", "label": "Misurazioni infissi rilevate", "obbligatoria": True},
+            {"key": "scheda_tecnica_infissi", "label": "Scheda tecnica infissi compilata", "obbligatoria": True},
+            {"key": "preventivo_consegnato", "label": "Preventivo consegnato", "obbligatoria": True},
+            {"key": "contratto_firmato", "label": "Contratto firmato", "obbligatoria": True},
+            {"key": "acconto_ricevuto", "label": "Acconto ricevuto", "obbligatoria": True},
+        ],
+    },
 }
 
 # ---------------- Dati Azienda default ----------------

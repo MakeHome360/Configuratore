@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 import { Switch } from "../components/ui/switch";
+import MarginalitaWidget from "../components/MarginalitaWidget";
 import { Separator } from "../components/ui/separator";
 import { toast } from "sonner";
 import {
@@ -1165,6 +1166,9 @@ export default function PreventivoPacchetto() {
               {totals.bagno > 0 && <div className="flex justify-between"><span>Bagno</span><span>{fmtEuro(totals.bagno)}</span></div>}
               <div className="flex justify-between"><span>IVA</span><span>{fmtEuro(totals.iva)}</span></div>
             </div>
+
+            {/* Widget marginalità live (solo per admin/responsabili) */}
+            <MarginalitaWidget totaleIvaEscl={totals.subtotal - totals.sconto} ricaricoDefault={1.8} />
 
             <div className="flex items-center gap-2 mb-3">
               <Button variant="outline" className="rounded-sm flex-1 h-9" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0} data-testid="prev-step">

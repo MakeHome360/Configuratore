@@ -131,14 +131,73 @@ def build_commessa_workflow_router(db, get_current_user):
         if not prev:
             raise HTTPException(404, "Preventivo non trovato")
         # Normalizza voci preventivo in computo metrico
-        # Le voci possono essere in: 'items' (formato standard PreventivoIn) o
-        # nei legacy 'voci_dettaglio' / 'computo'. Usiamo il primo non-vuoto.
-        voci_prev = (
-            prev.get("items")
-            or prev.get("voci_dettaglio")
-            or prev.get("computo")
-            or []
-        )
+        # Sorgenti: items (escludendo excluded), extra_voci, optional, infissi, infissi_extras,
+        #          listini_selections + package_listini_items
+        raw_items = prev.get("items") or prev.get("voci_dettaglio") or prev.get("computo") or []
+        voci_prev = [it for it in raw_items if not (isinstance(it, dict) and it.get("excluded"))]
+        # Optional del preventivo (climatizzatore, ecc.)
+        for op in (prev.get("optional") or []):
+            # Calcolo prezzo unitario: per optional tipo "listino_scontato" considera lo sconto
+            if op.get("tipo_prezzo") == "listino_scontato" and op.get("prezzo_unitario_listino"):
+                pu = float(op.get("prezzo_unitario_listino") or 0) * (1 - float(op.get("sconto_pct") or 0) / 100)
+            else:
+                pu = float(op.get("unit_price") or 0)
+            q = float(op.get("qty") or 0)
+            if q <= 0 and pu <= 0:
+                continue
+            voci_prev.append({
+                "voce_id": op.get("id"),
+                "name": (op.get("name") or "Optional") + " (optional)",
+                "qty": q if q > 0 else 1,
+                "unit": op.get("unit") or "pz",
+                "unit_price": pu,
+                "total": round((q if q > 0 else 1) * pu, 2),
+                "category": "OPTIONAL",
+            })
+        # Infissi e infissi_extras
+        for inf in (prev.get("infissi") or []):
+            voci_prev.append({
+                "voce_id": None,
+                "name": f"Infisso {inf.get('tipologia', 'finestra')} {inf.get('larghezza', '')}x{inf.get('altezza', '')}",
+                "qty": float(inf.get("qty") or 1),
+                "unit": "pz",
+                "unit_price": float(inf.get("prezzo") or inf.get("prezzo_unit") or 0),
+                "category": "INFISSI",
+            })
+        for inf in (prev.get("infissi_extras") or []):
+            q = float(inf.get("qty") or 1)
+            pu = float(inf.get("unit_price") or inf.get("price") or inf.get("prezzo") or 0)
+            if q <= 0 and pu <= 0:
+                continue
+            voci_prev.append({
+                "voce_id": inf.get("id"),
+                "name": inf.get("name") or "Infisso",
+                "qty": q,
+                "unit": inf.get("unit") or "pz",
+                "unit_price": pu,
+                "category": "INFISSI",
+            })
+        # Listini fornitori: selezioni venditore + pre-inclusi nel pacchetto
+        listini_all = []
+        listini_all.extend(prev.get("listini_selections") or [])
+        listini_all.extend(prev.get("package_listini_items") or [])
+        seen_ls = set()
+        for ls in listini_all:
+            if not isinstance(ls, dict):
+                continue
+            key = (ls.get("listino_id"), ls.get("id"))
+            if key in seen_ls:
+                continue
+            seen_ls.add(key)
+            q = float(ls.get("qty") or 1)
+            voci_prev.append({
+                "voce_id": ls.get("id"),
+                "name": ls.get("nome") or "Prodotto da listino",
+                "qty": q,
+                "unit": ls.get("unit") or "pz",
+                "unit_price": float(ls.get("prezzo_rivendita") or 0),
+                "category": (ls.get("categoria") or "FORNITURA").upper(),
+            })
         # Se PACCHETTO senza items → deriva dal package
         if not voci_prev and prev.get("package_id"):
             pkg = await db.packages.find_one({"id": prev["package_id"]}, {"_id": 0})
@@ -182,10 +241,14 @@ def build_commessa_workflow_router(db, get_current_user):
             qty = float(v.get("qty") or v.get("quantita") or v.get("qty_richiesta") or 0)
             prezzo_unit = float(
                 v.get("unit_price")
+                or v.get("prezzo_unit")
                 or v.get("prezzo_rivendita")
                 or v.get("prezzo")
                 or 0
             )
+            # Salta voci totalmente vuote (qty=0 e prezzo=0)
+            if qty <= 0 and prezzo_unit <= 0:
+                continue
             totale = float(v.get("total") or v.get("totale") or 0)
             if totale == 0 and qty > 0 and prezzo_unit > 0:
                 totale = round(qty * prezzo_unit, 2)
@@ -194,12 +257,12 @@ def build_commessa_workflow_router(db, get_current_user):
             items.append({
                 "id": UID(),
                 "voce_id": cat_voce_id,
-                "name": v.get("name") or v.get("descrizione") or "—",
+                "name": v.get("name") or v.get("descrizione") or v.get("voce") or "Voce senza nome",
                 "qty": qty,
                 "unit": v.get("unit") or "pz",
                 "prezzo_unit": prezzo_unit,
                 "totale": totale,
-                "category": v.get("category") or "",
+                "category": v.get("category") or v.get("categoria") or "",
                 "stato_assegnazione": kept.get("stato_assegnazione") or "da_assegnare",
                 "artigiano_id": kept.get("artigiano_id"),
                 "artigiano_nome": kept.get("artigiano_nome"),

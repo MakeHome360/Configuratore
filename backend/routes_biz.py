@@ -620,6 +620,74 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
         doc = await db.impostazioni.find_one({}, {"_id": 0})
         return doc
 
+    # ------- Calcolo marginalità (costi fissi globali + provvigione venditore) -------
+    @r.post("/marginalita/calcola")
+    async def calcola_marginalita(body: Dict[str, Any], user=Depends(get_current_user)):
+        """Calcolo unificato della marginalità (per pacchetti, preventivi composite, commesse).
+        Input: { totale_iva_escl, costi_diretti (somma materiali+lavorazioni), ruolo_venditore (semplice/responsabile/area_manager) }
+        Output: { ricavo, costi_diretti, costi_fissi_breakdown[], provvigione_venditore,
+                  totale_costi, utile_netto, margine_pct, margine_lordo, dettaglio[] }
+        """
+        await ensure_global_seeds()
+        imp = await db.impostazioni.find_one({}, {"_id": 0}) or {}
+        ricavo = float(body.get("totale_iva_escl") or 0)
+        costi_diretti = float(body.get("costi_diretti") or 0)
+        ruolo = (body.get("ruolo_venditore") or "semplice").lower()
+
+        # 1) Costi fissi globali dalle impostazioni
+        cfg_costi = imp.get("costi_fissi_globali") or []
+        cf_breakdown = []
+        cf_totale = 0.0
+        for cf in cfg_costi:
+            if not cf.get("attivo", True):
+                continue
+            valore_cfg = float(cf.get("valore") or 0)
+            if cf.get("tipo") == "percentuale":
+                importo = round(ricavo * valore_cfg / 100, 2)
+            else:
+                importo = valore_cfg
+            cf_breakdown.append({
+                "id": cf.get("id"),
+                "nome": cf.get("nome"),
+                "tipo": cf.get("tipo"),
+                "valore_config": valore_cfg,
+                "importo": importo,
+            })
+            cf_totale += importo
+
+        # 2) Provvigione venditore (in base al ruolo)
+        prov_map = {
+            "semplice": float(imp.get("provvigione_semplice_pct") or 3.0),
+            "responsabile": float(imp.get("provvigione_responsabile_pct") or 5.0),
+            "area_manager": float(imp.get("provvigione_area_manager_pct") or 7.0),
+        }
+        prov_pct = prov_map.get(ruolo, prov_map["semplice"])
+        provvigione = round(ricavo * prov_pct / 100, 2)
+
+        # 3) Totali
+        totale_costi = round(costi_diretti + cf_totale + provvigione, 2)
+        utile = round(ricavo - totale_costi, 2)
+        margine_pct = round((utile / ricavo) * 100, 2) if ricavo > 0 else 0.0
+        margine_lordo = round(ricavo - costi_diretti, 2)
+        margine_lordo_pct = round((margine_lordo / ricavo) * 100, 2) if ricavo > 0 else 0.0
+
+        return {
+            "ricavo": ricavo,
+            "costi_diretti": costi_diretti,
+            "margine_lordo": margine_lordo,
+            "margine_lordo_pct": margine_lordo_pct,
+            "costi_fissi_breakdown": cf_breakdown,
+            "costi_fissi_totale": round(cf_totale, 2),
+            "provvigione_venditore": provvigione,
+            "provvigione_venditore_pct": prov_pct,
+            "ruolo_venditore": ruolo,
+            "totale_costi": totale_costi,
+            "utile_netto": utile,
+            "margine_pct": margine_pct,
+            "soglia_margine_minimo": float(imp.get("margine_minimo") or 30.0),
+            "sotto_soglia": margine_pct < float(imp.get("margine_minimo") or 30.0),
+        }
+
     # ---------- Subappaltatori / Fornitori ----------
     class SubappIn(BaseModel):
         model_config = ConfigDict(extra="allow")
@@ -673,28 +741,32 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
 
     @r.get("/subappaltatori/{sub_id}/dashboard")
     async def sub_dashboard(sub_id: str, user=Depends(get_current_user)):
-        """Dashboard completa subappaltatore: documenti aziendali (DURC/Visura/CCIAA),
+        """Dashboard completa subappaltatore: documenti aziendali (configurabili dall'admin),
         cantieri in corso, preventivi a noi, incassato vs da incassare."""
         sub = await db.subappaltatori.find_one({"id": sub_id}, {"_id": 0})
         if not sub:
             raise HTTPException(404, "Subappaltatore non trovato")
 
-        # Documenti generali del subappaltatore (DURC, visura camerale, CCIAA, polizza, idoneità tecnica…)
-        # Cerchiamo sia nel campo `documenti_aziendali` del sub stesso, sia nella collezione `documenti_subappaltatore`
-        docs_sub = sub.get("documenti_aziendali") or []
-        # Tipi obbligatori check (warning se scaduti / mancanti)
-        DOC_TIPI = [
-            ("durc", "DURC", "Documento Unico Regolarità Contributiva (validità 120 giorni)"),
-            ("visura", "Visura Camerale", "Visura camerale aggiornata"),
-            ("cciaa", "Iscrizione CCIAA", "Iscrizione Camera di Commercio"),
-            ("polizza_rc", "Polizza RC", "Responsabilità Civile aziendale"),
-            ("idoneita_tecnica", "Idoneità Tecnica", "Attestazione idoneità tecnico-professionale"),
-            ("contratto_subappalto", "Contratto Subappalto", "Contratto firmato con SaDiCasa"),
+        # Carica configurazione documenti dalle impostazioni (Round 76 - configurabili)
+        imp = await db.impostazioni.find_one({}, {"_id": 0}) or {}
+        DOC_TIPI = imp.get("documenti_subappaltatore") or [
+            {"tipo": "durc", "label": "DURC", "obbligatorio": True, "descrizione": "Documento Unico Regolarità Contributiva"},
+            {"tipo": "visura", "label": "Visura Camerale", "obbligatorio": True, "descrizione": "Visura camerale aggiornata"},
+            {"tipo": "cciaa", "label": "Iscrizione CCIAA", "obbligatorio": True, "descrizione": "Iscrizione Camera di Commercio"},
+            {"tipo": "polizza_rc", "label": "Polizza RC", "obbligatorio": True, "descrizione": "Responsabilità Civile aziendale"},
+            {"tipo": "idoneita_tecnica", "label": "Idoneità Tecnica", "obbligatorio": True, "descrizione": "Idoneità tecnico-professionale"},
+            {"tipo": "contratto_subappalto", "label": "Contratto Subappalto", "obbligatorio": True, "descrizione": "Contratto firmato"},
         ]
-        from datetime import datetime as _dt
+        docs_sub = sub.get("documenti_aziendali") or []
+        from datetime import datetime as _dt, timedelta
         oggi = _dt.now().date()
         check_docs = []
-        for tipo_key, label, descr in DOC_TIPI:
+        for cfg in DOC_TIPI:
+            tipo_key = cfg.get("tipo")
+            label = cfg.get("label") or tipo_key
+            descr = cfg.get("descrizione") or ""
+            obbligatorio = cfg.get("obbligatorio", True)
+            alert_gg = cfg.get("scadenza_alert_gg", 30)
             found = next((d for d in docs_sub if (d.get("tipo") or "").lower() == tipo_key), None)
             stato = "missing"
             scadenza_iso = None
@@ -705,7 +777,7 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
                         sd = _dt.fromisoformat(scadenza_iso[:10]).date()
                         if sd < oggi:
                             stato = "expired"
-                        elif (sd - oggi).days <= 30:
+                        elif (sd - oggi).days <= alert_gg:
                             stato = "expiring"
                         else:
                             stato = "valid"
@@ -717,6 +789,7 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
                 "tipo": tipo_key, "label": label, "descrizione": descr,
                 "stato": stato, "scadenza": scadenza_iso,
                 "url": (found or {}).get("url"), "note": (found or {}).get("note"),
+                "obbligatorio": obbligatorio,
             })
 
         # Cantieri (commesse) collegati al subappaltatore
@@ -777,7 +850,7 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
         return {
             "subappaltatore": sub,
             "documenti_check": check_docs,
-            "documenti_critici_mancanti": [d for d in check_docs if d["stato"] in ("missing", "expired")],
+            "documenti_critici_mancanti": [d for d in check_docs if d.get("obbligatorio") and d["stato"] in ("missing", "expired")],
             "kpi": {
                 "num_cantieri_totali": len(commesse),
                 "num_cantieri_attivi": len(commesse_attive),

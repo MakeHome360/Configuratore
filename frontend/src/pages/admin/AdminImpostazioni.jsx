@@ -183,16 +183,29 @@ function ListaConfig({ titolo, items, setItems, testidPrefix }) {
   const add = () => setItems([...items, { key: `${testidPrefix}_${Date.now()}`, label: "Nuova voce", obbligatoria: false }]);
   const upd = (i, k, v) => setItems(items.map((it, idx) => idx === i ? { ...it, [k]: v } : it));
   const del = (i) => setItems(items.filter((_, idx) => idx !== i));
+  const move = (i, dir) => {
+    const j = i + dir;
+    if (j < 0 || j >= items.length) return;
+    const next = [...items];
+    [next[i], next[j]] = [next[j], next[i]];
+    setItems(next);
+  };
   return (
     <div className="border border-zinc-200 rounded p-3 space-y-2 bg-zinc-50/40">
       <div className="flex items-center justify-between">
         <div className="font-semibold text-sm">{titolo}</div>
         <button onClick={add} className="text-[10px] px-2 py-0.5 bg-zinc-900 text-white rounded" data-testid={`${testidPrefix}-add`}>+ Aggiungi</button>
       </div>
+      <div className="text-[9px] text-zinc-500 italic">Usa ▲ ▼ per cambiare l'ordine.</div>
       <div className="space-y-1">
         {items.map((it, i) => (
-          <div key={i} className="grid grid-cols-12 gap-1 items-center text-xs" data-testid={`${testidPrefix}-row-${i}`}>
-            <Input className="col-span-7 h-7 text-xs" value={it.label} onChange={(e) => upd(i, "label", e.target.value)} />
+          <div key={it.key || i} className="grid grid-cols-12 gap-1 items-center text-xs" data-testid={`${testidPrefix}-row-${i}`}>
+            <div className="col-span-1 flex flex-col items-center text-zinc-500 leading-none">
+              <button onClick={() => move(i, -1)} disabled={i === 0} className="hover:text-zinc-900 disabled:opacity-30 disabled:cursor-not-allowed h-3" data-testid={`${testidPrefix}-up-${i}`} title="Sposta su">▲</button>
+              <button onClick={() => move(i, +1)} disabled={i === items.length - 1} className="hover:text-zinc-900 disabled:opacity-30 disabled:cursor-not-allowed h-3" data-testid={`${testidPrefix}-down-${i}`} title="Sposta giù">▼</button>
+            </div>
+            <span className="col-span-1 text-[10px] text-zinc-400 mono text-center">{i + 1}.</span>
+            <Input className="col-span-5 h-7 text-xs" value={it.label} onChange={(e) => upd(i, "label", e.target.value)} />
             <label className="col-span-4 flex items-center gap-1 cursor-pointer text-[10px]">
               <input type="checkbox" checked={!!it.obbligatoria} onChange={(e) => upd(i, "obbligatoria", e.target.checked)} />
               <span>{it.obbligatoria ? "Obbligatoria" : "Opzionale"}</span>

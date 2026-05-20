@@ -1,6 +1,49 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 78 — Optional semplificato + Riordino Fasi/Checklist in Impostazioni (Feb 2026)
+
+**Richieste utente** (3 punti):
+1. "le fasi cantiere devo poter cambiare l'ordine mentre le imposto io nelle impostazioni"
+2. "negli optional il tipo prezzo deve essere forfait, mq o unità di misura"
+3. "quando scelgo la voce fammi scegliere tra listino fornitori o listino opere e suddividile per categoria"
+
+### Frontend — `AdminOptional.jsx` riscritto (~370 LOC)
+- **NUOVO modello dati**: ora salva `tipo_prezzo`, `sorgente_prezzo`, `listino_categoria`, `listino_fornitore_id`, `listino_fornitore_prodotto_id`, `voce_backoffice_id`.
+- **Step 1: Tipo prezzo / unità di misura** — solo 5 scelte semplici:
+  - 💰 Forfait (prezzo fisso)
+  - 📐 €/m² (al metro quadro)
+  - 📏 €/ml (al metro lineare)
+  - 📦 €/pz (al pezzo)
+  - 🔌 €/punto
+- **Step 2: Sorgente prezzo** — 3 scelte:
+  - ✋ Manuale (input diretto)
+  - 🛠 Listino Opere (`voci_backoffice`) → dropdown raggruppato per `<optgroup label="📂 CATEGORY">` (MURATURA, IMPIANTI, INFISSI, ecc.).
+  - 🏭 Listino Fornitori → step a 2 select: (1) categoria merceologica (`/fornitori-listini-categorie` con icone), (2) prodotto raggruppato `<optgroup label="🏭 Fornitore">`.
+- **Step 3: Sezioni dinamiche** colorate per sorgente (zinc=manuale, emerald=opere, amber=fornitori) con prezzo unitario corrente + sconto % + preview prezzo finale.
+- **Checkbox "Escludi infissi dagli extra"** ora indipendente dal tipo (era legato al tipo "infissi").
+- **Tabella aggiornata**: colonne Tipo + Sorgente + Listino + Sconto% + Prezzo finale + Esclude extra.
+
+### Frontend — `AdminImpostazioni.jsx` (`ListaConfig` enhanced)
+- Aggiunti pulsanti ▲ ▼ per ogni riga di **Fasi cantiere** e **Checklist venditore** (per ogni tipo di lavori).
+- Numerazione progressiva 1./2./3. accanto ad ogni voce.
+- Hint inline "Usa ▲ ▼ per cambiare l'ordine".
+- Pulsanti disabilitati alle estremità.
+
+### Backend
+- Nessuna modifica: `POST/PUT /api/optional` già accetta `Dict[str, Any]` (i nuovi campi passano direttamente).
+
+### Testing
+- Smoke E2E con Playwright: 5/5 tipo_prezzo testid presenti, 3/3 sorgente testid presenti, `opt-form-voce` e `opt-form-categoria` correttamente disponibili, fasi-up-0/fasi-down-0 visibili.
+- Persistenza confermata via curl: campo `tipo_prezzo=mq`, `sorgente_prezzo=listino_fornitori`, `listino_categoria=piastrelle` salvati e ritornati correttamente.
+
+### File modificati / creati
+- `frontend/src/pages/admin/AdminOptional.jsx` (RISCRITTO)
+- `frontend/src/pages/admin/AdminImpostazioni.jsx` (ListaConfig con ▲▼)
+
+
+
+
 ## Round 77 — Marginalità Composite + Audit Trail completo (Feb 2026)
 
 **Richieste utente** (chiuse in questo round):

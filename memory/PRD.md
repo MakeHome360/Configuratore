@@ -1,6 +1,25 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 83 — HOTFIX: Crash tab "Preventivi" in Gestione Commesse (Feb 2026)
+
+**Lamentela utente** (ricorrente, segnalata 8+ volte): "quando clicco su preventivi nella sezione gestione commesse continua a crashare sul sito in produzione".
+
+### Root cause
+`FileText` (icona lucide-react) usato a riga 2641 di `CommessaWorkflow.jsx` dentro `PreventiviCommessa` ma **non importato**. `ReferenceError: FileText is not defined` → crash dell'intero tab ogni volta che c'era ≥1 preventivo.
+
+### Fix
+1 riga: aggiunto `FileText` agli import lucide-react.
+
+### Verifica E2E
+- Tab caricato, 1 riga preventivo visibile con bottoni stampa/modifica/+Extra, **0 errori** console.
+
+### File modificati
+- `frontend/src/pages/CommessaWorkflow.jsx`
+
+
+
+
 ## Round 81 — Dati Azienda + Preset Pagamento + Sync CAD↔Preventivo (Feb 2026)
 
 **4 richieste utente** (frustrazione alta su produzione):

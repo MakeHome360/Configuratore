@@ -12,7 +12,7 @@ import MarginalitaWidget from "../components/MarginalitaWidget";
 import { Separator } from "../components/ui/separator";
 import { toast } from "sonner";
 import {
-  ArrowLeft, Save, Download, ChevronRight, ChevronLeft, Check, Sparkles, FileText, Send, AlertTriangle, ShieldCheck, Clock,
+  ArrowLeft, Save, Download, ChevronRight, ChevronLeft, Check, Sparkles, FileText, Send, AlertTriangle, ShieldCheck, Clock, Plus,
 } from "lucide-react";
 import { fmtEuro, fmtNum } from "../editor/utils";
 import jsPDF from "jspdf";
@@ -40,6 +40,9 @@ export default function PreventivoPacchetto() {
   const [scontoDialog, setScontoDialog] = useState(false);
   const [scontoForm, setScontoForm] = useState({ pct: 10, motivo: "" });
   const [listinoPickerOpen, setListinoPickerOpen] = useState(false);
+  // Sub-picker per sostituire un prodotto già incluso nel pacchetto
+  const [substituteDialog, setSubstituteDialog] = useState(null); // { pkgItem, products }
+  const [allProdottiFornitori, setAllProdottiFornitori] = useState([]);
 
   const [prev, setPrev] = useState({
     package_id: null,
@@ -85,11 +88,13 @@ export default function PreventivoPacchetto() {
   useEffect(() => {
     (async () => {
       try {
-        const [pk, op, bt] = await Promise.all([
+        const [pk, op, bt, prod] = await Promise.all([
           api.get("/packages"), api.get("/packages/optional"), api.get("/packages/bathroom-tiers"),
+          api.get("/fornitori-listini-prodotti/cerca?max_results=2000").catch(() => ({ data: [] })),
         ]);
         const pkgsSorted = (pk.data || []).slice().sort((a, b) => (a.price_per_m2 || 0) - (b.price_per_m2 || 0));
         setPackages(pkgsSorted); setOptionals(op.data); setBathroomTiers(bt.data);
+        setAllProdottiFornitori(prod.data || []);
         if (!isNew) {
           const { data } = await api.get(`/preventivi/${id}`);
           const silverBasePrice = (bt.data && bt.data[0]?.price) || 0;
@@ -772,16 +777,45 @@ export default function PreventivoPacchetto() {
                           <th className="px-2 py-1 text-center w-20">Mod.</th>
                         </tr></thead>
                         <tbody>
-                          {(pkg.listini_items || []).map((li, i) => (
+                          {(pkg.listini_items || []).map((li, i) => {
+                            // Cerca se il venditore ha già sostituito questo item (presente in listini_selections con _replaces_pkg_id)
+                            const replacement = (prev.listini_selections || []).find(x => x._replaces_pkg_id === li.id);
+                            const extra = replacement ? Math.max(0, (Number(replacement.prezzo_rivendita) || 0) - (Number(li.prezzo_rivendita) || 0)) * (Number(li.qty) || 1) : 0;
+                            return (
                             <tr key={`pkg-li-${i}`} className="text-xs">
-                              <td className="px-2 py-1"><div className="font-medium">{li.nome}</div><div className="text-[10px] text-blue-700">{li.categoria}</div></td>
+                              <td className="px-2 py-1">
+                                <div className="font-medium">{li.nome}</div>
+                                <div className="text-[10px] text-blue-700">{li.categoria}</div>
+                                {replacement && (
+                                  <div className="mt-1 text-[10px] bg-amber-100 border border-amber-300 rounded px-1.5 py-0.5">
+                                    🔄 Sostituito con <strong>{replacement.nome}</strong> — Δ extra € {extra.toFixed(2)}
+                                  </div>
+                                )}
+                              </td>
                               <td className="px-2 py-1">{li.fornitore_nome}</td>
                               <td className="px-2 py-1 text-right mono">{li.qty}</td>
                               <td className="px-2 py-1 text-right mono">€ {(li.prezzo_rivendita || 0).toFixed(2)}</td>
                               <td className="px-2 py-1 text-right mono font-bold">€ {((li.qty || 0) * (li.prezzo_rivendita || 0)).toFixed(2)}</td>
-                              <td className="px-2 py-1 text-center">{li.modificabile_dal_venditore ? <span className="text-amber-700" title="Il venditore può sostituire questo prodotto">✏</span> : <span className="text-zinc-400" title="Bloccato dall'admin">🔒</span>}</td>
+                              <td className="px-2 py-1 text-center">
+                                {li.modificabile_dal_venditore ? (
+                                  <button
+                                    onClick={() => {
+                                      // Apri dialog con prodotti dello stesso listino o stessa categoria
+                                      const candidati = allProdottiFornitori.filter(p =>
+                                        (p.listino_id === li.listino_id) || (p.categoria === li.categoria)
+                                      ).filter(p => p.id !== li.id);
+                                      setSubstituteDialog({ pkgItem: li, products: candidati });
+                                    }}
+                                    className="text-amber-700 hover:bg-amber-50 text-[10px] px-1.5 py-0.5 border border-amber-300 rounded"
+                                    data-testid={`pkg-substitute-${i}`}
+                                    title="Sostituisci con un altro prodotto dello stesso fornitore">
+                                    ✏ Sostituisci
+                                  </button>
+                                ) : <span className="text-zinc-400" title="Bloccato dall'admin">🔒</span>}
+                              </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                           <tr className="border-t border-blue-200 font-bold text-xs">
                             <td colSpan={4} className="px-2 py-1 text-right text-blue-900">Subtotale pre-incluso{totals.hasOverride ? " (già nel forfait)" : ""}:</td>
                             <td className="px-2 py-1 text-right mono text-blue-900" data-testid="pack-listini-included-tot">€ {(totals.listiniPkg || 0).toFixed(2)}</td>
@@ -1202,7 +1236,68 @@ export default function PreventivoPacchetto() {
           toast.success(`${items.length} prodotto/i aggiunto/i`);
         }}
       />
-      {/* Modal extra libero — qualsiasi voce extra con tutti i campi editabili */}
+      {/* Dialog Sostituisci prodotto pacchetto */}
+      <Dialog open={!!substituteDialog} onOpenChange={(o) => !o && setSubstituteDialog(null)}>
+        <DialogContent className="max-w-2xl" data-testid="substitute-dialog">
+          {substituteDialog && (
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-lg font-semibold">Sostituisci prodotto del pacchetto</h3>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Sostituisci <strong>{substituteDialog.pkgItem.nome}</strong> (€{Number(substituteDialog.pkgItem.prezzo_rivendita || 0).toFixed(2)}) con un altro prodotto dello stesso fornitore o categoria <strong>{substituteDialog.pkgItem.categoria}</strong>. La differenza viene contata come extra.
+                </p>
+              </div>
+              <div className="max-h-[420px] overflow-y-auto border border-zinc-200 rounded">
+                {(() => {
+                  const grouped = {};
+                  substituteDialog.products.forEach(p => { const k = p.fornitore_nome || p.listino_nome || "Senza fornitore"; (grouped[k] = grouped[k] || []).push(p); });
+                  Object.values(grouped).forEach(arr => arr.sort((a, b) => (a.prezzo_rivendita || 0) - (b.prezzo_rivendita || 0)));
+                  const pkgPrice = Number(substituteDialog.pkgItem.prezzo_rivendita) || 0;
+                  const qty = Number(substituteDialog.pkgItem.qty) || 1;
+                  return Object.keys(grouped).sort().map(forn => (
+                    <div key={forn} className="border-b border-zinc-100 last:border-b-0">
+                      <div className="px-3 py-1.5 bg-zinc-50 text-[10px] font-bold uppercase tracking-wider text-zinc-700">🏭 {forn} ({grouped[forn].length})</div>
+                      {grouped[forn].map(p => {
+                        const delta = (Number(p.prezzo_rivendita) || 0) - pkgPrice;
+                        const totDelta = delta * qty;
+                        return (
+                          <button key={p.id} onClick={() => {
+                            // Inserisci/sostituisci in listini_selections con tag _replaces_pkg_id
+                            setPrev(s => {
+                              const cur = (s.listini_selections || []).filter(x => x._replaces_pkg_id !== substituteDialog.pkgItem.id);
+                              cur.push({ ...p, qty, _replaces_pkg_id: substituteDialog.pkgItem.id, _pkg_original_price: pkgPrice });
+                              return { ...s, listini_selections: cur };
+                            });
+                            toast.success(`Sostituito: extra ${totDelta >= 0 ? "+" : ""}${totDelta.toFixed(2)}€`);
+                            setSubstituteDialog(null);
+                          }} className="w-full text-left px-3 py-2 hover:bg-amber-50 border-b border-zinc-100 last:border-b-0 flex items-center justify-between gap-3" data-testid={`sub-pick-${p.id}`}>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium truncate">{p.codice ? `[${p.codice}] ` : ""}{p.nome}</div>
+                              <div className="text-[10px] text-zinc-500">{p.descrizione || ""} · {p.unit || "pz"}</div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="mono text-sm font-bold">€ {Number(p.prezzo_rivendita || 0).toFixed(2)}</div>
+                              <div className={`text-[10px] font-bold ${delta > 0 ? "text-rose-700" : delta < 0 ? "text-emerald-700" : "text-zinc-500"}`}>
+                                {delta === 0 ? "= pacchetto" : delta > 0 ? `+€ ${totDelta.toFixed(2)} extra` : `−€ ${Math.abs(totDelta).toFixed(2)} risparmio`}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ));
+                })()}
+                {!substituteDialog.products.length && (
+                  <div className="text-center py-6 text-sm text-zinc-500">Nessun prodotto alternativo disponibile per questa categoria/fornitore.</div>
+                )}
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setSubstituteDialog(null)}>Annulla</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
       <Dialog open={extraFreeOpen} onOpenChange={setExtraFreeOpen}>
         <DialogContent className="max-w-md" data-testid="extra-free-dialog">
           <div className="space-y-3">

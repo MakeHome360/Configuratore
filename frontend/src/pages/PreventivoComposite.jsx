@@ -45,6 +45,44 @@ export default function PreventivoComposite() {
   const [listiniSelections, setListiniSelections] = useState([]);
   const [listinoPickerOpen, setListinoPickerOpen] = useState(false);
   const [listinoPickerCat, setListinoPickerCat] = useState("");
+  // Tutti i prodotti dei listini fornitori per il sub-picker annidato nelle voci composite
+  const [allProdottiFornitori, setAllProdottiFornitori] = useState([]);
+
+  // Mapping voce → categoria listino fornitori (per sub-picker annidato).
+  // Match per nome voce, sezione e categoria (case-insensitive). L'ordine conta: regex più specifiche prima.
+  const detectListinoCategoria = (voce, sectionId) => {
+    const blob = `${voce.name || ""} ${voce.category || ""} ${sectionId || ""}`.toLowerCase();
+    if (/(porta\s+blindat|porte\s+blindate|pannello\s+porta\s+blindata|blindat)/.test(blob)) return "porte_blindate";
+    if (/(porta\s+intern|porte\s+intern|porta\s+battent|porta\s+scrign|porta\s+rasomur)/.test(blob)) return "porte_interne";
+    if (/\bporta\b|\bporte\b/.test(blob)) return "porte_interne"; // fallback porte generiche
+    if (/(piastrell|rivestiment|pavimento_gres|pavimento\s+gres|pavimentazione_gres|grè|gres)/.test(blob)) return "piastrelle";
+    if (/(parquet|legno\s+pavim)/.test(blob)) return "parquet";
+    if (/(sanitar|wc|lavabo|bidet|doccia|piatto\s+doccia|vasca)/.test(blob)) return "sanitari";
+    if (/(rubinett|mixer|miscelator)/.test(blob)) return "rubinetteria";
+    if (/(finestra|infiss|serrament)/.test(blob)) return "infissi";
+    return null;
+  };
+
+  // Categorie sorelle che possiamo mostrare se la categoria principale ha 0 prodotti
+  // (es. cerchi "porte interne" ma hai solo prodotti "porte blindate" → mostra entrambe)
+  const SISTERS = {
+    "porte_interne": ["porte_blindate"],
+    "porte_blindate": ["porte_interne"],
+    "piastrelle": ["parquet"],
+    "parquet": ["piastrelle"],
+  };
+
+  // Prodotti raggruppati per categoria listino, ordinati per prezzo crescente
+  const prodottiPerCategoria = useMemo(() => {
+    const out = {};
+    allProdottiFornitori.forEach(p => {
+      const c = (p.categoria || "").toLowerCase();
+      if (!out[c]) out[c] = [];
+      out[c].push(p);
+    });
+    Object.values(out).forEach(arr => arr.sort((a, b) => (a.prezzo_rivendita || 0) - (b.prezzo_rivendita || 0)));
+    return out;
+  }, [allProdottiFornitori]);
 
   const onInfissiConfirm = ({ items }) => {
     const rows = items.map((it, i) => ({
@@ -63,6 +101,10 @@ export default function PreventivoComposite() {
 
   useEffect(() => {
     api.get("/composite-sections").then((r) => { setSections(r.data); if (r.data[0]) setActiveSection(r.data[0].id); });
+    // Carica TUTTI i prodotti dei listini fornitori per il sub-picker annidato
+    api.get("/fornitori-listini-prodotti/cerca?max_results=2000")
+      .then(r => setAllProdottiFornitori(r.data || []))
+      .catch(() => setAllProdottiFornitori([]));
     if (!isNew) {
       api.get(`/preventivi/${id}`).then((r) => {
         const d = r.data;
@@ -78,7 +120,15 @@ export default function PreventivoComposite() {
         setModalitaPagamento(d.modalita_pagamento || { preset_id: "", label: "", rate: [] });
         setListiniSelections(d.listini_selections || []);
         const sel = {};
-        (d.composite_selections || []).forEach((s) => { sel[s.voce_id] = { qty: s.qty, price: s.price }; });
+        (d.composite_selections || []).forEach((s) => {
+          sel[s.voce_id] = {
+            qty: s.qty, price: s.price,
+            product_id: s.product_id || null,
+            product_nome: s.product_nome || null,
+            product_fornitore: s.product_fornitore || null,
+            listino_id: s.listino_id || null,
+          };
+        });
         setSelections(sel);
         setInfissiExtras(d.infissi_extras || []);
       });
@@ -150,8 +200,16 @@ export default function PreventivoComposite() {
     sections.forEach((s) => s.voci.forEach((v) => {
       const sel = selections[v.id];
       if (sel && sel.qty > 0) {
-        const effPrice = (v.modificabile_dal_venditore && typeof sel.price === "number" && sel.price >= 0) ? sel.price : v.price;
-        comp.push({ section_id: s.id, voce_id: v.id, name: v.name, unit: v.unit, price: effPrice, list_price: v.price, qty: sel.qty, modificabile_dal_venditore: !!v.modificabile_dal_venditore });
+        const effPrice = (v.modificabile_dal_venditore && typeof sel.price === "number" && sel.price >= 0) ? sel.price : (sel.product_id ? sel.price : v.price);
+        comp.push({
+          section_id: s.id, voce_id: v.id, name: v.name, unit: v.unit, price: effPrice, list_price: v.price,
+          qty: sel.qty, modificabile_dal_venditore: !!v.modificabile_dal_venditore,
+          // Prodotto fornitore associato (se scelto da sub-picker annidato)
+          product_id: sel.product_id || null,
+          product_nome: sel.product_nome || null,
+          product_fornitore: sel.product_fornitore || null,
+          listino_id: sel.listino_id || null,
+        });
       }
     }));
     const payload = {
@@ -384,12 +442,71 @@ export default function PreventivoComposite() {
                       const sel = selections[v.id];
                       const editable = !!v.modificabile_dal_venditore;
                       const effPrice = (sel && editable && typeof sel.price === "number" && sel.price >= 0) ? sel.price : v.price;
+                      const listinoCat = detectListinoCategoria(v, sec.id);
+                      let prodottiCat = listinoCat ? (prodottiPerCategoria[listinoCat] || []) : [];
+                      // Fallback: se zero prodotti nella categoria principale, usa anche le sorelle
+                      if (listinoCat && prodottiCat.length === 0 && SISTERS[listinoCat]) {
+                        const merged = [];
+                        SISTERS[listinoCat].forEach(sCat => {
+                          (prodottiPerCategoria[sCat] || []).forEach(p => merged.push(p));
+                        });
+                        prodottiCat = merged;
+                      }
                       return (
                         <tr key={v.id}>
                           <td className="px-3 py-2">
                             <span>{v.name}</span>
                             {editable && <span className="ml-1 text-[9px] uppercase font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1 ml-2">prezzo editabile</span>}
                             {!editable && <span className="ml-1 text-[9px] uppercase font-bold text-zinc-500 bg-zinc-100 border border-zinc-200 rounded px-1 ml-2">🔒 lavorazione</span>}
+                            {/* SUB-PICKER LISTINI FORNITORI annidato (porte, piastrelle, sanitari, ecc.) */}
+                            {sel && prodottiCat.length > 0 && (
+                              <div className="mt-1 ml-1 bg-amber-50 border border-amber-300 rounded p-1.5 text-[10px]">
+                                <div className="flex items-center gap-1 mb-1">
+                                  <span className="font-bold text-amber-900 uppercase tracking-wider">🛒 Scegli prodotto dal listino fornitori ({prodottiCat.length})</span>
+                                </div>
+                                <select className="w-full h-7 text-[11px] border border-amber-300 rounded px-1 bg-white"
+                                  value={sel.product_id || ""}
+                                  onChange={(e) => {
+                                    const pid = e.target.value;
+                                    if (!pid) {
+                                      // Torna al prezzo standard della voce
+                                      const next = { ...sel }; delete next.product_id; delete next.product_nome; delete next.product_fornitore; delete next.listino_id; next.price = v.price;
+                                      setSelections({ ...selections, [v.id]: next });
+                                    } else {
+                                      const p = prodottiCat.find(x => x.id === pid);
+                                      if (p) {
+                                        setSelections({ ...selections, [v.id]: {
+                                          ...sel,
+                                          product_id: p.id, product_nome: p.nome, product_fornitore: p.fornitore_nome || p.listino_nome,
+                                          listino_id: p.listino_id,
+                                          price: Number(p.prezzo_rivendita) || 0,
+                                        }});
+                                      }
+                                    }
+                                  }}
+                                  data-testid={`comp-product-${v.id}`}>
+                                  <option value="">— Prezzo standard ({fmtEur(v.price)}/{v.unit}) —</option>
+                                  {(() => {
+                                    const grouped = {};
+                                    prodottiCat.forEach(p => { const k = p.fornitore_nome || p.listino_nome || "Senza fornitore"; (grouped[k] = grouped[k] || []).push(p); });
+                                    return Object.keys(grouped).sort().map(forn => (
+                                      <optgroup key={forn} label={`🏭 ${forn}`}>
+                                        {grouped[forn].map(p => (
+                                          <option key={p.id} value={p.id}>
+                                            {p.codice ? `[${p.codice}] ` : ""}{p.nome} — {fmtEur(p.prezzo_rivendita || 0)}/{p.unit || "pz"}
+                                          </option>
+                                        ))}
+                                      </optgroup>
+                                    ));
+                                  })()}
+                                </select>
+                                {sel.product_id && (
+                                  <div className="text-[9px] text-amber-800 mt-0.5">
+                                    ✓ <strong>{sel.product_nome}</strong> — {sel.product_fornitore} → € {Number(sel.price).toFixed(2)} sostituisce il prezzo standard
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </td>
                           <td className="px-3 py-2 text-right font-mono">
                             {editable && sel ? (

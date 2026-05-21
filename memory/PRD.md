@@ -1,6 +1,80 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 85 — Unificazione Impostazioni + Branding + Recap Ruoli (Feb 2026)
+
+**Richiesta utente**:
+1. "ci sono due voci nel menu in cui posso impostare i dati azienda. Impostazioni (corretto) e Dati Azienda. Fanne uno unico in Impostazioni con tutti i dati, loghi ecc."
+2. "facciamo un recap di chi può accedere, con quale ruolo e cosa può fare."
+
+### Fix
+1. **Menu unificato**: rimossa la voce sidebar **"Dati Azienda"**. Tutto in **Impostazioni**.
+2. **Route obsoleta**: `/admindatiazienda` → ora redirect 301 a `/adminimpostazioni`.
+3. **Branding integrato** in Impostazioni:
+   - Logo: input URL + upload PNG/JPG (max 800 KB) → salvato come base64 in `impostazioni.logo`.
+   - Colore primario: 8 opzioni cliccabili (Teal/Blu/Indaco/Viola/Ambra/Rosa/Smeraldo/Antracite).
+   - **Anteprima header live**: mostra logo + marchio + ragione sociale con il colore scelto.
+4. **Header sidebar (`AppLayout.jsx`)**: ora legge da `/impostazioni` (con fallback a `/dati-azienda` per retro-compat) i campi `logo`, `colore_primario`, `marchio_commerciale`, `ragione_sociale`, `partita_iva`.
+5. **Recap Ruoli & Permessi** (nuova sezione read-only in Impostazioni):
+   - **7 ruoli** definiti con card colorate: Admin, Responsabile Vendite, Gestore Cantieri, Venditore, Operatore, Subappaltatore, Cliente.
+   - **Matrice permessi** 16×7: Dashboard, Sito vetrina/Pacchetti pubblici, Nuovo preventivo, Preventivi, CRM Lead, Progetti CAD, Gestione Cantieri, Pacchetti & Voci/Optional/Listini, Voci Backoffice/Materiali/Template, Marginalità & Costi diretti, Approvazione Sconti, Provvigioni, Documenti firma OTP, Audit Trail, Impostazioni Azienda, Gestione Utenti.
+
+### Verifica E2E
+- `branding-section` e `ruoli-section` presenti ✓
+- Redirect `/admindatiazienda` → `/adminimpostazioni` ✓
+- Voce "Dati Azienda" nel menu: 0 occorrenze ✓
+- Header sidebar mostra "Sa di casa" (marchio_commerciale) ✓
+- 0 errori console ✓
+
+### File modificati
+- `frontend/src/pages/admin/AdminImpostazioni.jsx` (+ Branding + RuoliRecap)
+- `frontend/src/components/AppLayout.jsx` (rimossa voce sidebar + header da /impostazioni)
+- `frontend/src/App.js` (rimosso import AdminDatiAzienda + route redirect)
+
+
+
+
+## Round 84 — Composite & Pacchetto come Configuratore Ecosistema (Feb 2026)
+
+**Richiesta utente** (chiara): "il composite deve essere il configuratore di tutto il mio ecosistema: servizi miei + servizi fornitori. Per categorie come Porte e Piastrelle devono apparire sottomenu annidati per scegliere dal listino fornitori. Nel pacchetto devo poter sostituire una porta inclusa con un'altra dello stesso fornitore e il sistema deve contarmi l'extra automaticamente."
+
+### Composite — Sub-picker annidato listini fornitori
+- `PreventivoComposite.jsx`: aggiunto `allProdottiFornitori` caricato da `/fornitori-listini-prodotti/cerca?max_results=2000`.
+- Helper `detectListinoCategoria(voce, sectionId)`: mappa una voce composite alla categoria listino corrispondente tramite regex case-insensitive (porte_blindate, porte_interne, piastrelle, parquet, sanitari, rubinetteria, infissi). Ordine specifico → generico, con fallback "porta" generica → porte_interne.
+- Categorie sorelle (`SISTERS`): se la categoria principale ha 0 prodotti, mostra anche le sorelle (es. porte_interne ↔ porte_blindate, piastrelle ↔ parquet).
+- **Nuovo dropdown annidato** sotto il nome di ogni voce mappabile (`comp-product-{voce_id}`):
+  - Default: "Prezzo standard (€X/unit)"
+  - Optgroups per fornitore: "🏭 Fornitore (N)" → "[CODICE] Nome — €X/unit"
+- Selezione prodotto → salva `product_id, product_nome, product_fornitore, listino_id` nella selection e usa `prezzo_rivendita` come nuovo prezzo voce.
+- `composite_selections` salvati e ricaricati con tutti i campi prodotto.
+
+### Pacchetto — Bottone "Sostituisci" con calcolo extra automatico
+- `PreventivoPacchetto.jsx`: aggiunto caricamento `allProdottiFornitori`.
+- Tabella "Finiture incluse nel pacchetto" — ogni riga `modificabile_dal_venditore=true` ha ora un bottone **"✏ Sostituisci"** (data-testid `pkg-substitute-{i}`).
+- Click → dialog **"Sostituisci prodotto del pacchetto"**:
+  - Mostra tutti i prodotti dello **stesso listino_id OR stessa categoria**, raggruppati per fornitore e ordinati per prezzo crescente.
+  - Per ogni alternativa: prezzo unitario + **delta calcolato** (qty × (nuovo − pacchetto)):
+    - 🔴 rosso "+€X extra" se costa di più
+    - 🟢 verde "−€X risparmio" se costa di meno
+    - ⚪ "= pacchetto" se uguale
+  - Click su un prodotto → aggiunge a `prev.listini_selections` con `_replaces_pkg_id` e `_pkg_original_price` per tracciare la sostituzione.
+- Riga del pacchetto mostra dopo la sostituzione: "🔄 Sostituito con **{nome}** — Δ extra € {amount}".
+
+### HOTFIX collaterale
+- `PreventivoPacchetto.jsx`: aggiunto `Plus` agli import lucide-react (era usato ma non importato → crash quando si apriva step Optional).
+
+### Verifica E2E (zero errori)
+- Composite: sub-picker annidato funziona quando ci sono prodotti listini nella categoria mappata.
+- Pacchetto BASIC con "Porta liscia bianca" inclusa → bottone Sostituisci → dialog con 3 alternative (P-101 +€72.90, P-200 +€306.00, P-300 +€540.00).
+- 0 errori console dopo HOTFIX `Plus`.
+
+### File modificati
+- `frontend/src/pages/PreventivoComposite.jsx` (sub-picker + mapping + sorelle)
+- `frontend/src/pages/PreventivoPacchetto.jsx` (Sostituisci button + dialog + delta calc + import Plus)
+
+
+
+
 ## Round 83 — HOTFIX: Crash tab "Preventivi" in Gestione Commesse (Feb 2026)
 
 **Lamentela utente** (ricorrente, segnalata 8+ volte): "quando clicco su preventivi nella sezione gestione commesse continua a crashare sul sito in produzione".

@@ -50,7 +50,6 @@ const NAV = [
     { to: "/adminscontorichieste", label: "Richieste Sconto", icon: ShieldCheck, roles: ["admin"] },
     { to: "/adminblog", label: "Blog (SEO)", icon: Newspaper, roles: ["admin"] },
     { to: "/adminutenti", label: "Utenti & Ruoli", icon: UserCircle2, roles: ["admin"] },
-    { to: "/admindatiazienda", label: "Dati Azienda", icon: Building2, roles: ["admin"] },
     { to: "/adminimpostazioni", label: "Impostazioni", icon: Settings, roles: ["admin"] },
     { to: "/adminaudittrail", label: "Audit Trail", icon: History, roles: ["admin"] },
   ]},
@@ -77,7 +76,22 @@ export default function AppLayout({ children }) {
   useEffect(() => { setSidebarOpen(!isEditorRoute); }, [isEditorRoute]);
 
   useEffect(() => {
-    api.get("/dati-azienda").then(r => r.data && setAzienda(r.data)).catch(() => {});
+    // Carica branding + dati azienda dalle Impostazioni (unico posto). Fallback su /dati-azienda per retro-compat.
+    Promise.all([
+      api.get("/impostazioni").catch(() => ({ data: {} })),
+      api.get("/dati-azienda").catch(() => ({ data: {} })),
+    ]).then(([impRes, daRes]) => {
+      const imp = impRes.data || {};
+      const da = daRes.data || {};
+      setAzienda({
+        ...da,
+        nome: imp.marchio_commerciale || imp.ragione_sociale || da.nome || "Configuratore",
+        logo: imp.logo || da.logo || "",
+        colore_primario: imp.colore_primario || da.colore_primario || "teal",
+        ragione_sociale: imp.ragione_sociale || da.nome || "",
+        piva: imp.partita_iva || da.piva || "",
+      });
+    });
   }, []);
 
   // Polling alerts ogni 3 minuti (solo per ruoli che gestiscono cantieri)

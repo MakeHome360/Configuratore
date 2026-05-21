@@ -44,7 +44,6 @@ import AdminReportBudget from "@/pages/admin/AdminReportBudget";
 import AdminTemplateEmail from "@/pages/admin/AdminTemplateEmail";
 import AdminUtenti from "@/pages/admin/AdminUtenti";
 import AdminClienti from "@/pages/admin/AdminClienti";
-import AdminDatiAzienda from "@/pages/admin/AdminDatiAzienda";
 import AdminImpostazioni from "@/pages/admin/AdminImpostazioni";
 import AdminDocumentiTemplate from "@/pages/admin/AdminDocumentiTemplate";
 import AdminMaterialiTemplate from "@/pages/admin/AdminMaterialiTemplate";
@@ -141,7 +140,7 @@ function App() {
             <Route path="/admintemplateemail" element={P(AdminTemplateEmail)} />
             <Route path="/adminutenti" element={P(AdminUtenti)} />
             <Route path="/adminclienti" element={P(AdminClienti)} />
-            <Route path="/admindatiazienda" element={P(AdminDatiAzienda)} />
+            <Route path="/admindatiazienda" element={<Navigate to="/adminimpostazioni" replace />} />
             <Route path="/adminimpostazioni" element={P(AdminImpostazioni)} />
             <Route path="/admindocumentitemplate" element={P(AdminDocumentiTemplate)} />
             <Route path="/adminmaterialitemplate" element={P(AdminMaterialiTemplate)} />

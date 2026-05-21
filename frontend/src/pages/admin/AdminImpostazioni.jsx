@@ -66,6 +66,12 @@ export default function AdminImpostazioni() {
 
           {/* --- Round 81: Preset modalità di pagamento --- */}
           <PresetPagamenti imp={imp} setImp={setImp} />
+
+          {/* --- Round 85: Branding (logo, colore, anteprima) --- */}
+          <Branding imp={imp} setImp={setImp} />
+
+          {/* --- Round 85: Recap permessi & ruoli (read-only) --- */}
+          <RuoliRecap />
         </div>
         <div className="mt-4 text-xs text-zinc-500 bg-amber-50 border border-amber-200 p-3 rounded max-w-5xl">
           <strong>Nota:</strong> Le modifiche avranno effetto solo sui nuovi preventivi. I preventivi esistenti non verranno modificati.
@@ -365,3 +371,140 @@ function PresetPagamenti({ imp, setImp }) {
     </div>
   );
 }
+
+// --------- Branding (Logo + Colore + Anteprima header) ---------
+const COLORS_BRAND = [
+  { k: "teal", label: "Teal", color: "#0F766E" },
+  { k: "blue", label: "Blu", color: "#1D4ED8" },
+  { k: "indigo", label: "Indaco", color: "#4338CA" },
+  { k: "violet", label: "Viola", color: "#6D28D9" },
+  { k: "amber", label: "Ambra", color: "#B45309" },
+  { k: "rose", label: "Rosa", color: "#BE123C" },
+  { k: "emerald", label: "Smeraldo", color: "#047857" },
+  { k: "zinc", label: "Antracite", color: "#27272A" },
+];
+
+function Branding({ imp, setImp }) {
+  const selected = COLORS_BRAND.find(c => c.k === imp.colore_primario) || COLORS_BRAND[0];
+  const onFile = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 800 * 1024) { alert("Logo troppo grande (max 800 KB)."); return; }
+    const reader = new FileReader();
+    reader.onload = () => setImp({ ...imp, logo: reader.result });
+    reader.readAsDataURL(f);
+  };
+  return (
+    <div className="bg-white border border-zinc-200 rounded-lg p-5 space-y-4 lg:col-span-2" data-testid="branding-section">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold">🎨 Branding</h3>
+        <span className="text-[10px] text-zinc-500 italic">Logo + colore vetrina utilizzati nell'header, nei PDF e nel sito vetrina</span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label className="text-xs">Logo (URL o carica file PNG/JPG)</Label>
+          <Input value={imp.logo || ""} onChange={(e) => setImp({ ...imp, logo: e.target.value })} placeholder="https://… oppure carica file qui sotto" data-testid="imp-logo-url" />
+          <input type="file" accept="image/*" onChange={onFile} className="text-xs mt-2 block" data-testid="imp-logo-file" />
+          <div className="text-[10px] text-zinc-500 mt-1">Consigliato: PNG trasparente, 200×60px, max 800 KB.</div>
+          {imp.logo && <img src={imp.logo} alt="Logo" className="mt-3 h-14 border border-zinc-200 rounded p-1 bg-white" />}
+        </div>
+        <div>
+          <Label className="text-xs">Colore primario</Label>
+          <div className="grid grid-cols-4 gap-2 mt-2">
+            {COLORS_BRAND.map(c => (
+              <button key={c.k} type="button" onClick={() => setImp({ ...imp, colore_primario: c.k })}
+                className={`p-2 rounded border-2 flex items-center gap-1.5 text-left ${imp.colore_primario === c.k ? "border-zinc-900 bg-zinc-50" : "border-zinc-200 hover:border-zinc-400"}`}
+                data-testid={`imp-color-${c.k}`}>
+                <div className="h-4 w-4 rounded shrink-0" style={{ background: c.color }} />
+                <span className="text-[10px]">{c.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="border-t pt-3">
+        <Label className="text-xs">Anteprima header</Label>
+        <div className="rounded p-3 mt-2 flex items-center gap-3" style={{ background: selected.color, color: "white" }}>
+          {imp.logo ? <img src={imp.logo} className="h-8 bg-white/10 rounded p-1" alt="" /> : <div className="h-8 w-8 rounded bg-white/20 flex items-center justify-center font-bold">{((imp.marchio_commerciale || imp.ragione_sociale || "C")[0] || "C").toUpperCase()}</div>}
+          <span className="font-semibold text-lg">{imp.marchio_commerciale || imp.ragione_sociale || "Il tuo marchio"}</span>
+          {imp.ragione_sociale && imp.marchio_commerciale && imp.marchio_commerciale !== imp.ragione_sociale && (
+            <span className="text-[11px] opacity-80">— {imp.ragione_sociale}</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// --------- Recap Permessi & Ruoli (read-only) ---------
+const RUOLI = [
+  { k: "admin", nome: "Admin", color: "rose", desc: "Accesso totale. Gestisce utenti, listini, pacchetti, impostazioni, vede tutti i preventivi/commesse/marginalità." },
+  { k: "responsabile", nome: "Responsabile Vendite", color: "amber", desc: "Come admin sui dati commerciali. Vede marginalità, approva sconti, gestisce venditori e commesse." },
+  { k: "gestore", nome: "Gestore Cantieri", color: "blue", desc: "Project Manager: valida SAL, gestisce fasi cantiere, foto cantiere, documenti subappaltatori." },
+  { k: "venditore", nome: "Venditore", color: "emerald", desc: "Crea preventivi (Pacchetto/Composite), gestisce i propri lead CRM, vede le proprie commesse e provvigioni. Non vede marginalità." },
+  { k: "user", nome: "Operatore", color: "zinc", desc: "Come venditore ma senza target/provvigioni. Tipicamente uffici tecnici interni." },
+  { k: "subappaltatore", nome: "Subappaltatore", color: "violet", desc: "Vede solo le proprie commesse: i propri compensi, le checklist, i documenti richiesti, può caricare foto." },
+  { k: "cliente", nome: "Cliente", color: "teal", desc: "Portale Cliente: vede i propri preventivi, documenti, firme OTP, foto cantiere, pagamenti." },
+];
+const PERMESSI = [
+  { area: "Dashboard", admin: "✅", responsabile: "✅", gestore: "✅", venditore: "✅", user: "✅", subappaltatore: "—", cliente: "—" },
+  { area: "Sito vetrina / Pacchetti pubblici", admin: "Gestione", responsabile: "Lettura", gestore: "—", venditore: "Lettura", user: "Lettura", subappaltatore: "—", cliente: "—" },
+  { area: "Nuovo preventivo (Pacchetto/Composite)", admin: "✅", responsabile: "✅", gestore: "—", venditore: "✅", user: "✅", subappaltatore: "—", cliente: "—" },
+  { area: "Preventivi (vedere e modificare)", admin: "Tutti", responsabile: "Tutti", gestore: "—", venditore: "Solo propri", user: "Solo propri", subappaltatore: "—", cliente: "Solo propri (read)" },
+  { area: "CRM Lead", admin: "✅", responsabile: "✅", gestore: "—", venditore: "Solo propri", user: "—", subappaltatore: "—", cliente: "—" },
+  { area: "Progetti CAD", admin: "✅", responsabile: "✅", gestore: "Lettura", venditore: "✅", user: "✅", subappaltatore: "—", cliente: "—" },
+  { area: "Gestione Cantieri (commesse)", admin: "✅", responsabile: "✅", gestore: "✅", venditore: "Lettura", user: "Lettura", subappaltatore: "Solo proprie", cliente: "—" },
+  { area: "Pacchetti & Voci / Optional / Listini", admin: "✅", responsabile: "Lettura", gestore: "—", venditore: "—", user: "—", subappaltatore: "—", cliente: "—" },
+  { area: "Voci Backoffice / Materiali / Template", admin: "✅", responsabile: "Lettura", gestore: "—", venditore: "—", user: "—", subappaltatore: "—", cliente: "—" },
+  { area: "Marginalità & Costi diretti", admin: "✅", responsabile: "✅", gestore: "Solo SAL", venditore: "—", user: "—", subappaltatore: "—", cliente: "—" },
+  { area: "Approvazione Sconti", admin: "✅", responsabile: "✅", gestore: "—", venditore: "Richiesta", user: "Richiesta", subappaltatore: "—", cliente: "—" },
+  { area: "Provvigioni", admin: "Tutte", responsabile: "Tutte", gestore: "—", venditore: "Proprie", user: "—", subappaltatore: "—", cliente: "—" },
+  { area: "Documenti firma OTP", admin: "✅", responsabile: "✅", gestore: "✅", venditore: "Crea", user: "—", subappaltatore: "Firma propri", cliente: "Firma propri" },
+  { area: "Audit Trail", admin: "✅", responsabile: "✅", gestore: "✅", venditore: "—", user: "—", subappaltatore: "—", cliente: "—" },
+  { area: "Impostazioni Azienda", admin: "✅", responsabile: "—", gestore: "—", venditore: "—", user: "—", subappaltatore: "—", cliente: "—" },
+  { area: "Gestione Utenti (invita/elimina)", admin: "✅", responsabile: "—", gestore: "—", venditore: "—", user: "—", subappaltatore: "—", cliente: "—" },
+];
+const COLOR_BG = { rose: "bg-rose-100 text-rose-800 border-rose-200", amber: "bg-amber-100 text-amber-800 border-amber-200", blue: "bg-blue-100 text-blue-800 border-blue-200", emerald: "bg-emerald-100 text-emerald-800 border-emerald-200", zinc: "bg-zinc-100 text-zinc-700 border-zinc-200", violet: "bg-violet-100 text-violet-800 border-violet-200", teal: "bg-teal-100 text-teal-800 border-teal-200" };
+
+function RuoliRecap() {
+  return (
+    <div className="bg-white border border-zinc-200 rounded-lg p-5 space-y-4 lg:col-span-2" data-testid="ruoli-section">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold">👥 Ruoli &amp; Permessi</h3>
+        <span className="text-[10px] text-zinc-500 italic">Recap di chi può accedere e cosa può fare. La gestione utenti è in "Venditori" / "Subappaltatori" / "Clienti".</span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+        {RUOLI.map(r => (
+          <div key={r.k} className={`border rounded p-2.5 ${COLOR_BG[r.color]}`} data-testid={`ruolo-${r.k}`}>
+            <div className="font-bold text-xs uppercase tracking-wider mb-1">{r.nome}</div>
+            <div className="text-[11px] leading-snug">{r.desc}</div>
+          </div>
+        ))}
+      </div>
+      <div className="border-t pt-3 overflow-x-auto">
+        <Label className="text-xs">Matrice permessi</Label>
+        <table className="w-full text-[11px] mt-2 border border-zinc-200">
+          <thead className="bg-zinc-50">
+            <tr>
+              <th className="text-left px-2 py-1.5 font-semibold border-r border-zinc-200">Area / Funzione</th>
+              {RUOLI.map(r => <th key={r.k} className="px-1.5 py-1.5 text-center font-semibold border-r border-zinc-200 last:border-r-0">{r.nome}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {PERMESSI.map((row, i) => (
+              <tr key={i} className="border-t border-zinc-100 hover:bg-zinc-50">
+                <td className="px-2 py-1.5 font-medium border-r border-zinc-200">{row.area}</td>
+                {RUOLI.map(r => {
+                  const v = row[r.k] || "—";
+                  return <td key={r.k} className={`px-1.5 py-1.5 text-center border-r border-zinc-200 last:border-r-0 ${v === "✅" ? "text-emerald-700 font-bold" : v === "—" ? "text-zinc-300" : "text-zinc-700"}`}>{v}</td>;
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+

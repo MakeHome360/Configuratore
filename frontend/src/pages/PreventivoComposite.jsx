@@ -48,6 +48,14 @@ export default function PreventivoComposite() {
   // Tutti i prodotti dei listini fornitori per il sub-picker annidato nelle voci composite
   const [allProdottiFornitori, setAllProdottiFornitori] = useState([]);
 
+  // Round 86: Voci extra manuali del venditore (non legate a sezioni)
+  const [manualExtras, setManualExtras] = useState([]);
+  const [manualDialogOpen, setManualDialogOpen] = useState(false);
+  const [manualForm, setManualForm] = useState({ name: "", category: "EXTRA", unit: "pz", qty: 1, price: 0, save_to_backoffice: true });
+  const [manualSimilar, setManualSimilar] = useState([]);
+  const userRole = (user?.role || "").toLowerCase();
+  const canSaveToBackoffice = userRole === "admin" || userRole === "responsabile";
+
   // Mapping voce → categoria listino fornitori (per sub-picker annidato).
   // Match per nome voce, sezione e categoria (case-insensitive). L'ordine conta: regex più specifiche prima.
   const detectListinoCategoria = (voce, sectionId) => {
@@ -130,6 +138,7 @@ export default function PreventivoComposite() {
           };
         });
         setSelections(sel);
+        setManualExtras(d.manual_extras || []);
         setInfissiExtras(d.infissi_extras || []);
       });
     }
@@ -152,7 +161,10 @@ export default function PreventivoComposite() {
 
   const totaleListini = useMemo(() => listiniSelections.reduce((s, p) => s + ((parseFloat(p.qty) || 0) * (parseFloat(p.prezzo_rivendita) || 0)), 0), [listiniSelections]);
 
-  // Costo diretto reale = sommatoria di prezzi_acquisto (voci) + netti listini + stima infissi (price/1.6)
+  // Subtotale voci manuali (Round 86)
+  const totaleManuali = useMemo(() => manualExtras.reduce((s, m) => s + ((Number(m.qty) || 0) * (Number(m.price) || 0)), 0), [manualExtras]);
+
+  // Costo diretto reale = sommatoria di prezzi_acquisto (voci) + netti listini + stima infissi (price/1.6) + manuali (price/1.5 fallback)
   const costoDirettoReale = useMemo(() => {
     let tot = 0;
     sections.forEach((s) => {
@@ -173,11 +185,15 @@ export default function PreventivoComposite() {
       const cost = Number(i.prezzo_acquisto) || (Number(i.price) || 0) / 1.6;
       tot += cost;
     });
+    manualExtras.forEach((m) => {
+      const cost = (Number(m.price) || 0) / 1.5;
+      tot += (Number(m.qty) || 0) * cost;
+    });
     return Math.round(tot);
-  }, [sections, selections, listiniSelections, infissiExtras]);
+  }, [sections, selections, listiniSelections, infissiExtras, manualExtras]);
 
-  const sicurezzaAmt = (totaleVoci + totaleListini) * (sicurezzaPct / 100);
-  const direzioneAmt = (totaleVoci + totaleListini) * (direzionePct / 100);
+  const sicurezzaAmt = (totaleVoci + totaleListini + totaleManuali) * (sicurezzaPct / 100);
+  const direzioneAmt = (totaleVoci + totaleListini + totaleManuali) * (direzionePct / 100);
   // Maggiorazione mq piccole: <40 a corpo (×1.15 e mq min 40), <60 +10%
   const mqAdj = useMemo(() => {
     const m = parseFloat(mq || 0);
@@ -186,8 +202,8 @@ export default function PreventivoComposite() {
     if (m < 60) return { multiplier: 1.10, mode: "maggiorato" };
     return { multiplier: 1, mode: "normal" };
   }, [mq]);
-  // Applica maggiorazione al totale voci+listini, non a infissi che sono extra fissi
-  const totaleVociMaggiorato = (totaleVoci + totaleListini) * mqAdj.multiplier;
+  // Applica maggiorazione al totale voci+listini+manuali, non a infissi che sono extra fissi
+  const totaleVociMaggiorato = (totaleVoci + totaleListini + totaleManuali) * mqAdj.multiplier;
   const imponibilePreScontoPct = totaleVociMaggiorato + infissiTot + sicurezzaAmt + direzioneAmt - (sconto || 0);
   const scontoPctAmt = imponibilePreScontoPct * (scontoPct || 0) / 100;
   const imponibile = imponibilePreScontoPct - scontoPctAmt;
@@ -214,6 +230,7 @@ export default function PreventivoComposite() {
     }));
     const payload = {
       tipo: "composite", cliente, mq, composite_selections: comp,
+      manual_extras: manualExtras,
       infissi_extras: infissiExtras,
       sicurezza_pct: sicurezzaPct, direzione_lavori_pct: direzionePct,
       sconto_eur: sconto, sconto_pct: scontoPct, iva_pct: ivaPct, note,
@@ -295,6 +312,14 @@ export default function PreventivoComposite() {
                     {listiniSelections.length > 0 && <span className="text-xs opacity-70">{listiniSelections.length}</span>}
                   </div>
                   {totaleListini > 0 && <div className="text-[10px] font-mono opacity-60">{fmtEur(totaleListini)}</div>}
+                </button>
+                <button onClick={() => setActiveSection("__manual__")} data-testid="comp-sec-manual"
+                  className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${activeSection === "__manual__" ? "bg-emerald-600 text-white" : "hover:bg-emerald-50 text-emerald-700"}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5"><Plus className="h-3 w-3" />Voci extra manuali</span>
+                    {manualExtras.length > 0 && <span className="text-xs opacity-70">{manualExtras.length}</span>}
+                  </div>
+                  {manualExtras.length > 0 && <div className="text-[10px] font-mono opacity-60">{fmtEur(manualExtras.reduce((s, x) => s + (Number(x.qty) || 0) * (Number(x.price) || 0), 0))}</div>}
                 </button>
               </div>
             )}
@@ -423,6 +448,45 @@ export default function PreventivoComposite() {
                         </tr>
                       ))}
                       <tr className="bg-amber-50 font-bold"><td colSpan={3} className="px-3 py-2 text-right">Subtotale infissi</td><td className="px-3 py-2 text-right font-mono">{fmtEur2(infissiTot)}</td><td></td></tr>
+                    </tbody>
+                  </table>
+                )}
+              </>
+            ) : activeSection === "__manual__" ? (
+              <>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold">Voci extra manuali</h3>
+                  <Button size="sm" onClick={() => { setManualForm({ name: "", category: "EXTRA", unit: "pz", qty: 1, price: 0, save_to_backoffice: canSaveToBackoffice }); setManualSimilar([]); setManualDialogOpen(true); }} data-testid="comp-add-manual-btn" style={{ background: "var(--brand)", color: "white" }}>
+                    <Plus className="h-4 w-4 mr-1" />Aggiungi voce manuale
+                  </Button>
+                </div>
+                <p className="text-xs text-zinc-500 mb-3">
+                  Aggiungi qui qualsiasi voce extra che non trovi nel listino opere o nei listini fornitori (es. una lavorazione speciale, un materiale particolare, una pratica burocratica non standard).
+                  {canSaveToBackoffice && <> Se non esiste, potrai salvarla anche nel <strong>Listino Opere (Voci Backoffice)</strong> per riusarla nei prossimi preventivi.</>}
+                </p>
+                {manualExtras.length === 0 ? (
+                  <div className="text-zinc-500 text-center py-8 italic">Nessuna voce manuale aggiunta.</div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead className="bg-zinc-50 text-xs uppercase text-zinc-500">
+                      <tr><th className="px-3 py-2 text-left">Descrizione</th><th className="px-3 py-2 text-left w-32">Categoria</th><th className="px-3 py-2 text-right w-20">Qty</th><th className="px-3 py-2 text-right w-16">U.M.</th><th className="px-3 py-2 text-right w-28">Prezzo €</th><th className="px-3 py-2 text-right w-28">Totale</th><th className="w-10"></th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {manualExtras.map((m, i) => (
+                        <tr key={i} data-testid={`comp-manual-row-${i}`}>
+                          <td className="px-3 py-2">
+                            <div>{m.name}</div>
+                            {m.saved_to_backoffice && <div className="text-[9px] text-emerald-700">✓ Salvata nelle Voci Backoffice</div>}
+                          </td>
+                          <td className="px-3 py-2 text-xs">{m.category || "—"}</td>
+                          <td className="px-3 py-2 text-right"><Input type="number" min={0} step="0.01" value={m.qty} onChange={(e) => setManualExtras(manualExtras.map((x, j) => j === i ? { ...x, qty: parseFloat(e.target.value) || 0 } : x))} className="h-7 w-20 text-right text-xs mono" /></td>
+                          <td className="px-3 py-2 text-right text-xs">{m.unit || "pz"}</td>
+                          <td className="px-3 py-2 text-right"><Input type="number" min={0} step="0.01" value={m.price} onChange={(e) => setManualExtras(manualExtras.map((x, j) => j === i ? { ...x, price: parseFloat(e.target.value) || 0 } : x))} className="h-7 w-24 text-right text-xs mono" /></td>
+                          <td className="px-3 py-2 text-right font-mono font-bold">{fmtEur2((m.qty || 0) * (m.price || 0))}</td>
+                          <td className="px-3 py-2 text-right"><button onClick={() => setManualExtras(manualExtras.filter((_, j) => j !== i))} className="text-rose-600 text-xs" data-testid={`comp-manual-del-${i}`}>×</button></td>
+                        </tr>
+                      ))}
+                      <tr className="bg-emerald-50 font-bold"><td colSpan={5} className="px-3 py-2 text-right">Subtotale voci manuali</td><td className="px-3 py-2 text-right font-mono">{fmtEur2(manualExtras.reduce((s, x) => s + (Number(x.qty) || 0) * (Number(x.price) || 0), 0))}</td><td></td></tr>
                     </tbody>
                   </table>
                 )}
@@ -571,6 +635,110 @@ export default function PreventivoComposite() {
         </div>
       </Page>
       <InfissoQuickConfigurator open={infissiModalOpen} onClose={() => setInfissiModalOpen(false)} onConfirm={onInfissiConfirm} />
+      {/* Dialog: Aggiungi voce manuale (Round 86) */}
+      <Dialog open={manualDialogOpen} onOpenChange={setManualDialogOpen}>
+        <DialogContent className="max-w-lg" data-testid="comp-manual-dialog">
+          <DialogHeader><DialogTitle>Aggiungi voce extra manuale</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Descrizione *</Label>
+              <Input value={manualForm.name} onChange={(e) => {
+                const name = e.target.value;
+                setManualForm({ ...manualForm, name });
+                // Cerca voci backoffice simili (case-insensitive, substring almeno 4 chars)
+                if (name.trim().length >= 3) {
+                  const needle = name.toLowerCase().trim();
+                  const all = [];
+                  sections.forEach(s => (s.voci || []).forEach(v => all.push({ ...v, section_id: s.id, section_name: s.name })));
+                  const sim = all.filter(v => (v.name || "").toLowerCase().includes(needle) || needle.includes((v.name || "").toLowerCase())).slice(0, 4);
+                  setManualSimilar(sim);
+                } else setManualSimilar([]);
+              }} placeholder="Es. Smaltimento mobilio antico" data-testid="comp-manual-name" />
+            </div>
+            {manualSimilar.length > 0 && (
+              <div className="bg-amber-50 border border-amber-300 rounded p-2">
+                <div className="text-[11px] font-bold text-amber-900 mb-1">💡 Voci simili nel Listino Opere — clicca per usare quella:</div>
+                <div className="space-y-1">
+                  {manualSimilar.map(v => (
+                    <button key={v.id} onClick={() => {
+                      // Usa la voce esistente: vai alla sua sezione e setta qty
+                      setActiveSection(v.section_id);
+                      setSelections({ ...selections, [v.id]: { qty: manualForm.qty || 1, price: v.price } });
+                      setManualDialogOpen(false);
+                      toast.success(`Usata "${v.name}" da ${v.section_name}`);
+                    }} className="w-full text-left text-xs bg-white border border-amber-200 hover:border-amber-500 rounded px-2 py-1" data-testid={`comp-manual-use-${v.id}`}>
+                      ✓ <strong>{v.name}</strong> — {v.category} · {fmtEur(v.price)}/{v.unit}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="grid grid-cols-3 gap-2">
+              <div><Label className="text-xs">Categoria</Label><Input value={manualForm.category} onChange={(e) => setManualForm({ ...manualForm, category: e.target.value.toUpperCase() })} placeholder="EXTRA" data-testid="comp-manual-cat" /></div>
+              <div><Label className="text-xs">Unità</Label>
+                <select className="w-full h-10 border border-zinc-300 rounded px-2 text-sm" value={manualForm.unit} onChange={(e) => setManualForm({ ...manualForm, unit: e.target.value })} data-testid="comp-manual-unit">
+                  <option value="pz">pz</option><option value="m²">m²</option><option value="ml">ml</option><option value="m³">m³</option><option value="ora">ora</option><option value="gg">gg</option><option value="corpo">corpo</option><option value="forfait">forfait</option>
+                </select>
+              </div>
+              <div><Label className="text-xs">Quantità</Label><Input type="number" min="0" step="0.01" value={manualForm.qty} onChange={(e) => setManualForm({ ...manualForm, qty: parseFloat(e.target.value) || 0 })} data-testid="comp-manual-qty" /></div>
+            </div>
+            <div><Label className="text-xs">Prezzo unitario €</Label><Input type="number" min="0" step="0.01" value={manualForm.price} onChange={(e) => setManualForm({ ...manualForm, price: parseFloat(e.target.value) || 0 })} data-testid="comp-manual-price" /></div>
+            <div className="text-sm font-bold text-right">Totale: {fmtEur2((Number(manualForm.qty) || 0) * (Number(manualForm.price) || 0))}</div>
+            {canSaveToBackoffice ? (
+              <label className="flex items-center gap-2 bg-emerald-50 border border-emerald-300 rounded p-2 cursor-pointer">
+                <input type="checkbox" checked={!!manualForm.save_to_backoffice} onChange={(e) => setManualForm({ ...manualForm, save_to_backoffice: e.target.checked })} data-testid="comp-manual-save-bo" />
+                <div className="text-xs">
+                  <strong>Salva anche nelle Voci Backoffice</strong>
+                  <div className="text-[10px] text-zinc-600">Sarà disponibile come voce standard per i prossimi preventivi (modificabile dal venditore: ON).</div>
+                </div>
+              </label>
+            ) : (
+              <div className="text-[11px] text-zinc-500 bg-zinc-50 border border-zinc-200 rounded p-2">
+                ℹ️ Questa voce sarà aggiunta solo a questo preventivo. Per renderla riusabile chiedi a un admin di salvarla nelle Voci Backoffice.
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setManualDialogOpen(false)}>Annulla</Button>
+            <Button onClick={async () => {
+              if (!manualForm.name.trim()) { toast.error("Descrizione obbligatoria"); return; }
+              if ((Number(manualForm.price) || 0) <= 0) { toast.error("Prezzo > 0"); return; }
+              let saved_to_backoffice = false;
+              let voce_id_bo = null;
+              if (canSaveToBackoffice && manualForm.save_to_backoffice) {
+                try {
+                  const rivendita = Number(manualForm.price) || 0;
+                  const acquisto = Math.round((rivendita / 1.8) * 100) / 100;
+                  const { data: newVoce } = await api.post("/voci-backoffice", {
+                    name: manualForm.name.trim(),
+                    category: manualForm.category || "EXTRA",
+                    unit: manualForm.unit,
+                    prezzo_acquisto: acquisto,
+                    ricarico: 1.8,
+                    prezzo_rivendita: rivendita,
+                    modificabile_dal_venditore: true,
+                    cad_category: null,
+                  });
+                  saved_to_backoffice = true; voce_id_bo = newVoce?.id || null;
+                  toast.success("Voce salvata nel Listino Opere");
+                } catch (e) { toast.error("Impossibile salvare voce nel backoffice: " + (e?.response?.data?.detail || e.message)); }
+              }
+              setManualExtras([...manualExtras, {
+                name: manualForm.name.trim(),
+                category: manualForm.category || "EXTRA",
+                unit: manualForm.unit,
+                qty: Number(manualForm.qty) || 0,
+                price: Number(manualForm.price) || 0,
+                manual: true,
+                saved_to_backoffice,
+                voce_id_bo,
+              }]);
+              setManualDialogOpen(false);
+              toast.success("Voce aggiunta al preventivo");
+            }} data-testid="comp-manual-confirm" style={{ background: "var(--brand)", color: "white" }}>Aggiungi</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <ListinoProdottoPicker
         open={listinoPickerOpen}
         onOpenChange={setListinoPickerOpen}

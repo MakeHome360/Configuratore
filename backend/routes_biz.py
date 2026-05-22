@@ -206,12 +206,17 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
 
     @r.post("/voci-backoffice")
     async def create_voce(body: VoceIn, user=Depends(get_current_user)):
-        if user.get("role") != "admin":
-            raise HTTPException(403, "Solo admin")
+        if user.get("role") not in ("admin", "responsabile"):
+            raise HTTPException(403, "Solo admin/responsabile")
         doc = body.model_dump()
         doc["id"] = f"voce-{uuid.uuid4().hex[:8]}"
+        doc["created_by"] = user.get("id")
+        doc["created_at"] = now_iso()
         await db.voci_backoffice.insert_one(doc)
         doc.pop("_id", None)
+        await audit_log(db, user=user, action="create", entity="voce_backoffice", entity_id=doc["id"],
+                        description=f"Creata voce backoffice: {doc.get('name')} ({doc.get('category')})",
+                        after={"name": doc.get("name"), "category": doc.get("category"), "prezzo_rivendita": doc.get("prezzo_rivendita")})
         return doc
 
     @r.put("/voci-backoffice/{voce_id}")

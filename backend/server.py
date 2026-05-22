@@ -389,7 +389,15 @@ async def change_password(body: ChangePasswordReq, user: Dict[str, Any] = Depend
 
 @api.get("/auth/me")
 async def me(user: Dict[str, Any] = Depends(get_current_user)):
-    return {"id": user["id"], "email": user["email"], "name": user["name"], "role": user.get("role", "user")}
+    return {
+        "id": user["id"],
+        "email": user["email"],
+        "name": user["name"],
+        "role": user.get("role", "user"),
+        "venditore_level": user.get("venditore_level"),
+        "negozio_id": user.get("negozio_id"),
+        "subappaltatore_id": user.get("subappaltatore_id"),
+    }
 
 
 @api.post("/auth/refresh")

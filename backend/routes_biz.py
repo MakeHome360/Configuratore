@@ -206,8 +206,12 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
 
     @r.post("/voci-backoffice")
     async def create_voce(body: VoceIn, user=Depends(get_current_user)):
-        if user.get("role") not in ("admin", "responsabile"):
-            raise HTTPException(403, "Solo admin/responsabile")
+        role = user.get("role")
+        vl = (user.get("venditore_level") or "").lower()
+        # Admin sempre; gestore (project manager) sempre; venditore solo se livello "responsabile" o "area_manager"
+        allowed = (role == "admin") or (role == "gestore") or (role == "venditore" and vl in ("responsabile", "area_manager"))
+        if not allowed:
+            raise HTTPException(403, "Solo admin / gestore / venditore-responsabile")
         doc = body.model_dump()
         doc["id"] = f"voce-{uuid.uuid4().hex[:8]}"
         doc["created_by"] = user.get("id")

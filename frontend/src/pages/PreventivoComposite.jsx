@@ -54,7 +54,8 @@ export default function PreventivoComposite() {
   const [manualForm, setManualForm] = useState({ name: "", category: "EXTRA", unit: "pz", qty: 1, price: 0, save_to_backoffice: true });
   const [manualSimilar, setManualSimilar] = useState([]);
   const userRole = (user?.role || "").toLowerCase();
-  const canSaveToBackoffice = userRole === "admin" || userRole === "responsabile";
+  const userLevel = (user?.venditore_level || "").toLowerCase();
+  const canSaveToBackoffice = userRole === "admin" || userRole === "gestore" || (userRole === "venditore" && (userLevel === "responsabile" || userLevel === "area_manager"));
 
   // Mapping voce → categoria listino fornitori (per sub-picker annidato).
   // Match per nome voce, sezione e categoria (case-insensitive). L'ordine conta: regex più specifiche prima.

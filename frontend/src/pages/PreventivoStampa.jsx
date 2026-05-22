@@ -37,16 +37,44 @@ export default function PreventivoStampa() {
   useEffect(() => {
     (async () => {
       try {
-        const [p, packs, bt, az] = await Promise.all([
+        const [p, packs, bt, az, imp] = await Promise.all([
           api.get(`/preventivi/${id}`),
           api.get("/packages"),
           api.get("/packages/bathroom-tiers"),
-          api.get("/dati-azienda"),
+          api.get("/dati-azienda").catch(() => ({ data: {} })),
+          api.get("/impostazioni").catch(() => ({ data: {} })),
         ]);
         setPrev(p.data);
         setPkg((packs.data || []).find(x => x.id === p.data.package_id));
         setBathroomTiers(bt.data || []);
-        setAzienda(az.data || {});
+        // Merge impostazioni (Round 81+) sopra dati-azienda (legacy).
+        // Mappa: marchio_commerciale → nome, partita_iva → piva, telefono_principale → telefono, email_principale → email,
+        // ricostruisce indirizzo da sede legale, espone sedi_operative + ragione_sociale + codice_fiscale + rea + pec.
+        const i = imp.data || {};
+        const a = az.data || {};
+        const sedeIndirizzo = [
+          i.sede_legale_indirizzo,
+          i.sede_legale_cap, i.sede_legale_citta,
+          i.sede_legale_provincia ? `(${i.sede_legale_provincia})` : null,
+        ].filter(Boolean).join(" ").trim();
+        const merged = {
+          ...a,
+          nome: i.marchio_commerciale || a.nome || a.marchio || "",
+          ragione_sociale: i.ragione_sociale || a.ragione_sociale || "",
+          piva: i.partita_iva || a.piva || a.partita_iva || "",
+          codice_fiscale: i.codice_fiscale || a.codice_fiscale || "",
+          rea: i.rea || a.rea || "",
+          pec: i.pec || a.pec || "",
+          indirizzo: sedeIndirizzo || a.indirizzo || "",
+          telefono: i.telefono_principale || a.telefono || "",
+          email: i.email_principale || a.email || "",
+          sito: i.sito || a.sito || "",
+          logo: i.logo || a.logo || "",
+          colore_primario: i.colore_primario || a.colore_primario || a.colorePrimario || "#0F172A",
+          sedi_operative: i.sedi_operative || a.sedi_operative || [],
+          condizioni_pagamento: i.condizioni_pagamento || a.condizioni_pagamento || "",
+        };
+        setAzienda(merged);
         // Carica anche l'utente "incaricato" che ha creato il preventivo
         if (p.data.user_id) {
           try {
@@ -194,17 +222,40 @@ export default function PreventivoStampa() {
                 {(azienda.nome || "S")[0]}
               </div>
               <div>
-                <div className="text-2xl font-bold" style={{ fontFamily: "Outfit", color: colorePrimario }}>{azienda.nome || "Sa di casa"}</div>
+                <div className="text-2xl font-bold" style={{ fontFamily: "Outfit", color: colorePrimario }} data-testid="prev-stampa-marchio">{azienda.nome || "Sa di casa"}</div>
+                {azienda.ragione_sociale && (
+                  <div className="text-[11px] text-zinc-600 mt-0.5" data-testid="prev-stampa-ragione-sociale">{azienda.ragione_sociale}</div>
+                )}
                 {azienda.sito && <div className="text-xs text-zinc-500 mono">{azienda.sito}</div>}
               </div>
             </div>
-            <div className="text-right text-xs text-zinc-600 leading-relaxed">
-              {azienda.indirizzo && <div>{azienda.indirizzo}</div>}
+            <div className="text-right text-xs text-zinc-600 leading-relaxed" data-testid="prev-stampa-azienda-dati">
+              {azienda.indirizzo && <div data-testid="prev-stampa-sede">{azienda.indirizzo}</div>}
               {azienda.telefono && <div>Tel: {azienda.telefono}</div>}
               {azienda.email && <div>{azienda.email}</div>}
-              {azienda.piva && <div className="mono mt-1">P.IVA {azienda.piva}</div>}
+              {azienda.pec && <div className="mono">PEC: {azienda.pec}</div>}
+              {azienda.piva && <div className="mono mt-1" data-testid="prev-stampa-piva">P.IVA {azienda.piva}</div>}
+              {azienda.codice_fiscale && azienda.codice_fiscale !== azienda.piva && (
+                <div className="mono" data-testid="prev-stampa-cf">C.F. {azienda.codice_fiscale}</div>
+              )}
+              {azienda.rea && <div className="mono">REA: {azienda.rea}</div>}
             </div>
           </div>
+          {/* Sedi operative (Round 86) */}
+          {Array.isArray(azienda.sedi_operative) && azienda.sedi_operative.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-zinc-200 flex flex-wrap gap-x-6 gap-y-1 text-[10px] text-zinc-500" data-testid="prev-stampa-sedi-operative">
+              <span className="uppercase tracking-widest font-semibold">Sedi operative:</span>
+              {azienda.sedi_operative.map((s, i) => (
+                <span key={s.id || i} data-testid={`prev-stampa-sede-op-${i}`}>
+                  <strong className="text-zinc-700">{s.nome}</strong>
+                  {s.indirizzo ? ` — ${s.indirizzo}` : ""}
+                  {s.citta ? `, ${s.citta}` : ""}
+                  {s.cap ? ` ${s.cap}` : ""}
+                  {s.telefono ? ` · tel ${s.telefono}` : ""}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ===== TITOLO PREVENTIVO ===== */}
@@ -518,7 +569,10 @@ export default function PreventivoStampa() {
           </div>
           <div>
             <div className="border-b-2 border-zinc-300 pb-1 mb-1 h-12"></div>
-            <div className="text-zinc-500">Per {azienda.nome || "Azienda"}</div>
+            <div className="text-zinc-500">Per {azienda.ragione_sociale || azienda.nome || "Azienda"}</div>
+            {azienda.ragione_sociale && azienda.nome && azienda.nome !== azienda.ragione_sociale && (
+              <div className="text-[10px] text-zinc-400">(marchio commerciale: {azienda.nome})</div>
+            )}
             <div className="font-semibold mt-1">{incaricato ? `${incaricato.name || ""}${incaricato.cognome ? " " + incaricato.cognome : ""}`.trim() || "L'incaricato" : "L'incaricato"}</div>
             {incaricato?.qualifica && <div className="text-[10px] text-zinc-500">{incaricato.qualifica}</div>}
             {incaricato?.email && <div className="text-[10px] mono text-zinc-500">{incaricato.email}</div>}

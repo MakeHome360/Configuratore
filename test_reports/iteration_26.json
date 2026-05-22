@@ -1,0 +1,36 @@
+{
+  "summary": "Round 86 end-to-end testing — Extra Manuali in PreventivoComposite + Audit Trail su Documenti/Foto/Contratto + PDF preventivo legge nuovi campi /impostazioni. All 8 backend pytest tests PASS (test_round86_manual_extras.py: 4/4, test_round86_audit_pdf.py: 4/4) against preview URL. Frontend E2E flow on /preventivocomposite/new works: comp-sec-manual → comp-add-manual-btn → comp-manual-dialog → fill name/qty/price → comp-manual-confirm aggiunge la voce. Subtotale '€ 120,00' e totale IVA incl '€ 142,56' corretti. Toast 'Voce aggiunta al preventivo' OK. Checkbox comp-manual-save-bo visibile per admin e checked di default; verifica via GET /api/voci-backoffice?search=Smaltimento+poltrona conferma che la voce è stata persistita nel listino (prezzo_rivendita=120.01, category=EXTRA, badge '✓ Salvata nelle Voci Backoffice' sotto la riga). PreventivoStampa (/preventivi/{id}/stampa) mostra tutti i 4 nuovi testids con i dati corretti: prev-stampa-marchio='Sa di casa', prev-stampa-ragione-sociale='RELA SRLS', prev-stampa-piva='P.IVA 12345678901', prev-stampa-sedi-operative='Showroom Milano — Via Test 5, Milano 20100 · tel 0212345'. Header PDF mostra anche C.F., REA, PEC e Sede legale come richiesto. No regressions rilevate.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "PreventivoComposite — comp-manual-dialog", "issues": ["Radix warning console: 'Missing Description or aria-describedby={undefined} for DialogContent'. A11y minor, nessun functional break — aggiungere un <DialogDescription> al dialog."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_round86_manual_extras.py",
+    "/app/backend/tests/test_round86_audit_pdf.py",
+    "/app/test_reports/pytest/round86_results.xml"
+  ],
+  "action_items": [
+    "[Optional A11y] Aggiungere <DialogDescription> a comp-manual-dialog in PreventivoComposite.jsx per silenziare il warning Radix sull'aria-describedby."
+  ],
+  "critical_code_review_comments": [
+    "Round 86 implementation è solida: RBAC backoffice è esteso correttamente a venditore-responsabile (test esplicito di 403 per venditore semplice passa). Audit trail copre i 3 eventi richiesti (doc_upload/doc_delete, foto_upload/foto_update/foto_delete, contratto_update) con entity_id corretto.",
+    "manual_extras è persistito round-trip via POST/GET /api/preventivi.",
+    "Test di GET /api/voci-backoffice mostra però 2 entries duplicate 'Smaltimento poltrona antica' (una dallo smoke E2E precedente + una da questo run). Non è un bug del round, ma considerare un check di unicità soft per nome+categoria nel POST /api/voci-backoffice quando save_to_backoffice è triggerato dal composite, per evitare polluzione del listino opere.",
+    "PreventivoStampa.jsx fa merge dei campi impostazioni con le legacy keys (company_name → ragione_sociale fallback). Header completo e ben formattato."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100% (composite flow + stampa rendering)"},
+  "test_credentials": "admin@admin.it / admin; venditore-responsabile e venditore-semplice creati via POST /api/users/invite nel test (auto-cleanup).",
+  "seed_data_creation": "Test di /impostazioni ha aggiornato i campi aziendali (ragione_sociale=RELA SRLS, marchio_commerciale=Sa di casa, partita_iva=12345678901, sedi_operative=[Showroom Milano]) — il PUT è eseguito dal test test_impostazioni_expose_company_fields_for_pdf e i valori restano nel DB. Voce backoffice 'Smaltimento poltrona antica' è stata creata 2 volte (smoke E2E precedente + run questo) — non bloccante.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Round 86 verificato end-to-end e pronto per deploy. Tutti i nuovi data-testid sono in posto: comp-sec-manual, comp-add-manual-btn, comp-manual-dialog, comp-manual-name, comp-manual-qty, comp-manual-price, comp-manual-save-bo, comp-manual-confirm, prev-stampa-marchio, prev-stampa-ragione-sociale, prev-stampa-piva, prev-stampa-sedi-operative. Per re-test rapido: BASE_URL=<preview> pytest /app/backend/tests/test_round86_*.py -v.",
+  "rca of the issue": "N/A — no issues found in Round 86."
+}

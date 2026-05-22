@@ -11,9 +11,11 @@ import uuid
 import os
 import base64
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
+
+from audit import audit_log
 
 UPLOADS_DIR = "/app/backend/uploads"
 os.makedirs(UPLOADS_DIR, exist_ok=True)
@@ -52,16 +54,22 @@ def build_commessa_workflow_router(db, get_current_user):
         note: Optional[str] = None
 
     @r.post("/commesse/{cid}/workflow/contratto")
-    async def set_contratto(cid: str, body: ContrattoIn, user=Depends(get_current_user)):
+    async def set_contratto(cid: str, body: ContrattoIn, user=Depends(get_current_user), request: Request = None):
         c = await _commessa(cid)
+        prev = c.get("contratto") or {}
         contratto = {
-            "id": c.get("contratto", {}).get("id") or UID(),
+            "id": prev.get("id") or UID(),
             "url": body.url, "testo": body.testo,
             "firmato": body.firmato, "firma_data": body.firma_data,
             "note": body.note,
             "updated_at": NOW(), "updated_by": user.get("id"),
         }
         await db.commesse.update_one({"id": cid}, {"$set": {"contratto": contratto}})
+        await audit_log(db, user=user, action="contratto_update", entity="commessa_contratto", entity_id=contratto["id"],
+                        description=f"Contratto commessa {cid} {'FIRMATO' if body.firmato and not prev.get('firmato') else 'aggiornato'}",
+                        before={"firmato": prev.get("firmato"), "url": prev.get("url")},
+                        after={"firmato": body.firmato, "url": body.url, "firma_data": body.firma_data},
+                        request=request)
         return contratto
 
     # ---------- 2. DOCUMENTI (multipli) ----------
@@ -72,17 +80,27 @@ def build_commessa_workflow_router(db, get_current_user):
         note: Optional[str] = None
 
     @r.post("/commesse/{cid}/workflow/documenti")
-    async def add_documento(cid: str, body: DocumentoWfIn, user=Depends(get_current_user)):
+    async def add_documento(cid: str, body: DocumentoWfIn, user=Depends(get_current_user), request: Request = None):
         await _commessa(cid)
         doc = {"id": UID(), "tipo": body.tipo, "name": body.name, "url": body.url, "note": body.note,
                "uploaded_at": NOW(), "uploaded_by": user.get("id"), "commessa_id": cid}
         await db.commesse_documenti.insert_one(doc)
         doc.pop("_id", None)
+        await audit_log(db, user=user, action="doc_upload", entity="commessa_documento", entity_id=doc["id"],
+                        description=f"Upload documento '{body.name}' (tipo={body.tipo}) su commessa {cid}",
+                        after={"commessa_id": cid, "tipo": body.tipo, "name": body.name, "url": body.url},
+                        request=request)
         return doc
 
     @r.delete("/commesse/{cid}/workflow/documenti/{doc_id}")
-    async def del_documento(cid: str, doc_id: str, user=Depends(get_current_user)):
+    async def del_documento(cid: str, doc_id: str, user=Depends(get_current_user), request: Request = None):
+        before = await db.commesse_documenti.find_one({"id": doc_id, "commessa_id": cid}, {"_id": 0})
         await db.commesse_documenti.delete_one({"id": doc_id, "commessa_id": cid})
+        if before:
+            await audit_log(db, user=user, action="doc_delete", entity="commessa_documento", entity_id=doc_id,
+                            description=f"Eliminato documento '{before.get('name')}' da commessa {cid}",
+                            before={"commessa_id": cid, "tipo": before.get("tipo"), "name": before.get("name")},
+                            request=request)
         return {"ok": True}
 
     # ---------- 3. SCELTA MATERIALI ----------
@@ -950,7 +968,7 @@ def build_commessa_workflow_router(db, get_current_user):
         return rows
 
     @r.post("/commesse/{cid}/foto-cantiere")
-    async def create_foto_cantiere(cid: str, body: FotoCantiereIn, user=Depends(get_current_user)):
+    async def create_foto_cantiere(cid: str, body: FotoCantiereIn, user=Depends(get_current_user), request: Request = None):
         await _commessa(cid)
         doc = {
             "id": uuid.uuid4().hex,
@@ -964,19 +982,35 @@ def build_commessa_workflow_router(db, get_current_user):
         }
         await db.commesse_foto_cantiere.insert_one(dict(doc))
         doc.pop("_id", None)
+        await audit_log(db, user=user, action="foto_upload", entity="commessa_foto", entity_id=doc["id"],
+                        description=f"Aggiunto gruppo foto '{doc['titolo'] or doc['data']}' ({len(doc['foto'])} foto) su commessa {cid}",
+                        after={"commessa_id": cid, "data": doc["data"], "titolo": doc["titolo"], "num_foto": len(doc["foto"])},
+                        request=request)
         return doc
 
     @r.put("/commesse/{cid}/foto-cantiere/{gid}")
-    async def update_foto_cantiere(cid: str, gid: str, body: Dict[str, Any], user=Depends(get_current_user)):
+    async def update_foto_cantiere(cid: str, gid: str, body: Dict[str, Any], user=Depends(get_current_user), request: Request = None):
         await _commessa(cid)
+        before = await db.commesse_foto_cantiere.find_one({"id": gid, "commessa_id": cid}, {"_id": 0})
         body.pop("_id", None); body.pop("id", None)
         await db.commesse_foto_cantiere.update_one({"id": gid, "commessa_id": cid}, {"$set": body})
+        await audit_log(db, user=user, action="foto_update", entity="commessa_foto", entity_id=gid,
+                        description=f"Modificato gruppo foto su commessa {cid}",
+                        before={"titolo": (before or {}).get("titolo"), "num_foto": len((before or {}).get("foto") or [])},
+                        after={"titolo": body.get("titolo"), "num_foto": len(body.get("foto") or [])},
+                        request=request)
         return {"ok": True}
 
     @r.delete("/commesse/{cid}/foto-cantiere/{gid}")
-    async def delete_foto_cantiere(cid: str, gid: str, user=Depends(get_current_user)):
+    async def delete_foto_cantiere(cid: str, gid: str, user=Depends(get_current_user), request: Request = None):
         await _commessa(cid)
+        before = await db.commesse_foto_cantiere.find_one({"id": gid, "commessa_id": cid}, {"_id": 0})
         await db.commesse_foto_cantiere.delete_one({"id": gid, "commessa_id": cid})
+        if before:
+            await audit_log(db, user=user, action="foto_delete", entity="commessa_foto", entity_id=gid,
+                            description=f"Eliminato gruppo foto '{(before or {}).get('titolo') or (before or {}).get('data')}' da commessa {cid}",
+                            before={"commessa_id": cid, "data": before.get("data"), "titolo": before.get("titolo"), "num_foto": len(before.get("foto") or [])},
+                            request=request)
         return {"ok": True}
 
     # ---------- 11. WORKFLOW STATE (snapshot completo per UI) ----------

@@ -5,17 +5,17 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, Shield, Filter, X } from "lucide-react";
 
-const ENTITIES = ["", "preventivo", "commessa", "impostazioni", "user", "auth"];
-const ACTIONS = ["", "create", "update", "delete", "login", "sconto_request", "sconto_approvato", "sconto_rifiutato", "invite_user", "update_stato"];
+const ENTITIES = ["", "preventivo", "commessa", "commessa_documento", "commessa_foto", "commessa_contratto", "voce_backoffice", "impostazioni", "user", "auth"];
+const ACTIONS = ["", "create", "update", "delete", "login", "sconto_request", "sconto_approvato", "sconto_rifiutato", "invite_user", "update_stato", "doc_upload", "doc_delete", "foto_upload", "foto_update", "foto_delete", "contratto_update"];
 
 function badgeColor(action) {
   if (!action) return "bg-zinc-100 text-zinc-700";
-  if (action.startsWith("create") || action === "invite_user") return "bg-emerald-100 text-emerald-800";
-  if (action.startsWith("delete")) return "bg-rose-100 text-rose-800";
+  if (action.startsWith("create") || action === "invite_user" || action === "doc_upload" || action === "foto_upload") return "bg-emerald-100 text-emerald-800";
+  if (action.startsWith("delete") || action === "doc_delete" || action === "foto_delete") return "bg-rose-100 text-rose-800";
   if (action.startsWith("sconto_approvato")) return "bg-emerald-100 text-emerald-800";
   if (action.startsWith("sconto_rifiutato")) return "bg-rose-100 text-rose-800";
   if (action.startsWith("sconto_request")) return "bg-amber-100 text-amber-800";
-  if (action.startsWith("update")) return "bg-blue-100 text-blue-800";
+  if (action.startsWith("update") || action === "foto_update" || action === "contratto_update") return "bg-blue-100 text-blue-800";
   if (action === "login") return "bg-violet-100 text-violet-800";
   return "bg-zinc-100 text-zinc-700";
 }

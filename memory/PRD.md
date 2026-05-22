@@ -1,6 +1,69 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 86 — Extra Manuali + Audit Documenti/Foto + PDF con Dati Aziendali (Feb 2026)
+
+**Richiesta utente** (3 punti):
+1. "voglio poter aggiungere extra manualmente nel preventivo composite; se la voce non esiste mi devi chiedere se vuoi salvarla nel listino opere per riusarla la prossima volta."
+2. (P1) "voglio sapere chi ha caricato cosa nei documenti e nelle foto cantiere" → Audit trail.
+3. (P1) "i PDF dei preventivi devono usare i nuovi dati aziendali che ho messo in Impostazioni (ragione sociale, P.IVA, sedi)".
+
+### Frontend — `PreventivoComposite.jsx` (Extra Manuali)
+- Nuova sezione sidebar **"+ Voci extra manuali"** (`comp-sec-manual`) accanto a "Listini fornitori" e "Infissi extra".
+- Vista dedicata: tabella editabile (qty/prezzo/totale) + bottone **"Aggiungi voce manuale"** (`comp-add-manual-btn`).
+- **Dialog** (`comp-manual-dialog`) con: descrizione, categoria, unità (8 opzioni: pz/m²/ml/m³/ora/gg/corpo/forfait), quantità, prezzo.
+- **Suggerimento intelligente**: mentre digiti la descrizione (≥3 char), il sistema cerca voci simili nel listino opere e mostra fino a 4 alternative cliccabili nella sezione amber "💡 Voci simili nel Listino Opere".
+- **Checkbox "Salva anche nelle Voci Backoffice"** (visibile solo per admin/gestore/venditore-responsabile/area_manager): se attiva, salva la voce nel listino opere via `POST /api/voci-backoffice` (ricarico standard 1.8, modificabile_dal_venditore=true).
+- Le voci manuali contribuiscono ai totali con maggiorazione mq, sicurezza, direzione lavori, IVA.
+- Persistite in `preventivo.manual_extras[]`.
+
+### Backend — RBAC esteso per `POST /api/voci-backoffice`
+- Prima: solo `role=admin` o `role=responsabile` (ruolo che non esiste, era bug latente).
+- Ora: admin, gestore, oppure venditore con `venditore_level in ("responsabile", "area_manager")`.
+- `GET /api/auth/me` ora ritorna anche `venditore_level`, `negozio_id`, `subappaltatore_id` (necessari per RBAC frontend).
+
+### Backend — Audit Trail su Documenti/Foto/Contratto
+- `routes_commessa_workflow.py` importa `audit_log` e lo invoca su:
+  - `POST /api/commesse/{cid}/workflow/documenti` → action `doc_upload`, entity `commessa_documento`.
+  - `DELETE /api/commesse/{cid}/workflow/documenti/{id}` → action `doc_delete`.
+  - `POST /api/commesse/{cid}/foto-cantiere` → action `foto_upload`, entity `commessa_foto` (con num_foto).
+  - `PUT /api/commesse/{cid}/foto-cantiere/{id}` → action `foto_update` (before/after).
+  - `DELETE /api/commesse/{cid}/foto-cantiere/{id}` → action `foto_delete`.
+  - `POST /api/commesse/{cid}/workflow/contratto` → action `contratto_update` (con flag firmato).
+- `AdminAuditTrail.jsx`: aggiunte nuove entità (`commessa_documento`, `commessa_foto`, `commessa_contratto`, `voce_backoffice`) e nuove azioni nel dropdown + colori badge dedicati (verde per upload, rosso per delete, blu per update).
+
+### Frontend — `PreventivoStampa.jsx` (PDF con dati Impostazioni)
+- Ora carica in parallelo sia `/api/dati-azienda` (legacy) sia `/api/impostazioni` (nuovo). Merge con priorità a `/impostazioni`:
+  - `marchio_commerciale` → `nome` (intestazione grande).
+  - `ragione_sociale` → nuovo sottotitolo sotto al marchio.
+  - `partita_iva` → `piva`, `codice_fiscale`, `rea`, `pec` → riquadro dx.
+  - `sede_legale_indirizzo/citta/cap/provincia` combinati → indirizzo principale.
+  - `telefono_principale`, `email_principale` → contatti.
+  - `sedi_operative[]` → riga aggiuntiva sotto l'header con tutte le filiali (nome, indirizzo, città, CAP, telefono).
+  - `colore_primario` da impostazioni applicato al border + titoli.
+- Firma azienda nel footer: ora dice "Per {ragione_sociale}" con "(marchio commerciale: {nome})" se differente.
+- Nuovi testid: `prev-stampa-marchio`, `prev-stampa-ragione-sociale`, `prev-stampa-piva`, `prev-stampa-cf`, `prev-stampa-sede`, `prev-stampa-sedi-operative`, `prev-stampa-sede-op-{i}`.
+
+### Testing — Round 86
+- `tests/test_round86_manual_extras.py`: **4/4 PASS** (persistenza manual_extras, create voce admin, create voce venditore-responsabile, deny venditore semplice).
+- `tests/test_round86_audit_pdf.py`: **4/4 PASS** (audit doc upload/delete, foto lifecycle, contratto signed, /impostazioni espone tutti i campi azienda).
+- Regression sui round 77/79/80/81: **22/22 PASS**.
+- Smoke E2E Playwright: comp-sec-manual → comp-add-manual-btn → dialog → "Smaltimento poltrona antica" qty=1 €120 → confirm → Subtotale €120,00, Totale IVA incl €142,56, toast "Voce aggiunta al preventivo" ✓.
+- testing_agent_v3_fork iteration_26: **0 critical, 0 major, 0 minor**.
+
+### File modificati / creati
+- `frontend/src/pages/PreventivoComposite.jsx` (state manualExtras + dialog + helpers + totali)
+- `frontend/src/pages/PreventivoStampa.jsx` (merge /impostazioni + sedi operative + nuovi testid)
+- `frontend/src/pages/admin/AdminAuditTrail.jsx` (nuove entità/azioni)
+- `backend/routes_biz.py` (RBAC esteso /voci-backoffice)
+- `backend/routes_commessa_workflow.py` (audit hooks su docs/foto/contratto)
+- `backend/server.py` (/auth/me ritorna venditore_level)
+- `backend/tests/test_round86_manual_extras.py` (NUOVO)
+- `backend/tests/test_round86_audit_pdf.py` (NUOVO)
+
+
+
+
 ## Round 85 — Unificazione Impostazioni + Branding + Recap Ruoli (Feb 2026)
 
 **Richiesta utente**:

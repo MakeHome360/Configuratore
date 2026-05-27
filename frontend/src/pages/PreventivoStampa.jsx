@@ -577,6 +577,18 @@ export default function PreventivoStampa() {
             );
           })()}
           {prev.note && (<><h4 className="text-xs uppercase tracking-widest text-zinc-800 font-semibold mt-3 mb-1">Note del preventivo</h4><div className="italic">{prev.note}</div></>)}
+
+          {/* Clausola legale "oggetto del preventivo" — richiesta utente */}
+          <div className="mt-4 border-2 border-zinc-900 rounded p-3 bg-amber-50" data-testid="prev-stampa-clausola-oggetto">
+            <div className="text-[10px] uppercase tracking-widest text-zinc-700 font-bold mb-1">⚠ Oggetto del preventivo</div>
+            <p className="text-xs text-zinc-900 font-semibold leading-snug">
+              Il presente preventivo comprende <strong>esclusivamente le opere e le lavorazioni espressamente indicate nelle sezioni precedenti</strong>.
+              Qualsiasi opera, lavorazione, fornitura o servizio <strong>non specificamente menzionato</strong> nel presente documento
+              <strong> non sarà considerato oggetto dello stesso</strong> e, se richiesto in corso d'opera, sarà oggetto di separato preventivo
+              integrativo da concordare e firmare prima dell'esecuzione.
+            </p>
+          </div>
+
           <p className="mt-3 text-zinc-500">Il preventivo ha validità di 30 giorni dalla data di emissione. Eventuali varianti in corso d'opera richiederanno integrazione scritta. Le quantità delle lavorazioni sono indicative e potranno essere riproporzionate in base ai rilievi finali del progetto esecutivo. Il presente documento ha natura di proposta commerciale e non costituisce contratto fino alla sottoscrizione delle parti.</p>
         </div>
 

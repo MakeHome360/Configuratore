@@ -93,20 +93,31 @@ export default function PreventivoStampa() {
     if (prev.tipo === "composite" || !pkg) {
       const compSel = prev.composite_selections || {};
       const voci_amount = Object.values(compSel).reduce((s, v) => s + (v.qty || 0) * (v.price || 0), 0);
+      // 🛒 Prodotti da Listini Fornitori
+      const listini_amount = (prev.listini_selections || []).reduce(
+        (s, p) => s + ((parseFloat(p.qty) || 0) * (parseFloat(p.prezzo_rivendita) || 0)),
+        0
+      );
+      // ✋ Voci extra manuali (Round 86)
+      const manual_amount = (prev.manual_extras || []).reduce(
+        (s, m) => s + ((Number(m.qty) || 0) * (Number(m.price) || 0)),
+        0
+      );
+      const base = voci_amount + listini_amount + manual_amount;
       const m = parseFloat(prev.mq || 0);
       let multiplier = 1;
       if (m > 0 && m < 40) multiplier = 1.15;
       else if (m > 0 && m < 60) multiplier = 1.10;
-      const voci_magg = voci_amount * multiplier;
+      const voci_magg = base * multiplier;
       const infissi = (prev.infissi_extras || []).reduce((s, i) => s + ((i.qty || 0) * (i.unit_price || i.price || 0)), 0);
-      const sic = voci_amount * ((prev.sicurezza_pct || 0) / 100);
-      const dir = voci_amount * ((prev.direzione_lavori_pct || 0) / 100);
+      const sic = base * ((prev.sicurezza_pct || 0) / 100);
+      const dir = base * ((prev.direzione_lavori_pct || 0) / 100);
       const pre_sconto = voci_magg + infissi + sic + dir - (prev.sconto_eur || 0);
       const sconto_pct = pre_sconto * ((prev.sconto_pct || 0) / 100);
       const imponibile = pre_sconto - sconto_pct;
       const iva = imponibile * ((prev.iva_pct || 10) / 100);
       const total = imponibile + iva;
-      return { mode: "composite", voci_amount, voci_magg, infissi, sic, dir, sconto_pct, imponibile, iva, total, multiplier };
+      return { mode: "composite", voci_amount, listini_amount, manual_amount, voci_magg, infissi, sic, dir, sconto_pct, imponibile, iva, total, multiplier };
     }
     // ---- MODALITÀ PACCHETTO (esistente) ----
     const mq = parseFloat(prev.mq || 0);
@@ -337,8 +348,10 @@ export default function PreventivoStampa() {
           {isComposite && (() => {
             const sel = prev.composite_selections || {};
             const voci = Object.values(sel).filter(v => v.qty > 0);
+            const listini = (prev.listini_selections || []).filter(p => (parseFloat(p.qty) || 0) > 0);
+            const manuali = (prev.manual_extras || []).filter(m => (Number(m.qty) || 0) > 0);
             const infissi = prev.infissi_extras || [];
-            if (!voci.length && !infissi.length) return <p className="text-xs text-zinc-500 italic">Nessuna voce selezionata.</p>;
+            if (!voci.length && !listini.length && !manuali.length && !infissi.length) return <p className="text-xs text-zinc-500 italic">Nessuna voce selezionata.</p>;
             return (
               <div className="border border-zinc-200 rounded">
                 <div className="px-4 py-2 bg-zinc-50 border-b border-zinc-200 text-[10px] uppercase tracking-widest text-zinc-600 font-semibold">Lavorazioni e materiali</div>
@@ -349,10 +362,37 @@ export default function PreventivoStampa() {
                   <tbody>
                     {voci.map((v, i) => (
                       <tr key={i} className="border-b border-zinc-100 last:border-0">
-                        <td className="px-4 py-1.5">{v.name || v.voce_name || v.id}</td>
+                        <td className="px-4 py-1.5">
+                          {v.name || v.voce_name || v.id}
+                          {v.product_nome && <span className="text-[10px] text-zinc-500 ml-1">— {v.product_nome}{v.product_fornitore ? ` (${v.product_fornitore})` : ""}</span>}
+                        </td>
                         <td className="px-4 py-1.5 text-right mono">{fmtNum(v.qty, 2)} {v.unit || ""}</td>
                         <td className="px-4 py-1.5 text-right mono text-zinc-500">{fmtEuro(v.price || 0)}</td>
                         <td className="px-4 py-1.5 text-right mono font-semibold">{fmtEuro((v.qty || 0) * (v.price || 0))}</td>
+                      </tr>
+                    ))}
+                    {listini.map((p, i) => (
+                      <tr key={`lst-${i}`} className="border-b border-zinc-100 last:border-0 bg-blue-50/30" data-testid={`prev-stampa-listino-${i}`}>
+                        <td className="px-4 py-1.5">
+                          🛒 {p.nome || p.name || "Prodotto"}
+                          {p.fornitore_nome && <span className="text-[10px] text-zinc-500 ml-1">— {p.fornitore_nome}</span>}
+                          {p.codice && <span className="text-[10px] text-zinc-400 ml-1 mono">[{p.codice}]</span>}
+                        </td>
+                        <td className="px-4 py-1.5 text-right mono">{fmtNum(p.qty || 0, 2)} {p.unit || ""}</td>
+                        <td className="px-4 py-1.5 text-right mono text-zinc-500">{fmtEuro(parseFloat(p.prezzo_rivendita) || 0)}</td>
+                        <td className="px-4 py-1.5 text-right mono font-semibold">{fmtEuro((parseFloat(p.qty) || 0) * (parseFloat(p.prezzo_rivendita) || 0))}</td>
+                      </tr>
+                    ))}
+                    {manuali.map((m, i) => (
+                      <tr key={`man-${i}`} className="border-b border-zinc-100 last:border-0 bg-emerald-50/30" data-testid={`prev-stampa-manual-${i}`}>
+                        <td className="px-4 py-1.5">
+                          ✋ {m.name || "Voce extra"}
+                          {m.category && m.category !== "EXTRA" && <span className="text-[10px] text-zinc-500 ml-1">— {m.category}</span>}
+                          <span className="text-[10px] text-emerald-700 ml-1 italic">(extra manuale)</span>
+                        </td>
+                        <td className="px-4 py-1.5 text-right mono">{fmtNum(m.qty || 0, 2)} {m.unit || ""}</td>
+                        <td className="px-4 py-1.5 text-right mono text-zinc-500">{fmtEuro(Number(m.price) || 0)}</td>
+                        <td className="px-4 py-1.5 text-right mono font-semibold">{fmtEuro((Number(m.qty) || 0) * (Number(m.price) || 0))}</td>
                       </tr>
                     ))}
                     {infissi.map((inf, i) => (
@@ -471,7 +511,9 @@ export default function PreventivoStampa() {
               {isComposite ? (
                 <>
                   <Row label="Voci selezionate" value={fmtEuro(totals.voci_amount)} />
-                  {totals.multiplier !== 1 && <Row label={`Maggiorazione mq (×${totals.multiplier.toFixed(2)})`} value={`+ ${fmtEuro(totals.voci_magg - totals.voci_amount)}`} className="text-amber-700" />}
+                  {totals.listini_amount > 0 && <Row label="Prodotti da listini fornitori" value={fmtEuro(totals.listini_amount)} />}
+                  {totals.manual_amount > 0 && <Row label="Voci extra manuali" value={fmtEuro(totals.manual_amount)} className="text-emerald-700" />}
+                  {totals.multiplier !== 1 && <Row label={`Maggiorazione mq (×${totals.multiplier.toFixed(2)})`} value={`+ ${fmtEuro(totals.voci_magg - (totals.voci_amount + totals.listini_amount + totals.manual_amount))}`} className="text-amber-700" />}
                   {totals.infissi > 0 && <Row label="Infissi" value={fmtEuro(totals.infissi)} />}
                   {totals.sic > 0 && <Row label={`Oneri sicurezza (${prev.sicurezza_pct || 0}%)`} value={fmtEuro(totals.sic)} />}
                   {totals.dir > 0 && <Row label={`Direzione lavori (${prev.direzione_lavori_pct || 0}%)`} value={fmtEuro(totals.dir)} />}

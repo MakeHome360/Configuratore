@@ -76,6 +76,14 @@ const P = (Comp) => (
   </ProtectedRoute>
 );
 
+// Per la pagina di stampa preventivo: NO AppLayout (niente sidebar/menù), così il PDF/stampa
+// esce pulito anche senza dover dipendere dalle regole @media print.
+const Pp = (Comp) => (
+  <ProtectedRoute>
+    <Comp />
+  </ProtectedRoute>
+);
+
 function App() {
   // Forza il title contro eventuali script esterni che lo sovrascrivono.
   useEffect(() => {
@@ -147,8 +155,8 @@ function App() {
             <Route path="/adminscontorichieste" element={P(AdminScontoRichieste)} />
             <Route path="/adminaudittrail" element={P(AdminAuditTrail)} />
             <Route path="/adminlistinifornitori" element={P(AdminListiniFornitori)} />
-            <Route path="/preventivi/:id/stampa" element={P(PreventivoStampa)} />
-            <Route path="/preventivocomposite/:id/stampa" element={P(PreventivoStampa)} />
+            <Route path="/preventivi/:id/stampa" element={Pp(PreventivoStampa)} />
+            <Route path="/preventivocomposite/:id/stampa" element={Pp(PreventivoStampa)} />
             <Route path="/adminblog" element={P(AdminBlog)} />
             {/* Round 10: Cantieri / Subappaltatori / Portale Cliente */}
             <Route path="/dashboard-subappaltatori" element={P(DashboardSubappaltatori)} />

@@ -1935,9 +1935,11 @@ async def invia_preventivo_email(prev_id: str, body: Optional[Dict[str, Any]] = 
     if not prev:
         raise HTTPException(404, "Preventivo non trovato")
     cliente = prev.get("cliente") or {}
-    to_email = (cliente.get("email") or "").strip()
+    body = body or {}
+    # R87 fix: il frontend può passare un destinatario custom (es. cliente senza email salvata)
+    to_email = (body.get("destinatario") or cliente.get("email") or "").strip()
     if not to_email:
-        raise HTTPException(400, "Il cliente non ha un indirizzo email")
+        raise HTTPException(400, "Manca indirizzo email destinatario")
     azienda = await db.dati_azienda.find_one({}, {"_id": 0}) or {}
     incaricato = await db.users.find_one({"id": prev.get("user_id")}, {"_id": 0, "name": 1, "cognome": 1, "email": 1, "telefono": 1}) or {}
     app_url = os.environ.get("APP_PUBLIC_URL", "")

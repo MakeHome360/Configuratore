@@ -181,30 +181,49 @@ export default function PreventivoStampa() {
           <Button
             variant="outline"
             className="border-white/30 text-white bg-transparent hover:bg-white/10"
-            disabled={emailSending || !prev.cliente?.email}
+            disabled={emailSending}
             onClick={async () => {
-              if (!prev.cliente?.email) { toast.error("Il cliente non ha un indirizzo email"); return; }
+              // R87 fix: bottone SEMPRE cliccabile. Se manca email cliente, la chiede manualmente.
+              let destinatario = (prev.cliente?.email || "").trim();
+              if (!destinatario) {
+                destinatario = window.prompt(
+                  `Il cliente "${prev.cliente?.nome || ""}" non ha un'email salvata.\n\nInserisci l'indirizzo email a cui inviare il preventivo:`,
+                  ""
+                ) || "";
+                destinatario = destinatario.trim();
+                if (!destinatario) return;
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(destinatario)) {
+                  toast.error("Indirizzo email non valido");
+                  return;
+                }
+                // Salva email nel preventivo per riusarla
+                try {
+                  await api.put(`/preventivi/${id}`, { cliente: { ...(prev.cliente || {}), email: destinatario } });
+                  setPrev((p) => ({ ...p, cliente: { ...(p.cliente || {}), email: destinatario } }));
+                } catch (_) { /* ignore */ }
+              }
               setEmailSending(true);
               try {
-                const { data } = await api.post(`/preventivi/${id}/invia-email`, {});
+                const { data } = await api.post(`/preventivi/${id}/invia-email`, { destinatario });
                 if (data?.ok) {
-                  toast.success(`Email inviata a ${data.sent_to || prev.cliente.email}`);
-                } else {
-                  // SMTP fallito (IP in blacklist DNSBL Aruba o config mancante) → fallback mailto
-                  const isPreview = window.location.host.includes("preview.emergentagent");
-                  const causa = isPreview
-                    ? "Sei sull'ambiente di Preview: l'IP non è whitelisted da Aruba SMTP. In produzione (sadicasa.it) dovrebbe funzionare."
-                    : "Aruba SMTP ha rifiutato la connessione (IP server in blacklist DNSBL).";
-                  const conferma = window.confirm(
-                    `❌ Invio automatico fallito.\n\n${causa}\n\nVuoi aprire il tuo client email (Apple Mail / Outlook / Gmail) con il messaggio già precompilato?\n\nDestinatario: ${prev.cliente.email}`
-                  );
-                  if (conferma) {
-                    const link = `${window.location.origin}/preventivi/${id}/stampa`;
-                    const subject = `Preventivo ${prev.numero} — ${azienda.nome || "Sa di casa"}`;
-                    const nomeC = (prev.cliente.nome || "") + (prev.cliente.cognome ? " " + prev.cliente.cognome : "");
-                    const body = `Gentile ${nomeC.trim() || "Cliente"},\n\nle invio il riepilogo del preventivo ${prev.numero} per la ristrutturazione discussa.\n\nDettaglio completo (stampabile in A4, validità 30 giorni):\n${link}\n\nTotale IVA inclusa: € ${(prev.totale_iva_incl || 0).toLocaleString("it-IT", { minimumFractionDigits: 2 })}\nMetri quadri: ${prev.mq || "-"} m²\n\nResto a disposizione per qualsiasi chiarimento.\n\nCordiali saluti`;
-                    window.location.href = `mailto:${prev.cliente.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-                  }
+                  toast.success(`Email inviata a ${data.sent_to || destinatario}`);
+                  setEmailSending(false);
+                  return;
+                }
+                // SMTP fallito → fallback mailto
+                const isPreview = window.location.host.includes("preview.emergentagent");
+                const causa = isPreview
+                  ? "Sei sull'ambiente di Preview: l'IP non è whitelisted da Aruba SMTP. In produzione (sadicasa.it) dovrebbe funzionare."
+                  : "Aruba SMTP ha rifiutato (IP server in blacklist DNSBL o credenziali errate).";
+                const conferma = window.confirm(
+                  `❌ Invio automatico fallito.\n\n${causa}\n\nVuoi aprire il tuo client email (Apple Mail / Outlook / Gmail) con il messaggio già precompilato?\n\nDestinatario: ${destinatario}`
+                );
+                if (conferma) {
+                  const link = `${window.location.origin}/preventivi/${id}/stampa`;
+                  const subject = `Preventivo ${prev.numero} — ${azienda.nome || "Sa di casa"}`;
+                  const nomeC = (prev.cliente?.nome || "") + (prev.cliente?.cognome ? " " + prev.cliente.cognome : "");
+                  const body = `Gentile ${nomeC.trim() || "Cliente"},\n\nle invio il riepilogo del preventivo ${prev.numero} per la ristrutturazione discussa.\n\nDettaglio completo (stampabile in A4, validità 30 giorni):\n${link}\n\nTotale IVA inclusa: € ${(prev.totale_iva_incl || 0).toLocaleString("it-IT", { minimumFractionDigits: 2 })}\nMetri quadri: ${prev.mq || "-"} m²\n\nResto a disposizione per qualsiasi chiarimento.\n\nCordiali saluti`;
+                  window.location.href = `mailto:${destinatario}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
                 }
               } catch (e) {
                 toast.error("Errore invio: " + (e?.response?.data?.detail || e.message));
@@ -212,7 +231,7 @@ export default function PreventivoStampa() {
               setEmailSending(false);
             }}
             data-testid="email-send-btn"
-            title={prev.cliente?.email ? `Invia al cliente: ${prev.cliente.email}` : "Inserisci email cliente"}
+            title={prev.cliente?.email ? `Invia al cliente: ${prev.cliente.email}` : "Clicca per inserire email destinatario"}
           >
             <Send className="h-4 w-4 mr-2" />
             {emailSending ? "Invio…" : "Invia al cliente"}

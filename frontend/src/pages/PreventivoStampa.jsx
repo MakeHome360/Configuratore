@@ -187,9 +187,24 @@ export default function PreventivoStampa() {
               setEmailSending(true);
               try {
                 const { data } = await api.post(`/preventivi/${id}/invia-email`, {});
-                if (data?.ok) toast.success(`Email inviata a ${data.sent_to || prev.cliente.email}`);
-                else toast.error(`Invio fallito: l'indirizzo "${data?.sent_to}" è rifiutato dal server SMTP (controlla il dominio)`);
-              } catch (e) { toast.error("Errore invio: " + (e?.response?.data?.detail || e.message)); }
+                if (data?.ok) {
+                  toast.success(`Email inviata a ${data.sent_to || prev.cliente.email}`);
+                } else {
+                  // SMTP fallito (IP in blacklist o config mancante) → fallback mailto
+                  const conferma = window.confirm(
+                    `❌ Invio automatico fallito (IP server in blacklist DNSBL Aruba).\n\nVuoi che apra il tuo client email (Apple Mail / Outlook / Gmail) con il messaggio già precompilato?\n\nDestinatario: ${prev.cliente.email}`
+                  );
+                  if (conferma) {
+                    const link = `${window.location.origin}/preventivi/${id}/stampa`;
+                    const subject = `Preventivo ${prev.numero} — ${azienda.nome || "Sa di casa"}`;
+                    const nomeC = (prev.cliente.nome || "") + (prev.cliente.cognome ? " " + prev.cliente.cognome : "");
+                    const body = `Gentile ${nomeC.trim() || "Cliente"},\n\nle invio il riepilogo del preventivo ${prev.numero} per la ristrutturazione discussa.\n\nDettaglio completo (stampabile in A4, validità 30 giorni):\n${link}\n\nTotale IVA inclusa: € ${(prev.totale_iva_incl || 0).toLocaleString("it-IT", { minimumFractionDigits: 2 })}\nMetri quadri: ${prev.mq || "-"} m²\n\nResto a disposizione per qualsiasi chiarimento.\n\nCordiali saluti`;
+                    window.location.href = `mailto:${prev.cliente.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                  }
+                }
+              } catch (e) {
+                toast.error("Errore invio: " + (e?.response?.data?.detail || e.message));
+              }
               setEmailSending(false);
             }}
             data-testid="email-send-btn"

@@ -148,3 +148,29 @@
   .grid-cols-3:not(.sm\:grid-cols-3):not(.md\:grid-cols-3) { grid-template-columns: 1fr !important; }
   .grid-cols-4:not(.sm\:grid-cols-4):not(.md\:grid-cols-4) { grid-template-columns: repeat(2, 1fr) !important; }
 }
+
+/* === STAMPA: nasconde tutto tranne il foglio A4 (R87 fix PDF) === */
+@media print {
+  @page { size: A4; margin: 0; }
+  body, html { background: white !important; }
+  /* Nasconde sidebar globale AppLayout */
+  [data-testid="app-sidebar"],
+  [data-testid="sidebar-toggle-open"],
+  [data-testid="sidebar-backdrop"],
+  [data-testid="mobile-tools-fab"],
+  [data-testid="mobile-live-fab"],
+  /* Nasconde badge Made with Emergent */
+  #emergent-badge,
+  /* Toast e sonner */
+  .sonner-toast, [data-sonner-toaster],
+  /* Tutto ciò che ha .print:hidden */
+  .print\:hidden { display: none !important; }
+  /* Main: nessun padding/margine */
+  main, .editor-root { padding: 0 !important; margin: 0 !important; }
+  /* Print area: full width senza margini */
+  #print-area { margin: 0 !important; box-shadow: none !important; max-width: none !important; width: 100% !important; }
+  /* Nessuno shadow / overlay */
+  .shadow, .shadow-2xl, .shadow-lg, .shadow-md, .shadow-sm { box-shadow: none !important; }
+  /* Color print-friendly */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+}

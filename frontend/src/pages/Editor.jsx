@@ -2665,25 +2665,36 @@ function CatalogPanel({ catalog, selectedMaterial, setSelectedMaterial, project,
 
 function CostPanelV2({ estimate, packageRef, legacy, linkedPreventivo, saveAsPreventivo, excludedKeys = [], setExcludedKeys, removeElementsForKey }) {
   if (!estimate) return null;
-  // Calcola scostamento vs budget preventivo approvato (se collegato)
-  const budgetTotal = linkedPreventivo?.totale_iva_escl || linkedPreventivo?.total || 0;
-  const overBudget = budgetTotal > 0 ? estimate.total - budgetTotal : 0;
+  // Round 87: Logica totale corretta — il totale REALE che andrà al cliente è BASELINE (preventivo origine) + EXTRAS CAD.
+  // Prima il pannello mostrava solo estimate.total (=0 a CAD vuoto) generando confusione su "sotto budget -100%".
+  const baselineTotal = Number(linkedPreventivo?.totale_iva_incl) || 0;
+  const cadTotal = Number(estimate.total) || 0;
+  const totaleCombinato = linkedPreventivo ? (baselineTotal + cadTotal) : cadTotal;
+  // Budget di riferimento (per gestire extras): usa totale IVA inclusa del preventivo se collegato
+  const budgetTotal = linkedPreventivo?.totale_iva_incl || linkedPreventivo?.totale_iva_escl || linkedPreventivo?.total || 0;
+  const overBudget = budgetTotal > 0 ? cadTotal : 0;  // Gli extras CAD vanno SOPRA al baseline
   const overPct = budgetTotal > 0 ? (overBudget / budgetTotal) * 100 : 0;
   return (
     <div className="p-4 flex flex-col gap-5" data-testid="cost-panel">
       {linkedPreventivo && (
-        <div className={`border p-3 ${overBudget > 0 ? "bg-rose-50 border-rose-300" : "bg-emerald-50 border-emerald-300"}`} data-testid="budget-status">
+        <div className={`border p-3 ${overBudget > 0 ? "bg-amber-50 border-amber-300" : "bg-emerald-50 border-emerald-300"}`} data-testid="budget-status">
           <div className="label-kicker mb-1">Preventivo collegato · {linkedPreventivo.numero || linkedPreventivo.id?.slice(0, 8)}</div>
           <div className="mono text-xs flex items-center gap-2">
             <span className={linkedPreventivo.stato === "accettato" ? "px-1.5 py-0.5 bg-emerald-600 text-white" : "px-1.5 py-0.5 bg-zinc-300 text-zinc-700"}>{(linkedPreventivo.stato || "bozza").toUpperCase()}</span>
-            <span>budget {fmtEuro(budgetTotal)}</span>
+            <span>baseline preventivo {fmtEuro(baselineTotal)}</span>
           </div>
-          <div className="mono text-[10px] text-zinc-600 mt-1 italic">
-            Il totale del preventivo <b>NON si aggiorna automaticamente</b>. Il "Preventivo live" qui sotto è solo una simulazione di cosa succederebbe se approvassi queste lavorazioni.
+          <div className="mono text-[10px] text-zinc-600 mt-1 italic leading-snug">
+            Il preventivo cliente {linkedPreventivo.numero} contiene già <strong>{fmtEuro(baselineTotal)}</strong> di lavorazioni.
+            Quello che disegni nel CAD vale come <strong>extra aggiuntivo</strong> da approvare con il cliente.
           </div>
-          {overBudget !== 0 && (
-            <div className={`mono text-xs mt-1.5 font-medium ${overBudget > 0 ? "text-rose-700" : "text-emerald-700"}`} data-testid="budget-delta">
-              {overBudget > 0 ? "⚠ SFORI budget" : "✓ Sotto budget"}: {overBudget > 0 ? "+" : ""}{fmtEuro(overBudget)} ({overPct.toFixed(1)}%)
+          {overBudget > 0 && (
+            <div className="mono text-xs mt-1.5 font-medium text-amber-800" data-testid="budget-delta">
+              ⚠ Extras CAD: +{fmtEuro(overBudget)} ({overPct.toFixed(1)}%)
+            </div>
+          )}
+          {cadTotal === 0 && (
+            <div className="mono text-xs mt-1.5 font-medium text-emerald-700">
+              ✓ Nessun extra al momento — il CAD è in linea col preventivo
             </div>
           )}
           {overBudget > 0 && (
@@ -2699,7 +2710,6 @@ function CostPanelV2({ estimate, packageRef, legacy, linkedPreventivo, saveAsPre
               <button
                 onClick={() => {
                   toast.info("Scorri il Preventivo Live qui sotto: per rimuovere le opere extra usa il cestino rosso 🗑 accanto alla voce");
-                  // Scroll alla tabella
                   document.querySelector('[data-testid^="computo-row-"]')?.scrollIntoView({ behavior: "smooth", block: "start" });
                 }}
                 className="rounded-sm px-2 py-1 bg-zinc-200 text-zinc-800 text-[10px] font-medium hover:bg-zinc-300"
@@ -2727,8 +2737,16 @@ function CostPanelV2({ estimate, packageRef, legacy, linkedPreventivo, saveAsPre
         </div>
       )}
       <div>
-        <div className="label-kicker mb-2">Totale preventivo (live)</div>
-        <div className="text-3xl font-semibold tracking-tight mono text-zinc-900" data-testid="total-cost-v2">{fmtEuro(estimate.total)}</div>
+        <div className="label-kicker mb-2">{linkedPreventivo ? "Totale stimato (preventivo + extras CAD)" : "Totale preventivo (live)"}</div>
+        <div className="text-3xl font-semibold tracking-tight mono text-zinc-900" data-testid="total-cost-v2">{fmtEuro(totaleCombinato)}</div>
+        {linkedPreventivo && (
+          <div className="mono text-xs text-zinc-500 mt-2 space-y-0.5">
+            <div className="flex justify-between"><span>Preventivo base {linkedPreventivo.numero}</span><span data-testid="baseline-amount">{fmtEuro(baselineTotal)}</span></div>
+            <div className={`flex justify-between font-medium ${cadTotal > 0 ? "text-amber-700" : "text-zinc-400"}`}>
+              <span>Extras dal CAD</span><span data-testid="cad-extras-amount">{cadTotal > 0 ? `+ ${fmtEuro(cadTotal)}` : fmtEuro(0)}</span>
+            </div>
+          </div>
+        )}
         {packageRef && (
           <div className="mono text-xs text-zinc-500 mt-2 space-y-0.5">
             <div className="flex justify-between text-emerald-700"><span>Forfait pacchetto</span><span data-testid="package-base">{fmtEuro(estimate.package_base || 0)}</span></div>
@@ -2736,30 +2754,23 @@ function CostPanelV2({ estimate, packageRef, legacy, linkedPreventivo, saveAsPre
             <div className="flex justify-between text-rose-700 font-medium"><span>Extra (non coperti)</span><span data-testid="extra-total">{fmtEuro(estimate.extra_total)}</span></div>
           </div>
         )}
-        {/* Sync con preventivo origine (Round 81) */}
+        {/* Sync con preventivo origine (Round 81) — aggiornato R87 con logica baseline+extras */}
         {linkedPreventivo && (
           (() => {
-            const baseTot = Number(linkedPreventivo.totale_iva_incl) || 0;
-            const cadTot = Number(estimate.total) || 0;
-            const delta = cadTot - baseTot;
-            const inLinea = Math.abs(delta) < (baseTot * 0.02);  // ±2% tolleranza
-            const colorBg = inLinea ? "bg-emerald-50 border-emerald-300" : (delta > 0 ? "bg-amber-50 border-amber-300" : "bg-blue-50 border-blue-300");
-            const baselineExtras = ((linkedPreventivo.extra_voci || []).length) + ((linkedPreventivo.infissi_extras || []).length) + ((linkedPreventivo.composite_selections || []).length);
+            const baselineExtras = ((linkedPreventivo.extra_voci || []).length) + ((linkedPreventivo.infissi_extras || []).length) + ((linkedPreventivo.composite_selections || []).length) + ((linkedPreventivo.manual_extras || []).length);
+            const ok = cadTotal === 0;
+            const colorBg = ok ? "bg-emerald-50 border-emerald-300" : "bg-amber-50 border-amber-300";
             return (
               <div className={`mt-3 border ${colorBg} rounded p-2 text-[11px]`} data-testid="sync-preventivo-banner">
                 <div className="flex items-center justify-between font-bold uppercase tracking-widest text-[10px]">
                   <span>🔄 Sync preventivo {linkedPreventivo.numero}</span>
-                  <span className={inLinea ? "text-emerald-700" : (delta > 0 ? "text-amber-700" : "text-blue-700")}>
-                    {inLinea ? "✅ in linea" : (delta > 0 ? `🟠 +${fmtEuro(delta)}` : `🟢 -${fmtEuro(Math.abs(delta))}`)}
+                  <span className={ok ? "text-emerald-700" : "text-amber-700"}>
+                    {ok ? "✅ in linea" : `🟠 +${fmtEuro(cadTotal)} extras`}
                   </span>
-                </div>
-                <div className="grid grid-cols-2 gap-1 mt-1.5 mono">
-                  <div className="text-zinc-500">Già preventivato</div><div className="text-right">{fmtEuro(baseTot)}</div>
-                  <div className="text-zinc-500">Live nel CAD</div><div className="text-right">{fmtEuro(cadTot)}</div>
                 </div>
                 {baselineExtras > 0 && (
                   <div className="mt-1 text-[10px] text-zinc-600 leading-snug">
-                    📋 <strong>{baselineExtras} extra già nel preventivo</strong> — i nuovi interventi CAD vengono conteggiati come extra <em>solo</em> se differiscono da quelli già preventivati.
+                    📋 <strong>{baselineExtras} voci già nel preventivo</strong> ({fmtEuro(baselineTotal)}). I nuovi interventi che disegni nel CAD si aggiungono come <em>extras aggiuntivi</em>.
                   </div>
                 )}
               </div>

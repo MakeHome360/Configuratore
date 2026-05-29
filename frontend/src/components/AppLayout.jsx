@@ -71,9 +71,13 @@ export default function AppLayout({ children }) {
   const nav = useNavigate();
   const location = useLocation();
   const isEditorRoute = location.pathname.startsWith("/editor/");
-  // Sidebar a scomparsa: auto-chiusa nelle pagine editor (più spazio per CAD), apribile manualmente.
-  const [sidebarOpen, setSidebarOpen] = useState(!isEditorRoute);
-  useEffect(() => { setSidebarOpen(!isEditorRoute); }, [isEditorRoute]);
+  // Sidebar a scomparsa: auto-chiusa su mobile (<lg) e su editor (più spazio per CAD), apribile manualmente.
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 1024;
+  const [sidebarOpen, setSidebarOpen] = useState(!isEditorRoute && !isMobile);
+  useEffect(() => {
+    const m = typeof window !== "undefined" && window.innerWidth < 1024;
+    setSidebarOpen(!isEditorRoute && !m);
+  }, [isEditorRoute, location.pathname]);
 
   useEffect(() => {
     // Carica branding + dati azienda dalle Impostazioni (unico posto). Fallback su /dati-azienda per retro-compat.
@@ -117,11 +121,19 @@ export default function AppLayout({ children }) {
 
   return (
     <div className="flex min-h-screen bg-zinc-50 relative">
+      {/* Backdrop mobile quando sidebar aperta */}
+      {sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 bg-black/40 z-30 lg:hidden"
+          data-testid="sidebar-backdrop"
+        />
+      )}
       {/* Pulsante apertura sidebar quando chiusa */}
       {!sidebarOpen && (
         <button
           onClick={() => setSidebarOpen(true)}
-          className="fixed top-3 left-3 z-50 h-9 w-9 rounded-md text-white flex items-center justify-center shadow-lg hover:opacity-90"
+          className="fixed top-3 left-3 z-50 h-10 w-10 rounded-md text-white flex items-center justify-center shadow-lg hover:opacity-90"
           style={{ background: colors.bg }}
           title="Apri menù"
           data-testid="sidebar-toggle-open"
@@ -130,9 +142,11 @@ export default function AppLayout({ children }) {
         </button>
       )}
 
-      {/* SIDEBAR (collassabile) */}
+      {/* SIDEBAR (collassabile) — overlay fixed su mobile, sticky su desktop */}
       <aside
-        className={`shrink-0 text-white flex flex-col sticky top-0 h-screen transition-all duration-200 overflow-hidden ${sidebarOpen ? "w-64" : "w-0"}`}
+        className={`shrink-0 text-white flex flex-col h-screen transition-all duration-200 overflow-hidden z-40
+          ${sidebarOpen ? "w-64 fixed lg:sticky inset-y-0 left-0 lg:left-auto" : "w-0"}
+          lg:top-0`}
         style={{ background: colors.bg }}
         data-testid="app-sidebar"
       >

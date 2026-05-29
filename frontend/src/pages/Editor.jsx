@@ -115,6 +115,9 @@ export default function Editor() {
   const [floorplanLoading, setFloorplanLoading] = useState(false);
   const [tavoleOpen, setTavoleOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Mobile drawer state (R87: UX mobile)
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
+  const [mobileLiveOpen, setMobileLiveOpen] = useState(false);
   const [doorParams, setDoorParams] = useState({ width: 80, height: 210, type: "interna" });
   const [windowParams, setWindowParams] = useState({ width: 120, height: 140, sillHeight: 90, type: "finestra", material: "pvc" });
   const [electricalKind, setElectricalKind] = useState("presa");
@@ -904,9 +907,29 @@ export default function Editor() {
         </div>
       )}
 
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex min-h-0 relative">
+        {/* Mobile FAB buttons */}
+        <button
+          onClick={() => setMobileToolsOpen(true)}
+          className="md:hidden fixed bottom-4 left-4 z-30 h-12 w-12 rounded-full bg-zinc-900 text-white flex items-center justify-center shadow-lg"
+          data-testid="mobile-tools-fab" title="Strumenti">
+          <span className="text-xs font-bold">≡</span>
+        </button>
+        <button
+          onClick={() => setMobileLiveOpen(true)}
+          className="md:hidden fixed bottom-4 right-4 z-30 h-12 px-4 rounded-full bg-emerald-600 text-white text-xs font-bold shadow-lg"
+          data-testid="mobile-live-fab" title="Preventivo Live">€ LIVE</button>
+        {/* Backdrop drawer mobile */}
+        {(mobileToolsOpen || mobileLiveOpen) && (
+          <div onClick={() => { setMobileToolsOpen(false); setMobileLiveOpen(false); }} className="md:hidden fixed inset-0 bg-black/40 z-20" data-testid="mobile-drawer-backdrop" />
+        )}
+
         {/* Left tools */}
-        <aside className="w-52 border-r border-zinc-200 flex flex-col bg-white overflow-y-auto">
+        <aside className={`w-52 border-r border-zinc-200 flex flex-col bg-white overflow-y-auto z-30
+          ${mobileToolsOpen ? "fixed inset-y-0 left-0 shadow-2xl" : "hidden md:flex"}`}>
+          {mobileToolsOpen && (
+            <button onClick={() => setMobileToolsOpen(false)} className="md:hidden text-zinc-600 text-xs py-2 border-b" data-testid="mobile-tools-close">✕ Chiudi strumenti</button>
+          )}
           <div className="grid grid-cols-2 border-b border-zinc-200 sticky top-0 bg-white z-10">
             {TOOL_GROUPS.map((g) => (
               <button key={g.id} onClick={() => setActiveGroup(g.id)} className={`text-[10px] uppercase tracking-wider py-2 ${activeGroup === g.id ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-50 border-b border-transparent"}`} data-testid={`tool-group-${g.id}`}>
@@ -1258,8 +1281,12 @@ export default function Editor() {
 
         {/* Right sidebar collapsible */}
         {sidebarOpen ? (
-          <aside className="w-96 border-l border-zinc-200 bg-white flex flex-col min-h-0 max-h-full relative overflow-hidden" data-testid="right-sidebar">
-            <button onClick={() => setSidebarOpen(false)} className="absolute -left-3 top-3 z-10 w-6 h-6 bg-white border border-zinc-300 flex items-center justify-center hover:bg-zinc-50 shadow-sm" title="Riduci pannello" data-testid="sidebar-collapse-btn"><ChevronRight size={14} /></button>
+          <aside className={`w-96 border-l border-zinc-200 bg-white flex flex-col min-h-0 max-h-full relative overflow-hidden z-30
+            ${mobileLiveOpen ? "fixed inset-y-0 right-0 shadow-2xl max-w-[90vw]" : "hidden md:flex"}`} data-testid="right-sidebar">
+            {mobileLiveOpen && (
+              <button onClick={() => setMobileLiveOpen(false)} className="md:hidden text-zinc-600 text-xs py-2 border-b" data-testid="mobile-live-close">✕ Chiudi preventivo</button>
+            )}
+            <button onClick={() => setSidebarOpen(false)} className="hidden md:flex absolute -left-3 top-3 z-10 w-6 h-6 bg-white border border-zinc-300 items-center justify-center hover:bg-zinc-50 shadow-sm" title="Riduci pannello" data-testid="sidebar-collapse-btn"><ChevronRight size={14} /></button>
             <Tabs defaultValue="properties" className="flex-1 flex flex-col min-h-0">
               <TabsList className="rounded-none h-10 border-b border-zinc-200 bg-white justify-start px-2 flex-shrink-0">
                 <TabsTrigger value="properties" className="rounded-none text-xs uppercase tracking-widest" data-testid="tab-properties">Proprietà</TabsTrigger>
@@ -1305,7 +1332,7 @@ export default function Editor() {
             </Tabs>
           </aside>
         ) : (
-          <aside className="w-8 border-l border-zinc-200 bg-white flex flex-col items-center pt-3" data-testid="right-sidebar-collapsed">
+          <aside className="hidden md:flex w-8 border-l border-zinc-200 bg-white flex-col items-center pt-3" data-testid="right-sidebar-collapsed">
             <button onClick={() => setSidebarOpen(true)} className="w-6 h-6 bg-white border border-zinc-300 flex items-center justify-center hover:bg-zinc-50 shadow-sm mb-3" data-testid="sidebar-expand-btn"><ChevronLeft size={14} /></button>
             <div className="text-[10px] mono text-zinc-500 [writing-mode:vertical-rl] mt-2">PANNELLO</div>
           </aside>

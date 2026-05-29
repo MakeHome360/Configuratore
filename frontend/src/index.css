@@ -107,3 +107,44 @@
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.06'/></svg>");
   pointer-events: none;
 }
+
+/* === MOBILE RESPONSIVE (R87) === */
+@media (max-width: 767px) {
+  /* Padding più stretto per pagine principali */
+  .px-6, .px-8 { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+  /* Tabelle: scroll orizzontale forzato per tabelle larghe */
+  table { font-size: 0.75rem; }
+  /* Bottoni touch friendly minimo 40px */
+  button, [role="button"], .btn { min-height: 40px; }
+  /* Bottoni piccoli (h-8) escludi (sono in toolbar/azioni rapide) */
+  button.h-8, button.h-7, button.h-6 { min-height: 32px; }
+  /* Container con overflow scroll automatico per evitare layout rotto */
+  .responsive-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* Dialog: full screen mobile */
+  [role="dialog"] > div[class*="max-w"] {
+    max-width: 95vw !important;
+    max-height: 95vh !important;
+  }
+  /* Editor: nasconde elementi solo desktop in toolbar */
+  .editor-root .h-12 { height: 3rem; padding-left: 3.5rem !important; }
+}
+
+/* Toolbar Editor su tablet (md) compatta */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .editor-root .h-12 button span { display: none; }
+  .editor-root .h-12 [data-testid="auto-detect-rooms"] span,
+  .editor-root .h-12 [data-testid="open-ai-2d"] span { display: inline; }
+}
+
+/* Auto-wrap delle tabelle per scroll orizzontale su mobile (senza toccare componenti) */
+@media (max-width: 1023px) {
+  table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; max-width: 100%; }
+  table thead, table tbody, table tfoot, table tr { display: table; width: max-content; min-width: 100%; table-layout: auto; }
+}
+
+/* Su mobile: forms grid auto a 1 col */
+@media (max-width: 639px) {
+  .grid-cols-2:not(.sm\:grid-cols-2):not(.md\:grid-cols-2) { grid-template-columns: 1fr !important; }
+  .grid-cols-3:not(.sm\:grid-cols-3):not(.md\:grid-cols-3) { grid-template-columns: 1fr !important; }
+  .grid-cols-4:not(.sm\:grid-cols-4):not(.md\:grid-cols-4) { grid-template-columns: repeat(2, 1fr) !important; }
+}

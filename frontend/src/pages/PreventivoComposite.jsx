@@ -609,7 +609,7 @@ export default function PreventivoComposite() {
             ) : <div className="text-zinc-500 text-center py-12">Seleziona una sezione</div>}
           </div>
         </div>
-        <div className="bg-white border border-zinc-200 rounded-lg p-4 mt-5 grid grid-cols-5 gap-3 items-end">
+        <div className="bg-white border border-zinc-200 rounded-lg p-3 sm:p-4 mt-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 items-end">
           <div><Label className="text-xs">Sicurezza %</Label><Input type="number" min={0} max={100} step="0.5" value={sicurezzaPct} onChange={(e) => setSicurezzaPct(Math.max(0, Math.min(100, Number(e.target.value) || 0)))} /></div>
           <div><Label className="text-xs">Dir. Lavori %</Label><Input type="number" min={0} max={100} step="0.5" value={direzionePct} onChange={(e) => setDirezionePct(Math.max(0, Math.min(100, Number(e.target.value) || 0)))} /></div>
           <div><Label className="text-xs">Sconto €</Label><Input type="number" min={0} step="1" value={sconto} onChange={(e) => setSconto(Math.max(0, Number(e.target.value) || 0))} /></div>

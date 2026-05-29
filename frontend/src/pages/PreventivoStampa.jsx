@@ -202,9 +202,15 @@ export default function PreventivoStampa() {
                   setPrev((p) => ({ ...p, cliente: { ...(p.cliente || {}), email: destinatario } }));
                 } catch (_) { /* ignore */ }
               }
+              // Chiedi messaggio personalizzato opzionale (può essere vuoto)
+              const messaggio = window.prompt(
+                `Vuoi aggiungere un messaggio personalizzato all'email?\n\nApparirà nel corpo dopo il saluto e prima del riepilogo (es. "Come concordato in sopralluogo del...").\n\nLascia vuoto per usare solo il template standard:`,
+                ""
+              );
+              if (messaggio === null) return; // Annullato
               setEmailSending(true);
               try {
-                const { data } = await api.post(`/preventivi/${id}/invia-email`, { destinatario });
+                const { data } = await api.post(`/preventivi/${id}/invia-email`, { destinatario, messaggio: messaggio || "" });
                 if (data?.ok) {
                   toast.success(`Email inviata a ${data.sent_to || destinatario}`);
                   setEmailSending(false);
@@ -222,7 +228,7 @@ export default function PreventivoStampa() {
                   const link = `${window.location.origin}/preventivi/${id}/stampa`;
                   const subject = `Preventivo ${prev.numero} — ${azienda.nome || "Sa di casa"}`;
                   const nomeC = (prev.cliente?.nome || "") + (prev.cliente?.cognome ? " " + prev.cliente.cognome : "");
-                  const body = `Gentile ${nomeC.trim() || "Cliente"},\n\nle invio il riepilogo del preventivo ${prev.numero} per la ristrutturazione discussa.\n\nDettaglio completo (stampabile in A4, validità 30 giorni):\n${link}\n\nTotale IVA inclusa: € ${(prev.totale_iva_incl || 0).toLocaleString("it-IT", { minimumFractionDigits: 2 })}\nMetri quadri: ${prev.mq || "-"} m²\n\nResto a disposizione per qualsiasi chiarimento.\n\nCordiali saluti`;
+                  const body = `Gentile ${nomeC.trim() || "Cliente"},\n\n${messaggio ? messaggio + "\n\n" : ""}le invio il riepilogo del preventivo ${prev.numero} per la ristrutturazione discussa.\n\nDettaglio completo (stampabile in A4, validità 30 giorni):\n${link}\n\nTotale IVA inclusa: € ${(prev.totale_iva_incl || 0).toLocaleString("it-IT", { minimumFractionDigits: 2 })}\nMetri quadri: ${prev.mq || "-"} m²\n\nResto a disposizione per qualsiasi chiarimento.\n\nCordiali saluti`;
                   window.location.href = `mailto:${destinatario}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
                 }
               } catch (e) {

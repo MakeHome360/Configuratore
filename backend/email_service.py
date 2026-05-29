@@ -114,24 +114,63 @@ def _html_to_text(html: str) -> str:
 # ============== TEMPLATES HTML ==============
 # Tutti i template seguono lo stesso layout minimale e responsive
 
-def _wrap(content_html: str, title: str = "Sa di casa") -> str:
+def _wrap(content_html: str, title: str = "Sa di casa", azienda: Optional[Dict[str, Any]] = None) -> str:
+    """Template HTML email professionale con branding dinamico dell'azienda.
+    Se `azienda` è passata, usa logo, ragione sociale, colore primario e contatti.
+    """
     c = _cfg()
     app_url = c["app_url"] or "#"
+    az = azienda or {}
+    nome = az.get("marchio_commerciale") or az.get("nome") or "Sa di casa"
+    ragione = az.get("ragione_sociale") or ""
+    colore = az.get("colore_primario") or "#0F766E"
+    logo_url = az.get("logo") or ""
+    sito = az.get("sito") or app_url
+    pec = az.get("pec") or ""
+    piva = az.get("partita_iva") or az.get("piva") or ""
+    indirizzo = " ".join(filter(None, [
+        az.get("sede_legale_indirizzo"), az.get("sede_legale_cap"),
+        az.get("sede_legale_citta"),
+        f"({az.get('sede_legale_provincia')})" if az.get("sede_legale_provincia") else "",
+    ])).strip() or az.get("indirizzo") or ""
+    tel = az.get("telefono_principale") or az.get("telefono") or ""
+    email_az = az.get("email_principale") or az.get("email") or ""
+
+    logo_html = (
+        f'<img src="{logo_url}" alt="{nome}" style="max-height:48px;max-width:200px;display:block;margin:0 0 10px;background:#ffffff;padding:4px 8px;border-radius:4px;">'
+        if logo_url else
+        f'<div style="font-family:\'Helvetica Neue\',Arial,sans-serif;font-size:24px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;margin-bottom:6px;">{nome}</div>'
+    )
+    footer_lines = []
+    if ragione: footer_lines.append(f'<strong style="color:#3f3f46;">{ragione}</strong>')
+    if indirizzo: footer_lines.append(indirizzo)
+    contact_line = " · ".join(filter(None, [
+        f'tel {tel}' if tel else "",
+        email_az,
+        f'PEC: {pec}' if pec else "",
+    ]))
+    if contact_line: footer_lines.append(contact_line)
+    if piva: footer_lines.append(f'P.IVA {piva}')
+    if sito and sito not in ("", "#"): footer_lines.append(f'<a href="{sito}" style="color:#71717a;text-decoration:underline;">{sito.replace("https://","").replace("http://","")}</a>')
+    footer_html = "<br>".join(footer_lines) if footer_lines else f'<a href="{app_url}" style="color:#71717a;">{app_url}</a>'
+
     return f"""<!DOCTYPE html>
 <html lang="it">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title></head>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#18181b;">
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#18181b;">
   <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#f4f4f5;padding:24px 0;">
     <tr><td align="center">
-      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width:600px;background:#ffffff;border:1px solid #e4e4e7;">
-        <tr><td style="padding:24px 32px;background:#0f172a;color:#ffffff;">
-          <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.7;">Sa di casa · Ristruttura.CAD</div>
-          <div style="font-size:20px;font-weight:600;margin-top:6px;">{title}</div>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="640" style="max-width:640px;background:#ffffff;border:1px solid #e4e4e7;border-radius:6px;overflow:hidden;">
+        <tr><td style="padding:28px 36px;background:{colore};color:#ffffff;">
+          {logo_html}
+          <div style="font-size:11px;letter-spacing:2.5px;text-transform:uppercase;opacity:0.85;margin-top:8px;">{title}</div>
         </td></tr>
-        <tr><td style="padding:32px;">{content_html}</td></tr>
-        <tr><td style="padding:20px 32px;background:#f4f4f5;color:#71717a;font-size:11px;line-height:1.5;border-top:1px solid #e4e4e7;">
-          Email automatica — non rispondere a questo messaggio.<br>
-          Sa di casa · <a href="{app_url}" style="color:#71717a;">{app_url}</a>
+        <tr><td style="padding:36px;line-height:1.6;font-size:15px;">{content_html}</td></tr>
+        <tr><td style="padding:22px 36px;background:#f4f4f5;color:#71717a;font-size:11px;line-height:1.6;border-top:1px solid #e4e4e7;">
+          {footer_html}
+          <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e4e4e7;font-size:10px;color:#a1a1aa;">
+            Email automatica inviata dalla piattaforma {nome}. Per rispondere usa l'indirizzo del tuo referente in cima al messaggio.
+          </div>
         </td></tr>
       </table>
     </td></tr>
@@ -140,8 +179,125 @@ def _wrap(content_html: str, title: str = "Sa di casa") -> str:
 </html>"""
 
 
-def _btn(label: str, url: str) -> str:
-    return f'<a href="{url}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:12px 24px;font-weight:600;font-size:14px;letter-spacing:0.3px;">{label}</a>'
+def _btn(label: str, url: str, color: str = "#0f172a") -> str:
+    return f'<a href="{url}" style="display:inline-block;background:{color};color:#ffffff;text-decoration:none;padding:14px 28px;font-weight:600;font-size:14px;letter-spacing:0.3px;border-radius:4px;">{label}</a>'
+
+
+# ============== TEMPLATE: PREVENTIVO al cliente ==============
+async def send_preventivo_email(
+    to: str,
+    preventivo: Dict[str, Any],
+    azienda: Dict[str, Any],
+    incaricato: Dict[str, Any],
+    custom_message: str = "",
+) -> bool:
+    """Email professionale al cliente con riepilogo preventivo, dati incaricato e link al PDF.
+    Tipo documento configurabile in futuro (preventivo/fattura/contratto)."""
+    c = _cfg()
+    cliente = preventivo.get("cliente") or {}
+    nome_cliente_raw = (cliente.get("nome") or "").strip()
+    cognome_cliente = (cliente.get("cognome") or "").strip()
+    nome_completo = (nome_cliente_raw + (" " + cognome_cliente if cognome_cliente else "")).strip() or "Cliente"
+    # Stabilisci se "Gentile Sig./Sig.ra" o solo "Gentile"
+    saluto = f"Gentile {nome_completo}"
+
+    numero = preventivo.get("numero") or preventivo.get("id", "")[:8]
+    totale = float(preventivo.get("totale_iva_incl") or 0)
+    iva_pct = preventivo.get("iva_pct") or 10
+    mq = preventivo.get("mq") or "—"
+    indirizzo_cantiere = cliente.get("indirizzo") or ""
+    tipo_preventivo = preventivo.get("tipo", "preventivo")
+    pacchetto = preventivo.get("package_name") or ""
+    nome_azienda = azienda.get("marchio_commerciale") or azienda.get("nome") or "Sa di casa"
+    incaricato_nome = ((incaricato.get("name") or "") + (" " + incaricato.get("cognome") if incaricato.get("cognome") else "")).strip() or "Il vostro referente"
+    incaricato_email = incaricato.get("email") or azienda.get("email_principale") or azienda.get("email") or ""
+    incaricato_tel = incaricato.get("telefono") or ""
+    incaricato_qualifica = incaricato.get("qualifica") or "Consulente Ristrutturazione"
+    colore = azienda.get("colore_primario") or "#0F766E"
+    app_url = c["app_url"] or ""
+    link_preventivo = f"{app_url}/preventivi/{preventivo.get('id')}/stampa"
+
+    # Validità preventivo: 30 giorni
+    from datetime import datetime as _dt, timedelta as _td
+    valido_fino = (_dt.now() + _td(days=30)).strftime("%d/%m/%Y")
+
+    custom_block = (
+        f'<div style="background:#fefce8;border-left:4px solid #ca8a04;padding:14px 18px;margin:20px 0;font-style:italic;color:#713f12;">{custom_message}</div>'
+        if custom_message else ""
+    )
+
+    riepilogo_rows = []
+    if pacchetto:
+        riepilogo_rows.append(("Pacchetto", pacchetto.upper()))
+    if tipo_preventivo == "composite":
+        riepilogo_rows.append(("Tipologia", "Preventivo personalizzato"))
+    riepilogo_rows.append(("Metri quadri", f"{mq} m²"))
+    if indirizzo_cantiere:
+        riepilogo_rows.append(("Cantiere", indirizzo_cantiere))
+    riepilogo_rows.append(("Validità offerta", f"<strong>fino al {valido_fino}</strong> (30 giorni)"))
+
+    riepilogo_html = "".join([
+        f'<tr><td style="background:#f9fafb;font-weight:600;width:42%;color:#52525b;padding:10px 14px;border-bottom:1px solid #e4e4e7;">{label}</td>'
+        f'<td style="padding:10px 14px;border-bottom:1px solid #e4e4e7;">{value}</td></tr>'
+        for label, value in riepilogo_rows
+    ])
+
+    body = f"""
+    <p style="font-size:17px;margin:0 0 6px;font-weight:600;color:#18181b;">{saluto},</p>
+    <p style="margin:0 0 18px;color:#3f3f46;">
+      grazie per aver scelto <strong>{nome_azienda}</strong> per la sua ristrutturazione.
+      Come anticipato, le inviamo qui di seguito il <strong>preventivo n. {numero}</strong>
+      con il dettaglio completo delle lavorazioni proposte.
+    </p>
+
+    {custom_block}
+
+    <h3 style="margin:28px 0 12px;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#71717a;font-weight:600;border-bottom:2px solid {colore};padding-bottom:6px;">Riepilogo offerta</h3>
+    <table cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;font-size:14px;">
+      {riepilogo_html}
+    </table>
+
+    <div style="background:{colore};color:#ffffff;text-align:center;padding:24px;margin:24px 0;border-radius:6px;">
+      <div style="font-size:11px;letter-spacing:2.5px;text-transform:uppercase;opacity:0.85;margin-bottom:6px;">Investimento totale chiavi in mano</div>
+      <div style="font-size:36px;font-weight:700;letter-spacing:-1px;">€ {totale:,.2f}</div>
+      <div style="font-size:12px;opacity:0.9;margin-top:4px;">IVA inclusa al {iva_pct}% · Nessun costo nascosto</div>
+    </div>
+
+    <p style="margin:0 0 18px;">
+      Cliccando il pulsante qui sotto può consultare il <strong>dettaglio completo</strong>
+      del preventivo (lavorazioni voce per voce, materiali, termini contrattuali) e
+      scaricarlo in formato PDF.
+    </p>
+
+    <p style="text-align:center;margin:28px 0;">
+      {_btn("Apri il preventivo completo", link_preventivo, colore)}
+    </p>
+
+    <p style="margin:24px 0 8px;color:#3f3f46;">
+      Resto a disposizione per qualsiasi chiarimento, per personalizzare ulteriormente
+      l'offerta o per fissare un <strong>sopralluogo tecnico gratuito</strong>.
+    </p>
+
+    <p style="margin:0 0 4px;color:#3f3f46;">Un cordiale saluto,</p>
+
+    <table cellspacing="0" cellpadding="0" border="0" style="margin-top:18px;border-collapse:collapse;">
+      <tr>
+        <td style="border-left:3px solid {colore};padding:6px 0 6px 14px;">
+          <div style="font-weight:600;font-size:15px;color:#18181b;">{incaricato_nome}</div>
+          <div style="font-size:12px;color:#71717a;font-style:italic;">{incaricato_qualifica}</div>
+          {f'<div style="font-size:12px;color:#3f3f46;margin-top:6px;">📧 <a href="mailto:{incaricato_email}" style="color:#3f3f46;text-decoration:none;">{incaricato_email}</a></div>' if incaricato_email else ""}
+          {f'<div style="font-size:12px;color:#3f3f46;">📱 {incaricato_tel}</div>' if incaricato_tel else ""}
+        </td>
+      </tr>
+    </table>
+    """
+    subject = f"Preventivo {numero} — {nome_azienda}"
+    return await send_email(
+        to=to,
+        subject=subject,
+        html=_wrap(body, f"Preventivo n. {numero}", azienda),
+        reply_to=incaricato_email or azienda.get("email_principale") or azienda.get("email"),
+    )
 
 
 # ============== TEMPLATE: REGISTRAZIONE ==============

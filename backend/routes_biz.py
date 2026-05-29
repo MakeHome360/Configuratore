@@ -1428,7 +1428,33 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
 
     @r.get("/infissi-config")
     async def infissi_conf(user=Depends(get_current_user)):
-        return {"tipologie": INFISSI_TIPOLOGIE, "materiali": INFISSI_MATERIALI, "vetri": INFISSI_VETRI}
+        """Configuratore infissi.
+        I `base_per_mq` dei materiali sono **derivati dinamicamente dalle Voci Backoffice INFISSI**
+        (Source of Truth). Mapping:
+          - PVC bianco           → voce-infissi-pvc       (prezzo_rivendita)
+          - PVC effetto legno    → PVC bianco × 1.15      (variante estetica)
+          - Alluminio t. termico → voce-infissi-alluminio
+          - Legno/Alluminio      → voce-infissi-legno
+        Se l'admin modifica il prezzo della voce backoffice, il configuratore si allinea automaticamente.
+        Multiplier materiale forzato a 1.0 (la differenza è già nel base_per_mq specifico).
+        """
+        await ensure_global_seeds()
+        infissi_voci = await db.voci_backoffice.find(
+            {"id": {"$in": ["voce-infissi-pvc", "voce-infissi-alluminio", "voce-infissi-legno"]}}, {"_id": 0}
+        ).to_list(10)
+        prices = {}
+        for v in infissi_voci:
+            acquisto = float(v.get("prezzo_acquisto") or 0)
+            ricarico = float(v.get("ricarico") or 0)
+            prices[v["id"]] = round(acquisto * ricarico, 2)
+        pvc_base = prices.get("voce-infissi-pvc") or 504.0
+        materiali = [
+            {"id": "mat-pvc",      "name": "PVC bianco",                "multiplier": 1.0, "base_per_mq": pvc_base,                                                    "voce_id": "voce-infissi-pvc"},
+            {"id": "mat-pvc-nog",  "name": "PVC effetto legno",         "multiplier": 1.0, "base_per_mq": round(pvc_base * 1.15, 2),                                   "voce_id": "voce-infissi-pvc",       "variant_factor": 1.15},
+            {"id": "mat-al",       "name": "Alluminio taglio termico",  "multiplier": 1.0, "base_per_mq": prices.get("voce-infissi-alluminio") or 828.0,               "voce_id": "voce-infissi-alluminio"},
+            {"id": "mat-legno-al", "name": "Legno/Alluminio",           "multiplier": 1.0, "base_per_mq": prices.get("voce-infissi-legno") or 1116.0,                  "voce_id": "voce-infissi-legno"},
+        ]
+        return {"tipologie": INFISSI_TIPOLOGIE, "materiali": materiali, "vetri": INFISSI_VETRI}
 
     @r.get("/bagno-config")
     async def bagno_conf(user=Depends(get_current_user)):

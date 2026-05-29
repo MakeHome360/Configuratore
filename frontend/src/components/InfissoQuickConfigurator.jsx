@@ -93,6 +93,11 @@ export function InfissoQuickConfigurator({ open, onClose, onConfirm }) {
           <button onClick={onClose}><X className="h-5 w-5" /></button>
         </div>
         <div className="p-6 space-y-3">
+          <div className="text-xs text-zinc-700 bg-emerald-50 border border-emerald-200 rounded p-2.5 leading-snug">
+            🔄 <strong>Prezzi allineati al Listino Opere</strong> — la base €/m² di ogni materiale è letta automaticamente dalle Voci Backoffice (es. "Infissi PVC bianchi" 504 €/m²).
+            Eventuali maggiorazioni per <strong>n° ante (+5% per anta oltre la prima)</strong>, <strong>apertura scorrevole (+20%)</strong>, <strong>tapparelle (120 €/m²)</strong> e <strong>zanzariere (80 €/m²)</strong> sono aggiunte sopra alla base.
+            <span className="block text-[10px] text-zinc-500 mt-1">Per modificare la base, vai in <em>Voci Backoffice → INFISSI</em>: il configuratore si aggiorna automaticamente.</span>
+          </div>
           <div className="text-xs text-zinc-600 bg-amber-50 border border-amber-200 rounded p-2">
             Configura uno o più infissi esterni. Tapparelle e zanzariere sono opzionali per ogni infisso. Il totale verrà aggiunto come <strong>extra</strong> al preventivo.
           </div>

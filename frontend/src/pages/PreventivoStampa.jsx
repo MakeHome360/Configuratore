@@ -190,9 +190,13 @@ export default function PreventivoStampa() {
                 if (data?.ok) {
                   toast.success(`Email inviata a ${data.sent_to || prev.cliente.email}`);
                 } else {
-                  // SMTP fallito (IP in blacklist o config mancante) → fallback mailto
+                  // SMTP fallito (IP in blacklist DNSBL Aruba o config mancante) → fallback mailto
+                  const isPreview = window.location.host.includes("preview.emergentagent");
+                  const causa = isPreview
+                    ? "Sei sull'ambiente di Preview: l'IP non è whitelisted da Aruba SMTP. In produzione (sadicasa.it) dovrebbe funzionare."
+                    : "Aruba SMTP ha rifiutato la connessione (IP server in blacklist DNSBL).";
                   const conferma = window.confirm(
-                    `❌ Invio automatico fallito (IP server in blacklist DNSBL Aruba).\n\nVuoi che apra il tuo client email (Apple Mail / Outlook / Gmail) con il messaggio già precompilato?\n\nDestinatario: ${prev.cliente.email}`
+                    `❌ Invio automatico fallito.\n\n${causa}\n\nVuoi aprire il tuo client email (Apple Mail / Outlook / Gmail) con il messaggio già precompilato?\n\nDestinatario: ${prev.cliente.email}`
                   );
                   if (conferma) {
                     const link = `${window.location.origin}/preventivi/${id}/stampa`;

@@ -2,6 +2,10 @@ import React, { useEffect, useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Textarea } from "../components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui/dialog";
 import { ArrowLeft, Printer, Mail, Sparkles, CheckCircle2, Award, Hammer, Wrench, FileText, Send } from "lucide-react";
 import { fmtEuro, fmtNum } from "../editor/utils";
 import { useNavigate } from "react-router-dom";
@@ -33,6 +37,8 @@ export default function PreventivoStampa() {
 
   const [incaricato, setIncaricato] = useState(null);
   const [emailSending, setEmailSending] = useState(false);
+  // R87: Dialog email composer (sostituisce window.prompt che è bloccato su Safari/iPad)
+  const [emailDialog, setEmailDialog] = useState({ open: false, destinatario: "", messaggio: "" });
 
   useEffect(() => {
     (async () => {
@@ -182,62 +188,16 @@ export default function PreventivoStampa() {
             variant="outline"
             className="border-white/30 text-white bg-transparent hover:bg-white/10"
             disabled={emailSending}
-            onClick={async () => {
-              // R87 fix: bottone SEMPRE cliccabile. Se manca email cliente, la chiede manualmente.
-              let destinatario = (prev.cliente?.email || "").trim();
-              if (!destinatario) {
-                destinatario = window.prompt(
-                  `Il cliente "${prev.cliente?.nome || ""}" non ha un'email salvata.\n\nInserisci l'indirizzo email a cui inviare il preventivo:`,
-                  ""
-                ) || "";
-                destinatario = destinatario.trim();
-                if (!destinatario) return;
-                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(destinatario)) {
-                  toast.error("Indirizzo email non valido");
-                  return;
-                }
-                // Salva email nel preventivo per riusarla
-                try {
-                  await api.put(`/preventivi/${id}`, { cliente: { ...(prev.cliente || {}), email: destinatario } });
-                  setPrev((p) => ({ ...p, cliente: { ...(p.cliente || {}), email: destinatario } }));
-                } catch (_) { /* ignore */ }
-              }
-              // Chiedi messaggio personalizzato opzionale (può essere vuoto)
-              const messaggio = window.prompt(
-                `Vuoi aggiungere un messaggio personalizzato all'email?\n\nApparirà nel corpo dopo il saluto e prima del riepilogo (es. "Come concordato in sopralluogo del...").\n\nLascia vuoto per usare solo il template standard:`,
-                ""
-              );
-              if (messaggio === null) return; // Annullato
-              setEmailSending(true);
-              try {
-                const { data } = await api.post(`/preventivi/${id}/invia-email`, { destinatario, messaggio: messaggio || "" });
-                if (data?.ok) {
-                  toast.success(`Email inviata a ${data.sent_to || destinatario}`);
-                  setEmailSending(false);
-                  return;
-                }
-                // SMTP fallito → fallback mailto
-                const isPreview = window.location.host.includes("preview.emergentagent");
-                const causa = isPreview
-                  ? "Sei sull'ambiente di Preview: l'IP non è whitelisted da Aruba SMTP. In produzione (sadicasa.it) dovrebbe funzionare."
-                  : "Aruba SMTP ha rifiutato (IP server in blacklist DNSBL o credenziali errate).";
-                const conferma = window.confirm(
-                  `❌ Invio automatico fallito.\n\n${causa}\n\nVuoi aprire il tuo client email (Apple Mail / Outlook / Gmail) con il messaggio già precompilato?\n\nDestinatario: ${destinatario}`
-                );
-                if (conferma) {
-                  const link = `${window.location.origin}/preventivi/${id}/stampa`;
-                  const subject = `Preventivo ${prev.numero} — ${azienda.nome || "Sa di casa"}`;
-                  const nomeC = (prev.cliente?.nome || "") + (prev.cliente?.cognome ? " " + prev.cliente.cognome : "");
-                  const body = `Gentile ${nomeC.trim() || "Cliente"},\n\n${messaggio ? messaggio + "\n\n" : ""}le invio il riepilogo del preventivo ${prev.numero} per la ristrutturazione discussa.\n\nDettaglio completo (stampabile in A4, validità 30 giorni):\n${link}\n\nTotale IVA inclusa: € ${(prev.totale_iva_incl || 0).toLocaleString("it-IT", { minimumFractionDigits: 2 })}\nMetri quadri: ${prev.mq || "-"} m²\n\nResto a disposizione per qualsiasi chiarimento.\n\nCordiali saluti`;
-                  window.location.href = `mailto:${destinatario}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-                }
-              } catch (e) {
-                toast.error("Errore invio: " + (e?.response?.data?.detail || e.message));
-              }
-              setEmailSending(false);
+            onClick={() => {
+              // R87: apri dialog vero (Safari/iPad blocca window.prompt silenziosamente)
+              setEmailDialog({
+                open: true,
+                destinatario: (prev.cliente?.email || "").trim(),
+                messaggio: "",
+              });
             }}
             data-testid="email-send-btn"
-            title={prev.cliente?.email ? `Invia al cliente: ${prev.cliente.email}` : "Clicca per inserire email destinatario"}
+            title="Apri compositore email"
           >
             <Send className="h-4 w-4 mr-2" />
             {emailSending ? "Invio…" : "Invia al cliente"}
@@ -688,6 +648,105 @@ export default function PreventivoStampa() {
           .print\\:hidden { display: none !important; }
         }
       `}</style>
+
+      {/* R87: Dialog compositore email (sostituisce window.prompt bloccato su Safari/iPad) */}
+      <Dialog open={emailDialog.open} onOpenChange={(o) => setEmailDialog((d) => ({ ...d, open: o }))}>
+        <DialogContent className="max-w-lg print:hidden" data-testid="email-dialog">
+          <DialogHeader>
+            <DialogTitle>📧 Invia preventivo {prev.numero} al cliente</DialogTitle>
+            <DialogDescription>
+              L'email arriverà al cliente con il riepilogo completo e il link al preventivo stampabile.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label htmlFor="dest-email" className="text-xs uppercase tracking-widest">Email destinatario *</Label>
+              <Input
+                id="dest-email"
+                type="email"
+                value={emailDialog.destinatario}
+                onChange={(e) => setEmailDialog((d) => ({ ...d, destinatario: e.target.value }))}
+                placeholder="cliente@example.com"
+                className="rounded-sm h-10 mt-1"
+                data-testid="email-dialog-destinatario"
+                autoFocus={!emailDialog.destinatario}
+              />
+              {prev.cliente?.nome && (
+                <div className="text-[11px] text-zinc-500 mt-1">
+                  Cliente: <strong>{prev.cliente.nome}{prev.cliente.cognome ? " " + prev.cliente.cognome : ""}</strong>
+                </div>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="msg-email" className="text-xs uppercase tracking-widest">Messaggio personalizzato (opzionale)</Label>
+              <Textarea
+                id="msg-email"
+                rows={4}
+                value={emailDialog.messaggio}
+                onChange={(e) => setEmailDialog((d) => ({ ...d, messaggio: e.target.value }))}
+                placeholder="Es: Come concordato nel sopralluogo del 25/05, includo la maggiorazione per il piano alto e lo smaltimento mobilio antico."
+                className="rounded-sm mt-1 text-sm"
+                data-testid="email-dialog-messaggio"
+              />
+              <div className="text-[11px] text-zinc-500 mt-1">
+                Apparirà in evidenza nel corpo dell'email dopo il saluto "Gentile {prev.cliente?.nome || "Cliente"}".
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setEmailDialog((d) => ({ ...d, open: false }))}
+              disabled={emailSending}
+              data-testid="email-dialog-cancel"
+            >Annulla</Button>
+            <Button
+              onClick={async () => {
+                const dest = emailDialog.destinatario.trim();
+                if (!dest) { toast.error("Inserisci l'email destinatario"); return; }
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dest)) { toast.error("Email non valida"); return; }
+                // Se cliente non aveva email, salvala (PATCH minimo)
+                if (!prev.cliente?.email || prev.cliente.email !== dest) {
+                  try {
+                    await api.put(`/preventivi/${id}`, { cliente: { ...(prev.cliente || {}), email: dest } });
+                    setPrev((p) => ({ ...p, cliente: { ...(p.cliente || {}), email: dest } }));
+                  } catch (_) { /* ignore */ }
+                }
+                setEmailSending(true);
+                try {
+                  const { data } = await api.post(`/preventivi/${id}/invia-email`, { destinatario: dest, messaggio: emailDialog.messaggio });
+                  if (data?.ok) {
+                    toast.success(`✅ Email inviata a ${data.sent_to || dest}. Suggerisci al cliente di controllare anche lo spam.`);
+                    setEmailDialog({ open: false, destinatario: "", messaggio: "" });
+                  } else {
+                    // SMTP rifiutato → mailto fallback
+                    const isPreview = window.location.host.includes("preview.emergentagent");
+                    const causa = isPreview
+                      ? "Sei sull'ambiente di Preview: l'IP non è whitelisted da Aruba. Su sadicasa.it dovrebbe funzionare."
+                      : "SMTP Aruba ha rifiutato la connessione (IP server in blacklist o credenziali errate).";
+                    if (window.confirm(`❌ Invio automatico fallito.\n\n${causa}\n\nApro il tuo client email (Apple Mail/Outlook) con il messaggio precompilato?`)) {
+                      const link = `${window.location.origin}/preventivi/${id}/stampa`;
+                      const subject = `Preventivo ${prev.numero} — ${azienda.nome || "Sa di casa"}`;
+                      const nomeC = (prev.cliente?.nome || "") + (prev.cliente?.cognome ? " " + prev.cliente.cognome : "");
+                      const body = `Gentile ${nomeC.trim() || "Cliente"},\n\n${emailDialog.messaggio ? emailDialog.messaggio + "\n\n" : ""}le invio il riepilogo del preventivo ${prev.numero}.\n\nDettaglio completo (A4, validità 30 giorni):\n${link}\n\nTotale IVA inclusa: € ${(prev.totale_iva_incl || 0).toLocaleString("it-IT", { minimumFractionDigits: 2 })}\nMetri quadri: ${prev.mq || "-"} m²\n\nResto a disposizione.\n\nCordiali saluti`;
+                      window.location.href = `mailto:${dest}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                    }
+                  }
+                } catch (e) {
+                  toast.error("Errore invio: " + (e?.response?.data?.detail || e.message));
+                }
+                setEmailSending(false);
+              }}
+              disabled={emailSending}
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+              data-testid="email-dialog-send"
+            >
+              <Send className="h-4 w-4 mr-2" />
+              {emailSending ? "Invio in corso..." : "Invia ora"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

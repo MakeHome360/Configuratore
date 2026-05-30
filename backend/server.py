@@ -1680,7 +1680,9 @@ async def clone_preventivo_for_commessa(cid: str, prev_id: str, body: Dict[str, 
 
 @api.put("/preventivi/{prev_id}")
 async def update_preventivo(prev_id: str, body: PreventivoIn, user: Dict[str, Any] = Depends(get_current_user)):
-    update_doc = {**body.model_dump(exclude_none=False), "updated_at": datetime.now(timezone.utc).isoformat()}
+    # R87 FIX BUG CRITICO: usa exclude_unset=True così aggiorna SOLO i campi effettivamente
+    # passati dal frontend (es. PUT con solo {cliente: {...}} non azzera mq/voci/totali!).
+    update_doc = {**body.model_dump(exclude_unset=True, exclude_none=False), "updated_at": datetime.now(timezone.utc).isoformat()}
     update_doc.pop("id", None)
     # Se il preventivo era accettato e l'utente lo modifica, richiede NUOVA accettazione (torna a bozza)
     existing = await db.preventivi.find_one({"id": prev_id, "user_id": user["id"]}, {"_id": 0})

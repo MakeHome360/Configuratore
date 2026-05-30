@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { Page, PageHeader, fmtEur, statoPreventivoBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
-import { FilePlus2, Eye, Trash2, Pencil, Hammer, Ruler, PenTool } from "lucide-react";
+import { FilePlus2, Eye, Trash2, Pencil, Hammer, Ruler, PenTool, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
 const PKG_NAMES = { "pkg-basic": "BASIC", "pkg-smart": "SMART", "pkg-premium": "PREMIUM", "pkg-elite": "ELITE" };
@@ -25,6 +25,44 @@ export default function Preventivi() {
     await api.delete(`/preventivi/${id}`);
     toast.success("Eliminato");
     load();
+  };
+
+  // R87: Recupero preventivo wiped. Prova prima snapshot, poi audit log come ultima risorsa.
+  const ripristinaPreventivo = async (p) => {
+    if (!window.confirm(
+      `🔧 Tentativo ripristino preventivo ${p.numero} (${p.cliente?.nome || ""}).\n\n` +
+      `Cercherò prima uno snapshot del preventivo (recupera TUTTI i dati incluse le voci dettagliate). ` +
+      `Se non esiste, tenterò di ricostruire da audit log (recupera SOLO totale, tipo, mq, package).\n\n` +
+      `Continuare?`
+    )) return;
+    try {
+      // 1) Cerca snapshots
+      const snaps = await api.get(`/preventivi/${p.id}/snapshots`).then(r => r.data || []).catch(() => []);
+      if (snaps.length) {
+        const last = snaps[0];
+        if (window.confirm(
+          `✅ Trovato snapshot del ${new Date(last.taken_at).toLocaleString("it-IT")}\n` +
+          `  • Totale: € ${(last.totale_iva_incl || 0).toLocaleString("it-IT")}\n` +
+          `  • Tipo: ${last.tipo}\n` +
+          `  • ${last.n_voci} voci, ${last.n_manuali} extra manuali, ${last.n_listini} prodotti listino\n\n` +
+          `Ripristinare DA QUESTO SNAPSHOT?`
+        )) {
+          await api.post(`/preventivi/${p.id}/ripristina-snapshot`);
+          toast.success(`Preventivo ${p.numero} ripristinato dallo snapshot del ${new Date(last.taken_at).toLocaleString("it-IT")}`);
+          load();
+          return;
+        }
+      } else {
+        toast.warning("Nessuno snapshot disponibile, provo ricostruzione da audit log...");
+      }
+      // 2) Fallback: ricostruzione da audit log
+      const { data } = await api.post(`/preventivi/${p.id}/ricostruisci-da-audit`);
+      toast.success(`Preventivo ${p.numero} parzialmente ripristinato: totale € ${(data.preventivo?.totale_iva_incl || 0).toLocaleString("it-IT")}. ⚠ Voci da ri-inserire manualmente.`);
+      load();
+    } catch (e) {
+      const detail = e?.response?.data?.detail || e.message;
+      toast.error(`Ripristino fallito: ${detail}`);
+    }
   };
 
   const openCommessaModal = (p) => {
@@ -124,6 +162,17 @@ export default function Preventivi() {
                       <button className="p-1.5 rounded hover:bg-orange-50" onClick={() => openCommessaModal(p)} title="Converti in Commessa (cantiere)" data-testid={`prev-commessa-${p.id}`}>
                         <Hammer className="h-4 w-4 text-orange-600" />
                       </button>
+                      {/* R87: bottone Ripristina — visibile per admin se totale=0 (preventivo wiped) o se ha snapshot */}
+                      {(p.totale_iva_incl === 0 || p.totale_iva_incl == null) && (
+                        <button
+                          className="p-1.5 rounded hover:bg-amber-50"
+                          onClick={() => ripristinaPreventivo(p)}
+                          title="🔧 Preventivo a zero — ripristina dati storici dall'audit log o snapshot"
+                          data-testid={`prev-restore-${p.id}`}
+                        >
+                          <RotateCcw className="h-4 w-4 text-amber-600" />
+                        </button>
+                      )}
                       <button className="p-1.5 rounded hover:bg-rose-50" onClick={() => del(p.id)} title="Elimina" data-testid={`prev-del-${p.id}`}>
                         <Trash2 className="h-4 w-4 text-rose-600" />
                       </button>

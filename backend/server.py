@@ -1689,15 +1689,198 @@ async def update_preventivo(prev_id: str, body: PreventivoIn, user: Dict[str, An
     if existing and existing.get("stato") == "accettato":
         update_doc["stato"] = "bozza"
         update_doc["needs_reacceptance"] = True
+    # R87 PROTEZIONE: snapshot della versione precedente prima di sovrascrivere (recoverable).
+    if existing:
+        try:
+            snap = {k: v for k, v in existing.items() if k != "_id"}
+            snap["snapshot_id"] = uuid.uuid4().hex
+            snap["snapshot_of"] = prev_id
+            snap["snapshot_taken_at"] = datetime.now(timezone.utc).isoformat()
+            snap["snapshot_taken_by"] = user.get("id")
+            snap["snapshot_reason"] = "pre-PUT"
+            await db.preventivi_snapshots.insert_one(snap)
+        except Exception:
+            logger.exception("[PRV-SNAPSHOT] errore snapshot pre-PUT")
     await db.preventivi.update_one({"id": prev_id, "user_id": user["id"]}, {"$set": update_doc})
     doc = await db.preventivi.find_one({"id": prev_id, "user_id": user["id"]}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Preventivo non trovato")
+    # Audit con snapshot FULL del before (oltre al diff sintetico)
     await audit_log(db, user=user, action="update", entity="preventivo", entity_id=prev_id,
                     description=f"Aggiornato preventivo {doc.get('numero')}",
-                    before={"totale": (existing or {}).get("totale_iva_incl"), "stato": (existing or {}).get("stato")},
-                    after={"totale": doc.get("totale_iva_incl"), "stato": doc.get("stato")})
+                    before={
+                        "totale_iva_incl": (existing or {}).get("totale_iva_incl"),
+                        "totale_iva_escl": (existing or {}).get("totale_iva_escl"),
+                        "tipo": (existing or {}).get("tipo"),
+                        "mq": (existing or {}).get("mq"),
+                        "stato": (existing or {}).get("stato"),
+                        "package_id": (existing or {}).get("package_id"),
+                        "package_name": (existing or {}).get("package_name"),
+                        "n_composite_selections": len((existing or {}).get("composite_selections") or []),
+                        "n_manual_extras": len((existing or {}).get("manual_extras") or []),
+                        "n_listini_selections": len((existing or {}).get("listini_selections") or []),
+                    },
+                    after={
+                        "totale_iva_incl": doc.get("totale_iva_incl"),
+                        "tipo": doc.get("tipo"),
+                        "stato": doc.get("stato"),
+                    })
     return doc
+
+
+@api.post("/preventivi/{prev_id}/ricostruisci-da-audit")
+async def ricostruisci_preventivo_da_audit(prev_id: str, user: Dict[str, Any] = Depends(get_current_user)):
+    """ULTIMA RISORSA: ricostruisce un preventivo wiped (totale=0) dall'audit_log storico.
+    NON recupera le voci dettagliate (composite_selections, manual_extras, listini_selections)
+    perché l'audit storico salvava solo i totali — recupera solo: tipo, totale, mq, package_id/name.
+    Solo admin. Si usa quando NON c'è uno snapshot disponibile."""
+    if (user.get("role") or "").lower() != "admin":
+        raise HTTPException(403, "Solo admin può ricostruire preventivi")
+    current = await db.preventivi.find_one({"id": prev_id}, {"_id": 0})
+    if not current:
+        raise HTTPException(404, "Preventivo non trovato")
+    # Cerca il PIÙ RECENTE audit_log update su questo preventivo che abbia un totale > 0
+    logs = await db.audit_logs.find(
+        {"entity": "preventivo", "entity_id": prev_id, "action": {"$in": ["update", "create"]}},
+        {"_id": 0},
+        sort=[("ts", -1)],
+    ).to_list(100)
+    best = None
+    for l in logs:
+        before = l.get("before") or {}
+        # Cerca prima nel "before" (lo stato prima della modifica), poi nell'"after" come fallback
+        for src in (before, l.get("after") or {}):
+            tot = src.get("totale_iva_incl") or src.get("totale") or 0
+            if tot and float(tot) > 0:
+                best = {"src": src, "log": l}
+                break
+        if best:
+            break
+    if not best:
+        raise HTTPException(404, "Nessun valore storico recuperabile dall'audit log (potrebbe esserci solo log con totale 0)")
+    s = best["src"]
+    restore = {
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "ricostruito_da_audit": True,
+        "ricostruito_il": datetime.now(timezone.utc).isoformat(),
+        "ricostruito_da_audit_id": best["log"].get("id"),
+        "ricostruito_riferimento_ts": best["log"].get("ts"),
+        "note": (current.get("note") or "") + f"\n\n⚠ Preventivo ricostruito automaticamente dall'audit log del {best['log'].get('ts')[:10]}. Le voci dettagliate (composite/manuali/listini) sono andate perse e vanno ri-inserite manualmente.",
+    }
+    if s.get("totale_iva_incl"):
+        restore["totale_iva_incl"] = float(s["totale_iva_incl"])
+    elif s.get("totale"):
+        restore["totale_iva_incl"] = float(s["totale"])
+    if s.get("totale_iva_escl"):
+        restore["totale_iva_escl"] = float(s["totale_iva_escl"])
+    if s.get("tipo"):
+        restore["tipo"] = s["tipo"]
+    if s.get("mq") is not None:
+        restore["mq"] = s["mq"]
+    if s.get("package_id"):
+        restore["package_id"] = s["package_id"]
+    if s.get("package_name"):
+        restore["package_name"] = s["package_name"]
+    await db.preventivi.update_one({"id": prev_id}, {"$set": restore})
+    doc = await db.preventivi.find_one({"id": prev_id}, {"_id": 0})
+    await audit_log(db, user=user, action="restore_audit", entity="preventivo", entity_id=prev_id,
+                    description=f"Preventivo {doc.get('numero')} ricostruito da audit log (ts={best['log'].get('ts')[:19]})",
+                    before={"totale": current.get("totale_iva_incl"), "tipo": current.get("tipo")},
+                    after={"totale": doc.get("totale_iva_incl"), "tipo": doc.get("tipo")})
+    return {
+        "ok": True,
+        "preventivo": doc,
+        "ricostruito_da_ts": best["log"].get("ts"),
+        "warning": "Voci dettagliate (composite_selections, manual_extras, listini_selections) NON recuperate dall'audit storico — vanno ri-inserite manualmente nel preventivo.",
+    }
+
+
+@api.put("/preventivi/{prev_id}/admin-restore")
+async def admin_restore_preventivo(prev_id: str, body: Dict[str, Any], user: Dict[str, Any] = Depends(get_current_user)):
+    """Override admin per ripristinare manualmente i dati di un preventivo wiped, senza passare
+    per il modello PreventivoIn (che applicherebbe default). Solo admin."""
+    if (user.get("role") or "").lower() != "admin":
+        raise HTTPException(403, "Solo admin")
+    current = await db.preventivi.find_one({"id": prev_id}, {"_id": 0})
+    if not current:
+        raise HTTPException(404, "Preventivo non trovato")
+    body = body or {}
+    body.pop("_id", None); body.pop("id", None)
+    body["updated_at"] = datetime.now(timezone.utc).isoformat()
+    body["admin_restored_by"] = user.get("email")
+    body["admin_restored_at"] = body["updated_at"]
+    await db.preventivi.update_one({"id": prev_id}, {"$set": body})
+    doc = await db.preventivi.find_one({"id": prev_id}, {"_id": 0})
+    await audit_log(db, user=user, action="admin_restore", entity="preventivo", entity_id=prev_id,
+                    description=f"Admin override restore su {doc.get('numero')} (campi: {', '.join(body.keys())})",
+                    before={"totale": current.get("totale_iva_incl")}, after={"totale": doc.get("totale_iva_incl")})
+    return {"ok": True, "preventivo": doc}
+
+
+@api.post("/preventivi/{prev_id}/ripristina-snapshot")
+async def ripristina_preventivo_snapshot(prev_id: str, user: Dict[str, Any] = Depends(get_current_user)):
+    """Ripristina il preventivo dall'ultimo snapshot disponibile in `preventivi_snapshots`.
+    Solo admin oppure proprietario."""
+    is_admin = (user.get("role") or "").lower() == "admin"
+    q = {"id": prev_id} if is_admin else {"id": prev_id, "user_id": user["id"]}
+    current = await db.preventivi.find_one(q, {"_id": 0})
+    if not current:
+        raise HTTPException(404, "Preventivo non trovato")
+    # Cerca lo snapshot più recente per questo preventivo
+    snap = await db.preventivi_snapshots.find_one(
+        {"snapshot_of": prev_id},
+        {"_id": 0},
+        sort=[("snapshot_taken_at", -1)],
+    )
+    if not snap:
+        raise HTTPException(404, "Nessun snapshot disponibile per questo preventivo")
+    # Ricostruisci il documento dallo snapshot, eccetto i meta del snapshot stesso
+    restore_doc = {k: v for k, v in snap.items() if not k.startswith("snapshot_")}
+    restore_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
+    restore_doc["ripristinato_da_snapshot"] = snap.get("snapshot_id")
+    restore_doc["ripristinato_il"] = restore_doc["updated_at"]
+    restore_doc.pop("_id", None)
+    restore_doc.pop("id", None)
+    await db.preventivi.update_one(q, {"$set": restore_doc})
+    doc = await db.preventivi.find_one(q, {"_id": 0})
+    await audit_log(db, user=user, action="restore", entity="preventivo", entity_id=prev_id,
+                    description=f"Ripristinato preventivo {doc.get('numero')} da snapshot {snap.get('snapshot_id')[:8]}",
+                    before={"totale": current.get("totale_iva_incl"), "tipo": current.get("tipo")},
+                    after={"totale": doc.get("totale_iva_incl"), "tipo": doc.get("tipo")})
+    return {"ok": True, "preventivo": doc, "snapshot_taken_at": snap.get("snapshot_taken_at")}
+
+
+@api.get("/preventivi/{prev_id}/snapshots")
+async def list_preventivo_snapshots(prev_id: str, user: Dict[str, Any] = Depends(get_current_user)):
+    """Lista snapshot disponibili per un preventivo (admin only o proprietario)."""
+    is_admin = (user.get("role") or "").lower() == "admin"
+    q = {"id": prev_id} if is_admin else {"id": prev_id, "user_id": user["id"]}
+    cur = await db.preventivi.find_one(q, {"_id": 0, "id": 1})
+    if not cur:
+        raise HTTPException(404, "Preventivo non trovato")
+    snaps = await db.preventivi_snapshots.find(
+        {"snapshot_of": prev_id},
+        {"_id": 0, "snapshot_id": 1, "snapshot_taken_at": 1, "snapshot_reason": 1,
+         "totale_iva_incl": 1, "tipo": 1, "mq": 1, "package_name": 1,
+         "composite_selections": 1, "manual_extras": 1, "listini_selections": 1},
+        sort=[("snapshot_taken_at", -1)],
+    ).to_list(50)
+    # Riassumi le voci per leggibilità senza esporre tutto
+    out = []
+    for s in snaps:
+        out.append({
+            "snapshot_id": s.get("snapshot_id"),
+            "taken_at": s.get("snapshot_taken_at"),
+            "reason": s.get("snapshot_reason"),
+            "totale_iva_incl": s.get("totale_iva_incl"),
+            "tipo": s.get("tipo"),
+            "mq": s.get("mq"),
+            "package_name": s.get("package_name"),
+            "n_voci": len(s.get("composite_selections") or []),
+            "n_manuali": len(s.get("manual_extras") or []),
+            "n_listini": len(s.get("listini_selections") or []),
+        })
+    return out
 
 
 @api.delete("/preventivi/{prev_id}")

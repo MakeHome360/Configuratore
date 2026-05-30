@@ -123,7 +123,20 @@ export default function PreventivoStampa() {
       const imponibile = pre_sconto - sconto_pct;
       const iva = imponibile * ((prev.iva_pct || 10) / 100);
       const total = imponibile + iva;
-      return { mode: "composite", voci_amount, listini_amount, manual_amount, voci_magg, infissi, sic, dir, sconto_pct, imponibile, iva, total, multiplier };
+      // R87: se il preventivo è stato ricostruito da audit/snapshot e le voci dettagliate sono
+      // vuote ma il totale salvato è valido, usiamo IL VALORE SALVATO come fonte autorevole.
+      const savedTotal = Number(prev.totale_iva_incl || 0);
+      const restored = prev.ricostruito_da_audit || prev.ripristinato_da_snapshot;
+      const useSaved = (restored || total === 0) && savedTotal > 0;
+      return {
+        mode: "composite",
+        voci_amount, listini_amount, manual_amount, voci_magg, infissi, sic, dir,
+        sconto_pct, imponibile: useSaved ? (savedTotal / (1 + (prev.iva_pct || 10) / 100)) : imponibile,
+        iva: useSaved ? (savedTotal - savedTotal / (1 + (prev.iva_pct || 10) / 100)) : iva,
+        total: useSaved ? savedTotal : total,
+        multiplier,
+        usingSavedTotal: useSaved,
+      };
     }
     // ---- MODALITÀ PACCHETTO (esistente) ----
     const mq = parseFloat(prev.mq || 0);
@@ -326,6 +339,15 @@ export default function PreventivoStampa() {
           )}
         </div>
 
+        {/* R87: avviso preventivo ricostruito da audit/snapshot — visibile solo in anteprima, non in stampa */}
+        {totals.usingSavedTotal && (
+          <div className="px-12 py-3 bg-amber-50 border-y border-amber-200 text-xs text-amber-900 print:hidden" data-testid="prev-stampa-warning-restored">
+            ⚠ <strong>Questo preventivo è stato ripristinato da un backup.</strong> Il totale di € {(prev.totale_iva_incl || 0).toLocaleString("it-IT")} è il valore originale salvato.
+            Le voci dettagliate (lavorazioni, materiali, extras) potrebbero non essere visibili nella tabella sotto perché non recuperabili dall'audit log.
+            Per stampare al cliente, suggerisco di riaprire il preventivo, ri-inserire le voci e salvare nuovamente.
+          </div>
+        )}
+
         {/* ===== COSA È INCLUSO ===== */}
         <div className="px-12 py-8">
           <h2 className="text-2xl font-semibold mb-1" style={{ fontFamily: "Outfit", color: colorePrimario }}>
@@ -378,7 +400,7 @@ export default function PreventivoStampa() {
                     {listini.map((p, i) => (
                       <tr key={`lst-${i}`} className="border-b border-zinc-100 last:border-0 bg-blue-50/30" data-testid={`prev-stampa-listino-${i}`}>
                         <td className="px-4 py-1.5">
-                          🛒 {p.nome || p.name || "Prodotto"}
+                          {p.nome || p.name || "Prodotto"}
                           {p.fornitore_nome && <span className="text-[10px] text-zinc-500 ml-1">— {p.fornitore_nome}</span>}
                           {p.codice && <span className="text-[10px] text-zinc-400 ml-1 mono">[{p.codice}]</span>}
                         </td>
@@ -388,11 +410,10 @@ export default function PreventivoStampa() {
                       </tr>
                     ))}
                     {manuali.map((m, i) => (
-                      <tr key={`man-${i}`} className="border-b border-zinc-100 last:border-0 bg-emerald-50/30" data-testid={`prev-stampa-manual-${i}`}>
+                      <tr key={`man-${i}`} className="border-b border-zinc-100 last:border-0" data-testid={`prev-stampa-manual-${i}`}>
                         <td className="px-4 py-1.5">
-                          ✋ {m.name || "Voce extra"}
+                          {m.name || "Voce extra"}
                           {m.category && m.category !== "EXTRA" && <span className="text-[10px] text-zinc-500 ml-1">— {m.category}</span>}
-                          <span className="text-[10px] text-emerald-700 ml-1 italic">(extra manuale)</span>
                         </td>
                         <td className="px-4 py-1.5 text-right mono">{fmtNum(m.qty || 0, 2)} {m.unit || ""}</td>
                         <td className="px-4 py-1.5 text-right mono text-zinc-500">{fmtEuro(Number(m.price) || 0)}</td>

@@ -20,6 +20,29 @@ export default function Preventivi() {
   const load = () => api.get("/preventivi").then((r) => setRows(r.data || [])).catch(() => {});
   useEffect(() => { load(); api.get("/fasi-commessa").then((r) => setAllFasi(r.data || [])).catch(() => {}); }, []);
 
+  // R87: Cambia tipo preventivo (utile dopo restore audit, se il tipo è andato a default "pacchetto" ma in realtà era altro)
+  const cambiaTipo = async (p) => {
+    const opzioni = "1=pacchetto · 2=composite · 3=bagno · 4=infissi · 5=cad";
+    const choice = window.prompt(
+      `Cambia tipo preventivo ${p.numero}\nAttuale: ${p.tipo || "—"}\n\nScegli: ${opzioni}`,
+      ""
+    );
+    if (!choice) return;
+    const map = { "1": "pacchetto", "2": "composite", "3": "bagno", "4": "infissi", "5": "cad" };
+    const nuovo = map[choice.trim()] || choice.trim().toLowerCase();
+    if (!Object.values(map).includes(nuovo)) {
+      toast.error(`Tipo non valido: "${nuovo}". Usa: pacchetto, composite, bagno, infissi, cad`);
+      return;
+    }
+    try {
+      await api.put(`/preventivi/${p.id}/admin-restore`, { tipo: nuovo });
+      toast.success(`Tipo cambiato in "${nuovo}"`);
+      load();
+    } catch (e) {
+      toast.error("Errore: " + (e?.response?.data?.detail || e.message));
+    }
+  };
+
   const del = async (id) => {
     if (!window.confirm("Eliminare questo preventivo?")) return;
     await api.delete(`/preventivi/${id}`);
@@ -173,6 +196,15 @@ export default function Preventivi() {
                           <RotateCcw className="h-4 w-4 text-amber-600" />
                         </button>
                       )}
+                      {/* R87: bottone Cambia Tipo (utile dopo restore se tipo è stato resetatato a default) */}
+                      <button
+                        className="p-1.5 rounded hover:bg-violet-50"
+                        onClick={() => cambiaTipo(p)}
+                        title="Cambia tipo preventivo (utile se il tipo è stato ripristinato errato)"
+                        data-testid={`prev-type-${p.id}`}
+                      >
+                        <Pencil className="h-4 w-4 text-violet-600" />
+                      </button>
                       <button className="p-1.5 rounded hover:bg-rose-50" onClick={() => del(p.id)} title="Elimina" data-testid={`prev-del-${p.id}`}>
                         <Trash2 className="h-4 w-4 text-rose-600" />
                       </button>

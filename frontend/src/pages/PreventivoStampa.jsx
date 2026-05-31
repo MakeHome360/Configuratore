@@ -7,6 +7,7 @@ import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui/dialog";
 import { ArrowLeft, Printer, Mail, Sparkles, CheckCircle2, Award, Hammer, Wrench, FileText, Send } from "lucide-react";
+import html2pdf from "html2pdf.js";
 import { fmtEuro, fmtNum } from "../editor/utils";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -215,8 +216,38 @@ export default function PreventivoStampa() {
             <Send className="h-4 w-4 mr-2" />
             {emailSending ? "Invio…" : "Invia al cliente"}
           </Button>
-          <Button onClick={() => window.print()} className="bg-emerald-600 hover:bg-emerald-700" data-testid="print-btn">
-            <Printer className="h-4 w-4 mr-2" /> Stampa o PDF
+          <Button onClick={async () => {
+            // R87: genera PDF REALE scaricabile (NIENTE window.print).
+            const node = document.getElementById("print-area");
+            if (!node) { toast.error("Errore: area di stampa non trovata"); return; }
+            const filename = `Preventivo_${prev.numero || id}_${(prev.cliente?.nome || "cliente").replace(/\s+/g, "_")}.pdf`;
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+            toast.info("Generazione PDF in corso (5-10 sec)...");
+            try {
+              const opt = {
+                filename,
+                margin: 0,
+                image: { type: "jpeg", quality: 0.95 },
+                html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: "#ffffff" },
+                jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+                pagebreak: { mode: ["css", "legacy"] },
+              };
+              if (isIOS) {
+                // Su iOS Safari, il download diretto è bloccato: apro il PDF in nuova tab
+                // così l'utente può poi salvarlo con Condividi → Salva su File.
+                const blob = await html2pdf().set(opt).from(node).outputPdf("blob");
+                const url = URL.createObjectURL(blob);
+                window.open(url, "_blank");
+                toast.success("PDF generato. Premi Condividi → Salva su File per salvarlo sul dispositivo.", { duration: 8000 });
+              } else {
+                await html2pdf().set(opt).from(node).save();
+                toast.success(`PDF "${filename}" scaricato nei tuoi Download`);
+              }
+            } catch (e) {
+              toast.error("Errore generazione PDF: " + e.message);
+            }
+          }} className="bg-emerald-600 hover:bg-emerald-700" data-testid="print-btn">
+            <Printer className="h-4 w-4 mr-2" /> Scarica PDF
           </Button>
         </div>
       </div>
@@ -339,14 +370,8 @@ export default function PreventivoStampa() {
           )}
         </div>
 
-        {/* R87: avviso preventivo ricostruito da audit/snapshot — visibile solo in anteprima, non in stampa */}
-        {totals.usingSavedTotal && (
-          <div className="px-12 py-3 bg-amber-50 border-y border-amber-200 text-xs text-amber-900 print:hidden" data-testid="prev-stampa-warning-restored">
-            ⚠ <strong>Questo preventivo è stato ripristinato da un backup.</strong> Il totale di € {(prev.totale_iva_incl || 0).toLocaleString("it-IT")} è il valore originale salvato.
-            Le voci dettagliate (lavorazioni, materiali, extras) potrebbero non essere visibili nella tabella sotto perché non recuperabili dall'audit log.
-            Per stampare al cliente, suggerisco di riaprire il preventivo, ri-inserire le voci e salvare nuovamente.
-          </div>
-        )}
+        {/* R87: banner rimosso — nascosto completamente all'utente.
+           L'avviso restore è visibile solo nella lista Preventivi (badge admin). */}
 
         {/* ===== COSA È INCLUSO ===== */}
         <div className="px-12 py-8">

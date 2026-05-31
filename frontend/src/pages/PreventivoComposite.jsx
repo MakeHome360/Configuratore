@@ -141,6 +141,32 @@ export default function PreventivoComposite() {
         setSelections(sel);
         setManualExtras(d.manual_extras || []);
         setInfissiExtras(d.infissi_extras || []);
+        // R87: avviso se totale salvato discorda dal ricalcolo (es. dopo restore audit con voci mancanti)
+        const savedTotal = Number(d.totale_iva_incl || 0);
+        if (savedTotal > 0) {
+          // Calcolo veloce per check (stessa formula della pagina)
+          const vTot = (d.composite_selections || []).reduce((s, v) => s + ((v.qty || 0) * (v.price || 0)), 0);
+          const lTot = (d.listini_selections || []).reduce((s, p) => s + ((parseFloat(p.qty) || 0) * (parseFloat(p.prezzo_rivendita) || 0)), 0);
+          const mTot = (d.manual_extras || []).reduce((s, m) => s + ((Number(m.qty) || 0) * (Number(m.price) || 0)), 0);
+          const iTot = (d.infissi_extras || []).reduce((s, x) => s + ((x.qty || 0) * (x.unit_price || x.price || 0)), 0);
+          const m = parseFloat(d.mq || 0);
+          let mult = 1;
+          if (m > 0 && m < 40) mult = 1.15; else if (m > 0 && m < 60) mult = 1.10;
+          const base = vTot + lTot + mTot;
+          const sic = base * ((d.sicurezza_pct || 0) / 100);
+          const dir = base * ((d.direzione_lavori_pct || 0) / 100);
+          const preSc = base * mult + iTot + sic + dir - (d.sconto_eur || 0);
+          const scPct = preSc * ((d.sconto_pct || 0) / 100);
+          const imp = preSc - scPct;
+          const iv = imp * ((d.iva_pct || 10) / 100);
+          const ricalc = imp + iv;
+          if (Math.abs(savedTotal - ricalc) > 100) {
+            toast.warning(
+              `⚠ Discrepanza totale: salvato € ${savedTotal.toLocaleString("it-IT")} vs ricalcolato € ${ricalc.toLocaleString("it-IT")}. Le voci visibili non corrispondono al totale del DB (es. preventivo ripristinato). Modifica le voci per allineare, poi salva.`,
+              { duration: 10000 }
+            );
+          }
+        }
       });
     }
   }, [id, isNew]);

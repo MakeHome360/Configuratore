@@ -2112,7 +2112,85 @@ async def decide_sconto(rid: str, body: Dict[str, Any], user: Dict[str, Any] = D
     return {"ok": True, **update}
 
 
-@api.post("/preventivi/{prev_id}/invia-email")
+@api.post("/email/diagnose")
+async def diagnose_email(body: Optional[Dict[str, Any]] = None, user: Dict[str, Any] = Depends(get_current_user)):
+    """ENDPOINT DIAGNOSTICO: prova a inviare una mail di test con dettagli completi sulla connessione SMTP.
+    Restituisce timing, codice di risposta Aruba, eventuali errori. Solo admin."""
+    if (user.get("role") or "").lower() != "admin":
+        raise HTTPException(403, "Solo admin")
+    body = body or {}
+    to = (body.get("to") or user.get("email") or "").strip()
+    if not to:
+        raise HTTPException(400, "Manca destinatario `to`")
+    import time
+    import aiosmtplib
+    from email.message import EmailMessage
+    from email.utils import formataddr
+    host = os.environ.get("SMTP_HOST", "")
+    port = int(os.environ.get("SMTP_PORT", "465"))
+    use_ssl = os.environ.get("SMTP_USE_SSL", "true").lower() == "true"
+    smtp_user = os.environ.get("SMTP_USER", "")
+    smtp_pass = os.environ.get("SMTP_PASSWORD", "")
+    from_email = os.environ.get("SMTP_FROM_EMAIL", smtp_user)
+    from_name = os.environ.get("SMTP_FROM_NAME", "Sa di casa")
+    result = {
+        "smtp_host": host, "smtp_port": port, "smtp_use_ssl": use_ssl,
+        "smtp_user_configured": bool(smtp_user), "smtp_password_configured": bool(smtp_pass),
+        "from_email": from_email, "from_name": from_name,
+        "to": to,
+        "steps": [],
+    }
+    if not (host and smtp_user and smtp_pass):
+        result["ok"] = False
+        result["error"] = "SMTP non configurato (host/user/password mancanti in .env)"
+        return result
+    msg = EmailMessage()
+    msg["From"] = formataddr((from_name, from_email))
+    msg["To"] = to
+    msg["Subject"] = f"🔧 Test diagnostico SMTP da {from_name}"
+    msg.set_content(f"Email di test inviata il {datetime.now(timezone.utc).isoformat()} da diagnose endpoint. Se la ricevi, l'invio funziona.")
+    html = f"""<html><body><h2>Email di test</h2>
+<p>Inviata il <strong>{datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M UTC')}</strong></p>
+<p>Se ricevi questa email, l'invio funziona. Se non la ricevi entro 5 minuti, controlla:</p>
+<ul><li>Cartella SPAM/Posta indesiderata</li><li>Filtri antispam del tuo provider (Gmail/Outlook365 sono particolarmente severi con Aruba)</li></ul>
+<p>From: {from_email}<br>SMTP: {host}:{port}</p></body></html>"""
+    msg.add_alternative(html, subtype="html")
+    t0 = time.time()
+    try:
+        result["steps"].append({"step": "connecting", "host": host, "port": port, "use_ssl": use_ssl})
+        if use_ssl:
+            await aiosmtplib.send(msg, hostname=host, port=port, username=smtp_user, password=smtp_pass, use_tls=True, timeout=30)
+        else:
+            await aiosmtplib.send(msg, hostname=host, port=port, username=smtp_user, password=smtp_pass, start_tls=True, timeout=30)
+        elapsed = round(time.time() - t0, 2)
+        result["ok"] = True
+        result["elapsed_sec"] = elapsed
+        result["steps"].append({"step": "accepted_by_aruba", "elapsed_sec": elapsed})
+        result["message"] = (
+            f"✅ Aruba ha ACCETTATO la mail in {elapsed}s. "
+            "Se non arriva entro 5 min, è bloccata DOPO Aruba (spam del destinatario o blacklist Aruba lato Gmail/Outlook). "
+            "Soluzione: l'utente la cerca in SPAM. Se ricorrente: passare a Resend/SendGrid."
+        )
+    except aiosmtplib.errors.SMTPException as e:
+        result["ok"] = False
+        result["elapsed_sec"] = round(time.time() - t0, 2)
+        result["error_type"] = "SMTP"
+        result["error_code"] = getattr(e, "code", None)
+        result["error_message"] = str(e)
+        result["steps"].append({"step": "smtp_rejected", "code": result["error_code"], "message": str(e)})
+        if "blacklist" in str(e).lower() or "dnsbl" in str(e).lower() or "554" in str(e):
+            result["diagnosis"] = (
+                "🚫 Aruba ha RIFIUTATO la connessione perché l'IP server è in blacklist DNSBL. "
+                "Da Preview è normale (Google Cloud IPs sono blocked). "
+                "Per sadicasa.it produzione: chiama Aruba 199 30 30 11 e chiedi whitelist dell'IP, "
+                "oppure cambia a Resend/SendGrid che hanno IP whitelisted."
+            )
+    except Exception as e:
+        result["ok"] = False
+        result["elapsed_sec"] = round(time.time() - t0, 2)
+        result["error_type"] = "OTHER"
+        result["error_message"] = str(e)
+    return result
 async def invia_preventivo_email(prev_id: str, body: Optional[Dict[str, Any]] = None, user: Dict[str, Any] = Depends(get_current_user)):
     """Invia al cliente il link al riepilogo stampabile del preventivo con un messaggio personalizzato.
     R87: usa il template professionale `send_preventivo_email` con branding completo."""

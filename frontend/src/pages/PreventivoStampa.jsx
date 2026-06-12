@@ -705,6 +705,11 @@ export default function PreventivoStampa() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
+            <div className="bg-blue-50 border border-blue-200 rounded p-3 text-[11px] text-blue-900 leading-snug">
+              ℹ️ <strong>Importante</strong>: dopo l'invio, suggerisci al cliente di <strong>controllare la cartella SPAM/Posta indesiderata</strong>.
+              Aruba (il nostro provider SMTP) viene spesso filtrato da Gmail e Outlook365.
+              Se ricorrente, valuta di passare a Resend/SendGrid (chiedi all'assistenza).
+            </div>
             <div>
               <Label htmlFor="dest-email" className="text-xs uppercase tracking-widest">Email destinatario *</Label>
               <Input

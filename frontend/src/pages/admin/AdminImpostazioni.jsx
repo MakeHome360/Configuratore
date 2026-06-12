@@ -25,6 +25,8 @@ export default function AdminImpostazioni() {
       <PageHeader title="Impostazioni" subtitle="Configura parametri di calcolo e ricarichi"
         actions={<Button onClick={save} data-testid="imp-save" style={{ background: "var(--brand)", color: "white" }}>Salva</Button>} />
       <Page>
+        {/* R87: Diagnostico SMTP per debug email */}
+        <SmtpDiagnostico />
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 max-w-5xl">
           <DatiAzienda imp={imp} setImp={setImp} />
           <div className="bg-white border border-zinc-200 rounded-lg p-5 space-y-4">
@@ -508,3 +510,51 @@ function RuoliRecap() {
   );
 }
 
+
+
+
+function SmtpDiagnostico() {
+  const [to, setTo] = useState("");
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState(null);
+  const run = async () => {
+    if (!to.trim()) { toast.error("Inserisci email destinatario"); return; }
+    setRunning(true); setResult(null);
+    try {
+      const { data } = await api.post("/email/diagnose", { to: to.trim() });
+      setResult(data);
+      if (data.ok) toast.success(`✅ Aruba ha accettato la mail in ${data.elapsed_sec}s. Controlla la casella destinatario (anche SPAM).`);
+      else toast.error(`❌ ${data.error_message || data.error}`);
+    } catch (e) {
+      toast.error("Errore: " + (e?.response?.data?.detail || e.message));
+    }
+    setRunning(false);
+  };
+  return (
+    <div className="bg-white border border-zinc-200 rounded-lg p-5 mb-5 max-w-5xl">
+      <h3 className="font-semibold mb-2">🔧 Test diagnostico invio email</h3>
+      <p className="text-xs text-zinc-500 mb-3 leading-snug">
+        Verifica se l&apos;invio email funziona. Risponde in ~2 secondi indicandoti se Aruba ha accettato la mail.
+        Se &quot;OK&quot; ma il destinatario non riceve, è bloccata da filtri spam DOPO Aruba (suggerisci di controllare SPAM).
+      </p>
+      <div className="flex gap-2 items-end">
+        <div className="flex-1">
+          <Label htmlFor="smtp-test-to" className="text-xs uppercase tracking-widest">Email destinatario test</Label>
+          <Input id="smtp-test-to" type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="tuoindirizzo@example.com" className="rounded-sm h-9 mt-1" data-testid="smtp-test-to" />
+        </div>
+        <Button onClick={run} disabled={running} className="bg-zinc-900 hover:bg-zinc-800 text-white h-9" data-testid="smtp-test-run">
+          {running ? "Test in corso..." : "Invia mail di test"}
+        </Button>
+      </div>
+      {result && (
+        <div className={`mt-3 p-3 rounded text-xs leading-snug border ${result.ok ? "bg-emerald-50 border-emerald-300" : "bg-rose-50 border-rose-300"}`} data-testid="smtp-test-result">
+          <div className="font-bold mb-1">{result.ok ? "✅ ACCETTATA da Aruba" : "❌ RIFIUTATA"}</div>
+          <div>Tempo: {result.elapsed_sec}s · Host: {result.smtp_host}:{result.smtp_port} · SSL: {String(result.smtp_use_ssl)}</div>
+          {result.message && <div className="mt-2 text-zinc-700">{result.message}</div>}
+          {result.error_message && <div className="mt-2 text-rose-700 mono text-[10px]">{result.error_message}</div>}
+          {result.diagnosis && <div className="mt-2 p-2 bg-white rounded text-zinc-800">{result.diagnosis}</div>}
+        </div>
+      )}
+    </div>
+  );
+}

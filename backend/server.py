@@ -1705,6 +1705,88 @@ async def update_preventivo(prev_id: str, body: PreventivoIn, user: Dict[str, An
     doc = await db.preventivi.find_one({"id": prev_id, "user_id": user["id"]}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Preventivo non trovato")
+    # ── R88: SYNC COMMESSA ───────────────────────────────────────────────────────────
+    # Se al preventivo è collegata una commessa (preventivo_id=prev_id), aggiorna almeno
+    # il `totale` e segna i ricalcoli necessari (computo_metrico, materiali) come da rivedere.
+    try:
+        com = await db.commesse.find_one({"preventivo_id": prev_id}, {"_id": 0})
+        if com:
+            now_iso_sync = datetime.now(timezone.utc).isoformat()
+            new_tot = doc.get("totale_iva_incl") or doc.get("totale_iva_escl") or 0
+            com_upd: Dict[str, Any] = {
+                "totale": new_tot,
+                "cliente": doc.get("cliente") or com.get("cliente") or {},
+                "ultimo_sync_preventivo": now_iso_sync,
+                "preventivo_modificato_dopo_creazione": True,
+            }
+            # Ricostruisci computo_metrico se è "auto_from_preventivo" (rispetta le modifiche manuali)
+            cm = com.get("computo_metrico") or {}
+            if cm.get("auto_from_preventivo"):
+                try:
+                    # Riga preventivo → riga computo (stessa logica di _auto_populate_commessa_from_preventivo)
+                    cm_items = []
+                    cm_totale = 0.0
+                    for it in (doc.get("items") or []):
+                        if it.get("excluded"):
+                            continue
+                        q = float(it.get("qty_richiesta") or it.get("qty") or 0)
+                        pu = float(it.get("unit_price") or it.get("prezzo_unit") or it.get("price") or 0)
+                        if q <= 0 and pu <= 0:
+                            continue
+                        tot_r = q * pu
+                        cm_items.append({"voce_id": it.get("voce_id") or it.get("id"), "name": it.get("name") or "Voce", "qty": q, "unit": it.get("unit") or "pz", "prezzo_unit": pu, "totale": tot_r})
+                        cm_totale += tot_r
+                    # Composite selections
+                    csel = doc.get("composite_selections") or []
+                    for sel in (csel if isinstance(csel, list) else []):
+                        if not isinstance(sel, dict):
+                            continue
+                        q = float(sel.get("qty") or 0)
+                        if q <= 0:
+                            continue
+                        pu = float(sel.get("price") or sel.get("unit_price") or 0)
+                        tot_r = q * pu
+                        cm_items.append({"voce_id": sel.get("voce_id") or sel.get("id"), "name": sel.get("name") or "Voce", "qty": q, "unit": sel.get("unit") or "pz", "prezzo_unit": pu, "totale": tot_r, "category": sel.get("category") or ""})
+                        cm_totale += tot_r
+                    # Manual extras
+                    for m in (doc.get("manual_extras") or []):
+                        q = float(m.get("qty") or 0); pu = float(m.get("price") or 0)
+                        if q <= 0 and pu <= 0:
+                            continue
+                        tot_r = q * pu
+                        cm_items.append({"voce_id": m.get("voce_id_bo"), "name": m.get("name") or "Extra manuale", "qty": q, "unit": m.get("unit") or "pz", "prezzo_unit": pu, "totale": tot_r, "category": m.get("category") or "EXTRA"})
+                        cm_totale += tot_r
+                    # Infissi extras
+                    for inf in (doc.get("infissi_extras") or []):
+                        q = float(inf.get("qty") or 1)
+                        pu = float(inf.get("unit_price") or inf.get("price") or 0)
+                        if q <= 0 and pu <= 0:
+                            continue
+                        tot_r = q * pu
+                        cm_items.append({"voce_id": inf.get("id"), "name": inf.get("name") or "Infisso", "qty": q, "unit": inf.get("unit") or "pz", "prezzo_unit": pu, "totale": tot_r, "category": "INFISSI"})
+                        cm_totale += tot_r
+                    # Listini fornitori
+                    for p in (doc.get("listini_selections") or []):
+                        q = float(p.get("qty") or 0); pu = float(p.get("prezzo_rivendita") or 0)
+                        if q <= 0 and pu <= 0:
+                            continue
+                        tot_r = q * pu
+                        cm_items.append({"voce_id": p.get("id"), "name": p.get("nome") or "Prodotto fornitore", "qty": q, "unit": p.get("unit") or "pz", "prezzo_unit": pu, "totale": tot_r, "category": p.get("categoria") or "LISTINO"})
+                        cm_totale += tot_r
+                    com_upd["computo_metrico"] = {
+                        "items": cm_items,
+                        "totale": round(cm_totale, 2),
+                        "auto_from_preventivo": True,
+                        "generato_il": now_iso_sync,
+                        "risincronizzato": True,
+                    }
+                except Exception:
+                    logger.exception("[PRV-COM-SYNC] errore ricalcolo computo_metrico")
+            await db.commesse.update_one({"id": com["id"]}, {"$set": com_upd})
+            logger.info(f"[PRV-COM-SYNC] commessa {com['id']} sincronizzata con preventivo {prev_id}: nuovo totale={new_tot}")
+    except Exception:
+        logger.exception("[PRV-COM-SYNC] errore generico durante sync commessa post-PUT")
+    # ────────────────────────────────────────────────────────────────────────────────
     # Audit con snapshot FULL del before (oltre al diff sintetico)
     await audit_log(db, user=user, action="update", entity="preventivo", entity_id=prev_id,
                     description=f"Aggiornato preventivo {doc.get('numero')}",

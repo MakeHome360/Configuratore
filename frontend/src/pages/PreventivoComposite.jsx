@@ -36,6 +36,7 @@ export default function PreventivoComposite() {
   const [activeSection, setActiveSection] = useState(null);
   const [infissiExtras, setInfissiExtras] = useState([]); // [{id,name,qty,unit,price,unit_price,infisso_meta}]
   const [infissiModalOpen, setInfissiModalOpen] = useState(false);
+  const [infissiEditIds, setInfissiEditIds] = useState(null); // ids degli infissi in edit (null = modalità add)
   const [scontoReq, setScontoReq] = useState(null);
   const [scontoDialog, setScontoDialog] = useState(false);
   const [scontoForm, setScontoForm] = useState({ pct: 10, motivo: "" });
@@ -93,7 +94,7 @@ export default function PreventivoComposite() {
     return out;
   }, [allProdottiFornitori]);
 
-  const onInfissiConfirm = ({ items }) => {
+  const onInfissiConfirm = ({ items, mode, originalIds }) => {
     const rows = items.map((it, i) => ({
       id: `infisso-${Date.now()}-${i}`,
       name: `${it.tipologia_name || "Infisso"} ${it.larghezza}×${it.altezza}cm · ${it.materiale_name} ${it.vetro_name} (${it.ante} ante)${it.tapparella ? " + tapparella" : ""}${it.zanzariera ? " + zanzariera" : ""}`,
@@ -102,10 +103,42 @@ export default function PreventivoComposite() {
       price: it.price,
       infisso_meta: it,
     }));
-    setInfissiExtras((arr) => [...arr, ...rows]);
-    toast.success(`${items.length} infissi aggiunti`);
+    if (mode === "edit" && originalIds && originalIds.length) {
+      // Sostituisci gli infissi originali con quelli modificati (preservando l'id se solo 1)
+      setInfissiExtras((arr) => {
+        const remaining = arr.filter((r) => !originalIds.includes(r.id));
+        // Se 1:1, riusa l'id originale per non perdere riferimenti UI
+        if (rows.length === originalIds.length && rows.length === 1) {
+          rows[0].id = originalIds[0];
+        }
+        return [...remaining, ...rows];
+      });
+      toast.success(rows.length === 1 ? "Infisso aggiornato" : `${rows.length} infissi aggiornati`);
+    } else {
+      setInfissiExtras((arr) => [...arr, ...rows]);
+      toast.success(`${items.length} infissi aggiunti`);
+    }
+    setInfissiEditIds(null);
   };
   const removeInfisso = (id) => setInfissiExtras((arr) => arr.filter((r) => r.id !== id));
+  const editInfisso = (id) => {
+    setInfissiEditIds([id]);
+    setInfissiModalOpen(true);
+  };
+  const updateInfissoField = (id, field, value) => {
+    setInfissiExtras((arr) => arr.map((r) => {
+      if (r.id !== id) return r;
+      const meta = { ...(r.infisso_meta || {}) };
+      meta[field] = value;
+      // Ricalcolo prezzo on-the-fly per misure/qty/accessori inline
+      const next = { ...r, infisso_meta: meta };
+      if (field === "qty") next.qty = Math.max(1, Number(value) || 1);
+      // Per ricalcolo del prezzo serve InfissoQuickConfigurator (vivono lì le formule); qui aggiorniamo solo:
+      // - se cambia qty: scala price (price = unit_price * qty)
+      if (field === "qty") next.price = Math.round((next.unit_price || 0) * next.qty);
+      return next;
+    }));
+  };
   const infissiTot = useMemo(() => infissiExtras.reduce((s, r) => s + (r.price || 0), 0), [infissiExtras]);
 
   useEffect(() => {
@@ -291,7 +324,7 @@ export default function PreventivoComposite() {
           <div><div className="text-[10px] uppercase text-zinc-500">Sicurezza {sicurezzaPct}%</div><div className="text-sm font-mono">{fmtEur(sicurezzaAmt)}</div></div>
           <div><div className="text-[10px] uppercase text-zinc-500">Dir. Lav {direzionePct}%</div><div className="text-sm font-mono">{fmtEur(direzioneAmt)}</div></div>
           <div><div className="text-[10px] uppercase text-zinc-500">Totale IVA Incl.</div><div className="text-lg font-bold" data-testid="totale-composite">{fmtEur2(totale)}</div></div>
-          <Button onClick={() => setInfissiModalOpen(true)} variant="outline" size="sm" className="rounded-sm" data-testid="comp-add-infissi-top-btn">
+          <Button onClick={() => { setInfissiEditIds(null); setInfissiModalOpen(true); }} variant="outline" size="sm" className="rounded-sm" data-testid="comp-add-infissi-top-btn">
             <Plus className="h-4 w-4 mr-1" />Infissi {infissiExtras.length > 0 && `(${infissiExtras.length})`}
           </Button>
         </div>} />
@@ -453,7 +486,7 @@ export default function PreventivoComposite() {
               <>
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold">Infissi · Configuratore extra</h3>
-                  <Button size="sm" onClick={() => setInfissiModalOpen(true)} data-testid="comp-add-infissi-btn" style={{ background: "var(--brand)", color: "white" }}>
+                  <Button size="sm" onClick={() => { setInfissiEditIds(null); setInfissiModalOpen(true); }} data-testid="comp-add-infissi-btn" style={{ background: "var(--brand)", color: "white" }}>
                     <Plus className="h-4 w-4 mr-1" />Aggiungi infissi
                   </Button>
                 </div>
@@ -462,22 +495,98 @@ export default function PreventivoComposite() {
                 ) : (
                   <table className="w-full text-sm">
                     <thead className="bg-zinc-50 text-xs uppercase text-zinc-500">
-                      <tr><th className="px-3 py-2 text-left">Descrizione</th><th className="px-3 py-2 text-right w-20">Qty</th><th className="px-3 py-2 text-right w-24">Prezzo €</th><th className="px-3 py-2 text-right w-28">Totale</th><th className="w-10"></th></tr>
+                      <tr>
+                        <th className="px-3 py-2 text-left">Descrizione</th>
+                        <th className="px-3 py-2 text-center w-32">Accessori</th>
+                        <th className="px-3 py-2 text-right w-20">Qty</th>
+                        <th className="px-3 py-2 text-right w-28">€/u</th>
+                        <th className="px-3 py-2 text-right w-28">Totale</th>
+                        <th className="w-24"></th>
+                      </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-100">
-                      {infissiExtras.map((r) => (
-                        <tr key={r.id}>
-                          <td className="px-3 py-2">{r.name}</td>
-                          <td className="px-3 py-2 text-right font-mono">{r.qty}</td>
-                          <td className="px-3 py-2 text-right font-mono">{fmtEur2(r.unit_price)} /{r.unit}</td>
-                          <td className="px-3 py-2 text-right font-mono font-bold">{fmtEur2(r.price)}</td>
-                          <td className="px-3 py-2 text-right"><button onClick={() => removeInfisso(r.id)} className="text-rose-600 text-xs">×</button></td>
-                        </tr>
-                      ))}
-                      <tr className="bg-amber-50 font-bold"><td colSpan={3} className="px-3 py-2 text-right">Subtotale infissi</td><td className="px-3 py-2 text-right font-mono">{fmtEur2(infissiTot)}</td><td></td></tr>
+                      {infissiExtras.map((r) => {
+                        const meta = r.infisso_meta || {};
+                        return (
+                          <tr key={r.id} data-testid={`comp-inf-row-${r.id}`}>
+                            <td className="px-3 py-2">
+                              <div className="font-medium text-xs">{r.name}</div>
+                              {(meta.larghezza || meta.altezza) && (
+                                <div className="text-[10px] text-zinc-500 mt-0.5">
+                                  Misure: <strong className="font-mono">{meta.larghezza}×{meta.altezza} cm</strong>
+                                  {meta.colore && <> · Colore: {meta.colore}</>}
+                                  {meta.materiale_name && <> · {meta.materiale_name}</>}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <div className="flex flex-col gap-1 items-center text-[10px]">
+                                <label className="flex items-center gap-1 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!meta.tapparella}
+                                    onChange={(e) => updateInfissoField(r.id, "tapparella", e.target.checked)}
+                                    className="h-3.5 w-3.5"
+                                    data-testid={`comp-inf-tapp-${r.id}`}
+                                  /> Tapparella
+                                </label>
+                                <label className="flex items-center gap-1 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!meta.zanzariera}
+                                    onChange={(e) => updateInfissoField(r.id, "zanzariera", e.target.checked)}
+                                    className="h-3.5 w-3.5"
+                                    data-testid={`comp-inf-zanz-${r.id}`}
+                                  /> Zanzariera
+                                </label>
+                                {(meta.tapparella || meta.zanzariera) && (
+                                  <div className="text-[9px] text-amber-600 italic">↪ ricalcola prezzo con "Modifica"</div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <Input
+                                type="number" min={1} step="1"
+                                className="h-8 w-16 text-right font-mono"
+                                value={r.qty}
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => updateInfissoField(r.id, "qty", e.target.value === "" ? "" : Number(e.target.value))}
+                                onBlur={(e) => updateInfissoField(r.id, "qty", Math.max(1, Number(e.target.value) || 1))}
+                                data-testid={`comp-inf-qty-${r.id}`}
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono">{fmtEur2(r.unit_price)}</td>
+                            <td className="px-3 py-2 text-right font-mono font-bold">{fmtEur2(r.price)}</td>
+                            <td className="px-3 py-2 text-right">
+                              <div className="inline-flex gap-1">
+                                <button
+                                  onClick={() => editInfisso(r.id)}
+                                  className="px-2 py-1 rounded text-[11px] font-semibold bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300"
+                                  title="Modifica misure / accessori / materiale"
+                                  data-testid={`comp-inf-edit-${r.id}`}
+                                >✏️ Modifica</button>
+                                <button
+                                  onClick={() => removeInfisso(r.id)}
+                                  className="px-2 py-1 rounded text-rose-600 hover:bg-rose-50 text-[11px]"
+                                  title="Rimuovi infisso"
+                                  data-testid={`comp-inf-del-${r.id}`}
+                                >×</button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      <tr className="bg-amber-50 font-bold">
+                        <td colSpan={4} className="px-3 py-2 text-right">Subtotale infissi</td>
+                        <td className="px-3 py-2 text-right font-mono">{fmtEur2(infissiTot)}</td>
+                        <td></td>
+                      </tr>
                     </tbody>
                   </table>
                 )}
+                <div className="mt-3 text-[11px] text-zinc-500 italic">
+                  💡 Per modificare misure, materiale, vetro, n° ante o ricalcolare il prezzo automaticamente, usa <strong>"✏️ Modifica"</strong> sulla riga: si riapre il configuratore con i dati pre-compilati.
+                </div>
               </>
             ) : activeSection === "__manual__" ? (
               <>
@@ -661,7 +770,13 @@ export default function PreventivoComposite() {
           />
         </div>
       </Page>
-      <InfissoQuickConfigurator open={infissiModalOpen} onClose={() => setInfissiModalOpen(false)} onConfirm={onInfissiConfirm} />
+      <InfissoQuickConfigurator
+        open={infissiModalOpen}
+        onClose={() => { setInfissiModalOpen(false); setInfissiEditIds(null); }}
+        onConfirm={onInfissiConfirm}
+        initialItems={infissiEditIds ? infissiExtras.filter((r) => infissiEditIds.includes(r.id)) : null}
+        mode={infissiEditIds ? "edit" : "add"}
+      />
       {/* Dialog: Aggiungi voce manuale (Round 86) */}
       <Dialog open={manualDialogOpen} onOpenChange={setManualDialogOpen}>
         <DialogContent className="max-w-lg" data-testid="comp-manual-dialog">

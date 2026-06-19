@@ -31,6 +31,7 @@ class ProdottoIn(BaseModel):
     prezzo_netto: float = 0
     ricarico: Optional[float] = None
     categoria_dettaglio: Optional[str] = ""
+    subcategoria: Optional[str] = ""  # override manuale: forza la sub-categoria del prodotto
     attributi: Optional[Dict[str, Any]] = None
     attivo: bool = True
 
@@ -66,13 +67,127 @@ def _fascia_prezzo(prezzo: float) -> str:
     return "high"
 
 
-def _normalize_prodotto(p: dict, ricarico_default: float) -> dict:
-    """Calcola prezzo_rivendita e fascia_prezzo coerenti."""
+# Detection regole nome/descrizione → sub-categoria effettiva
+# (importante perché un fornitore "Garofoli" può stare nella categoria "porte_blindate" del listino
+# ma contenere ANCHE porte interne come "Matriz", "Pannello", "Skin", ecc. che NON sono blindate)
+_SUBCAT_RULES = [
+    # ── PORTE ──
+    ("porte_blindate", [
+        "porta blindata", "porte blindate", "blindata", "blindato", "blindati",
+        "porta corazzat", "corazzata", "corazzato",
+        "antiscasso", "anti-scasso", "anti scasso",
+        "classe rc", " rc2", " rc3", " rc4",
+    ]),
+    ("porte_interne", [
+        # Modelli Garofoli/famosi che sono SEMPRE interne
+        "matriz", "skin ", "skin\t", "skin-", "skin,", "skin.", "skin\n",
+        "pannello porta", "pannello blindato",  # è il rivestimento interno
+        "porta interna", "porte interne", "porta scrigno", "scrigno",
+        "porta scorrevole", "porta rasomuro", "rasomuro", "raso muro",
+        "porta battente",
+        "porta a libro", "porta a soffietto", "porta a vetro",
+        # Fallback generico: qualsiasi "porta X" o "porte X" → interna (le blindate sono già state catturate prima)
+        "porta ", "porte ", "porta-", "porte-",
+    ]),
+    # ── INFISSI ──
+    ("infissi", [
+        "finestra", "finestre", "anta vasistas", "vasistas",
+        "infisso", "infissi", "serramento", "serramenti",
+        "persiana", "persiane", "scuretto", "scuri",
+        "tapparella", "avvolgibile", "zanzariera",
+    ]),
+    # ── RUBINETTERIE (before sanitari: "miscelatore lavabo" is rubinetteria, not sanitario) ──
+    ("rubinetterie", [
+        "miscelatore", "rubinetto", "rubinetti", "rubinetteria",
+        "soffione doccia", "doccia a soffione",
+        "deviatore", "termostatico",
+    ]),
+    # ── SANITARI ──
+    ("sanitari", [
+        "wc ", "wc\t", "wc-", "wc,", "vaso wc",
+        "bidet", "lavabo", "lavandino", "piatto doccia",
+        "vasca da bagno", "vaschetta wc", "monoblocco",
+        "sanitario", "sanitari",
+    ]),
+    # ── VASCHE / BOX DOCCIA ──
+    ("vasche_box_doccia", [
+        "box doccia", "cabina doccia", "porta doccia",
+        "vasca idromassagg", "vasca freestanding",
+    ]),
+    # ── TERMO_ARREDO ──
+    ("termo_arredo", [
+        "radiatore", "termoarredo", "scaldasalviette", "termo-arredo",
+        "calorifero",
+    ]),
+    # ── ELETTRODOMESTICI ──
+    ("elettrodomestici", [
+        "frigorifero", "frigo ", "congelator", "lavatrice", "lavastoviglie",
+        "forno ", "piano cottura", "cappa cucina", "cappa aspirante",
+        "microonde", "asciugatrice",
+    ]),
+    # ── PARQUET / PAVIMENTI ──
+    ("parquet_pavimenti", [
+        "parquet", "lvt ", "spc ", "laminato",
+        "pavimento legno", "pavimentazione legno",
+    ]),
+    ("piastrelle", [
+        "piastrell", "gres porcellanato", "ceramica", "mosaico",
+        "rivestimento ceramico", "rivestimento bagno",
+    ]),
+    # ── CONTROSOFFITTI / CARTONGESSO ──
+    ("controsoffitti", [
+        "controsoffit", "cartongesso", "knauf", "fassaplas",
+    ]),
+    # ── VERNICI ──
+    ("vernici_pitture", [
+        "pittura", "smalto", "vernice", "tempera",
+        "primer ", "fondo per", "idropittura",
+    ]),
+    # ── CUCINA ──
+    ("cucina", [
+        "cucina ", "anta cucina", "base cucina", "pensile",
+        "top cucina", "composizione cucina",
+    ]),
+]
+
+
+def _detect_subcategoria(nome: str, descrizione: str = "", categoria_listino: str = "") -> Optional[str]:
+    """Auto-rileva la sub-categoria effettiva di un prodotto a partire dal nome/descrizione.
+    Restituisce la chiave canonica (porte_interne/porte_blindate/infissi/...) oppure None se non rileva.
+    Logica: prima match wins; in caso di conflitto su porte, prevale il match più specifico (blindata > interna).
+    """
+    blob = f" {(nome or '').lower()} {(descrizione or '').lower()} ".replace("\u00a0", " ")
+    matched = []
+    for key, words in _SUBCAT_RULES:
+        for w in words:
+            if w in blob:
+                matched.append(key)
+                break
+    if not matched:
+        return None
+    # Priorità: se compaiono SIA porte_blindate SIA porte_interne, vince porte_interne (perché "matriz/skin" sono SEMPRE interne anche se in listino blindate)
+    if "porte_interne" in matched and "porte_blindate" in matched:
+        # se nel nome c'è esplicitamente "blindata" o "rc2/rc3" il vero match è blindato
+        if any(t in blob for t in ["blindata", "blindato", " rc2", " rc3", " rc4", "antiscasso", "corazzat"]):
+            return "porte_blindate"
+        return "porte_interne"
+    return matched[0]
+
+
+def _normalize_prodotto(p: dict, ricarico_default: float, categoria_listino: str = "") -> dict:
+    """Calcola prezzo_rivendita, fascia_prezzo e subcategoria_effettiva coerenti."""
     netto = float(p.get("prezzo_netto") or 0)
     ricarico = float(p.get("ricarico") if p.get("ricarico") is not None else ricarico_default or 1.8)
     p["ricarico"] = ricarico
     p["prezzo_rivendita"] = round(netto * ricarico, 2)
     p["fascia_prezzo"] = _fascia_prezzo(p["prezzo_rivendita"])
+    # Subcategoria effettiva: detection da nome/descrizione, override esplicito vince
+    explicit = (p.get("subcategoria") or "").strip().lower()
+    if explicit:
+        p["subcategoria_effettiva"] = explicit
+    else:
+        det = _detect_subcategoria(p.get("nome", ""), p.get("descrizione", ""), categoria_listino)
+        p["subcategoria_effettiva"] = det or (categoria_listino or "")
     return p
 
 
@@ -128,7 +243,11 @@ def register(api_router: APIRouter, db, get_current_user) -> None:
         prodotti = cur.get("prodotti") or []
         for p in prodotti:
             if p.get("ricarico") is None or abs(float(p.get("ricarico") or 0) - float(cur.get("ricarico_default") or 1.8)) < 0.0001:
-                _normalize_prodotto(p, new_ricarico)
+                _normalize_prodotto(p, new_ricarico, body.categoria)
+            else:
+                # Anche se il ricarico non cambia, ri-detect subcategoria (in caso fosse mancante)
+                if not p.get("subcategoria_effettiva"):
+                    _normalize_prodotto(p, new_ricarico, body.categoria)
         upd["prodotti"] = prodotti
         await db.fornitori_listini.update_one({"id": lid}, {"$set": upd})
         return await db.fornitori_listini.find_one({"id": lid}, {"_id": 0})
@@ -149,7 +268,7 @@ def register(api_router: APIRouter, db, get_current_user) -> None:
         if not lst:
             raise HTTPException(404)
         prodotto = {"id": UID(), **body.dict()}
-        _normalize_prodotto(prodotto, lst.get("ricarico_default") or 1.8)
+        _normalize_prodotto(prodotto, lst.get("ricarico_default") or 1.8, lst.get("categoria") or "")
         await db.fornitori_listini.update_one(
             {"id": lid},
             {"$push": {"prodotti": prodotto}, "$set": {"updated_at": NOW()}},
@@ -168,7 +287,7 @@ def register(api_router: APIRouter, db, get_current_user) -> None:
         for i, p in enumerate(prodotti):
             if p.get("id") == pid:
                 merged = {**p, **body.dict(), "id": pid}
-                _normalize_prodotto(merged, lst.get("ricarico_default") or 1.8)
+                _normalize_prodotto(merged, lst.get("ricarico_default") or 1.8, lst.get("categoria") or "")
                 prodotti[i] = merged
                 found = True
                 break
@@ -294,7 +413,7 @@ def register(api_router: APIRouter, db, get_current_user) -> None:
                 "attributi": {},
                 "attivo": True,
             }
-            _normalize_prodotto(prod, ricarico_default)
+            _normalize_prodotto(prod, ricarico_default, lst.get("categoria") or "")
             prodotti_new.append(prod)
 
         if mode == "replace":
@@ -328,8 +447,22 @@ def register(api_router: APIRouter, db, get_current_user) -> None:
             {"key": "vernici_pitture", "label": "Vernici e pitture", "icon": "🎨"},
             {"key": "altro", "label": "Altro / Generico", "icon": "📦"},
         ]
+        # Conteggio listini per categoria (livello listino)
+        listini = await db.fornitori_listini.find({}, {"_id": 0, "categoria": 1, "prodotti": 1}).to_list(1000)
+        # Conteggio prodotti per subcategoria_effettiva (livello prodotto — più importante per l'UX)
+        prod_counts: Dict[str, int] = {}
+        for lst in listini:
+            for p in (lst.get("prodotti") or []):
+                if not p.get("attivo", True):
+                    continue
+                sub = (p.get("subcategoria_effettiva") or "").lower()
+                if not sub:
+                    sub = _detect_subcategoria(p.get("nome", ""), p.get("descrizione", ""), lst.get("categoria") or "") or (lst.get("categoria") or "")
+                if sub:
+                    prod_counts[sub] = prod_counts.get(sub, 0) + 1
         for c in cats:
-            c["n_listini"] = await db.fornitori_listini.count_documents({"categoria": c["key"]})
+            c["n_listini"] = sum(1 for l in listini if (l.get("categoria") or "") == c["key"])
+            c["n_prodotti"] = prod_counts.get(c["key"], 0)
         return cats
 
     @r.get("/fornitori-listini-prodotti/cerca")
@@ -338,19 +471,37 @@ def register(api_router: APIRouter, db, get_current_user) -> None:
         q: Optional[str] = None,
         fascia: Optional[str] = None,  # low | medium | high
         max_results: int = 100,
+        strict_categoria: bool = True,  # se True usa subcategoria_effettiva (default), se False usa categoria del listino
         user=Depends(get_current_user),
     ):
-        """Ricerca prodotti trasversale tutti i listini (per il composite/pacchetti)."""
-        filt: Dict[str, Any] = {"attivo": True}
-        if categoria:
-            filt["categoria"] = categoria
-        listini = await db.fornitori_listini.find(filt, {"_id": 0}).to_list(500)
+        """Ricerca prodotti trasversale tutti i listini (per il composite/pacchetti).
+
+        Importante: ora il filtro per `categoria` usa per default la `subcategoria_effettiva` di OGNI prodotto
+        (auto-rilevata dal nome). Così una "Porta Matriz" presente in un listino "Porte blindate" del fornitore
+        Garofoli viene mostrata sotto "Porte interne" (è una porta interna, non blindata) — coerente con le macrocategorie del programma.
+        """
+        # NON pre-filtriamo per listino: dobbiamo poter restituire prodotti la cui subcategoria_effettiva
+        # è diversa dalla categoria del listino padre. Carichiamo tutto e filtriamo a livello prodotto.
+        listini = await db.fornitori_listini.find({}, {"_id": 0}).to_list(500)
         out: List[Dict[str, Any]] = []
         q_low = (q or "").lower().strip()
         for lst in listini:
             for p in (lst.get("prodotti") or []):
                 if not p.get("attivo", True):
                     continue
+                # Subcategoria effettiva (auto-detect se manca, fallback sulla categoria del listino)
+                sub = (p.get("subcategoria_effettiva") or "").lower()
+                if not sub:
+                    det = _detect_subcategoria(p.get("nome", ""), p.get("descrizione", ""), lst.get("categoria") or "")
+                    sub = det or (lst.get("categoria") or "")
+                # Filtro per categoria richiesta
+                if categoria:
+                    if strict_categoria:
+                        if sub != categoria:
+                            continue
+                    else:
+                        if (lst.get("categoria") or "") != categoria:
+                            continue
                 if q_low:
                     blob = f"{p.get('nome','')} {p.get('codice','')} {p.get('descrizione','')} {p.get('categoria_dettaglio','')}".lower()
                     if q_low not in blob:
@@ -359,11 +510,60 @@ def register(api_router: APIRouter, db, get_current_user) -> None:
                     continue
                 out.append({
                     **p,
+                    "subcategoria_effettiva": sub,
                     "listino_id": lst["id"],
                     "listino_nome": lst.get("nome"),
                     "fornitore_nome": lst.get("fornitore_nome"),
-                    "categoria": lst.get("categoria"),
+                    # `categoria` esposta nel risultato = subcategoria effettiva del prodotto
+                    # (l'UI raggruppa correttamente "Matriz" sotto "Porte interne")
+                    "categoria": sub or (lst.get("categoria") or ""),
+                    "categoria_listino": lst.get("categoria"),  # mantenuto per debug
                 })
                 if len(out) >= max_results:
                     return out
         return out
+
+    @r.post("/fornitori-listini/{lid}/riclassifica")
+    async def riclassifica_prodotti(lid: str, user=Depends(get_current_user)):
+        """Ri-applica la detection di subcategoria_effettiva su tutti i prodotti del listino.
+        Utile dopo un import storico o un cambio della categoria del listino padre.
+        Solo admin.
+        """
+        if user.get("role") != "admin":
+            raise HTTPException(403)
+        lst = await db.fornitori_listini.find_one({"id": lid}, {"_id": 0})
+        if not lst:
+            raise HTTPException(404)
+        prodotti = lst.get("prodotti") or []
+        cambi: Dict[str, int] = {}
+        for p in prodotti:
+            old = (p.get("subcategoria_effettiva") or lst.get("categoria") or "")
+            # Ricalcola SEMPRE (anche se c'è subcategoria, perché potrebbe essere stata ereditata da listino sbagliato)
+            det = _detect_subcategoria(p.get("nome", ""), p.get("descrizione", ""), lst.get("categoria") or "")
+            new = det or (lst.get("categoria") or "")
+            p["subcategoria_effettiva"] = new
+            if new != old:
+                cambi[new] = cambi.get(new, 0) + 1
+        await db.fornitori_listini.update_one({"id": lid}, {"$set": {"prodotti": prodotti, "updated_at": NOW()}})
+        return {"ok": True, "n_prodotti": len(prodotti), "cambi_per_categoria": cambi}
+
+    @r.post("/fornitori-listini-riclassifica-tutti")
+    async def riclassifica_tutti(user=Depends(get_current_user)):
+        """Ri-applica detection di subcategoria su TUTTI i listini esistenti (one-shot).
+        Solo admin."""
+        if user.get("role") != "admin":
+            raise HTTPException(403)
+        listini = await db.fornitori_listini.find({}, {"_id": 0}).to_list(2000)
+        total_prod = 0
+        total_listini = 0
+        for lst in listini:
+            prodotti = lst.get("prodotti") or []
+            if not prodotti:
+                continue
+            for p in prodotti:
+                det = _detect_subcategoria(p.get("nome", ""), p.get("descrizione", ""), lst.get("categoria") or "")
+                p["subcategoria_effettiva"] = det or (lst.get("categoria") or "")
+            await db.fornitori_listini.update_one({"id": lst["id"]}, {"$set": {"prodotti": prodotti, "updated_at": NOW()}})
+            total_listini += 1
+            total_prod += len(prodotti)
+        return {"ok": True, "listini_aggiornati": total_listini, "prodotti_aggiornati": total_prod}

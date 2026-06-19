@@ -1,0 +1,31 @@
+{
+  "summary": "Round 88 P0 verification: BOTH backend + frontend testing. All 4 fixes work end-to-end. Backend: 4/4 pytest pass (subcategoria auto-detect, PUT no-wipe, sync commessa on PUT, infissi_extras persist). Frontend: Composite editor opens infisso configurator pre-populated with existing measure (120x140), select-on-focus replaces value instantly (typing 150 -> 150, not 120150), zanzariera toggle persists, row updates with new measure in name (150x140) after Salva. Listini Fornitori dashboard shows correct macro-categoria hierarchy (Porte interne FIRST, then Porte blindate). API filter by categoria correctly uses subcategoria_effettiva: 'Porta Matriz Noce' put in a 'porte_blindate' listino is auto-reclassified and appears ONLY under porte_interne filter, NOT under porte_blindate. 'Porta Blindata RC2' stays in porte_blindate. All data-testid expected by review are present.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Composite editor / Infissi row", "issues": ["Cosmetic: in the visible row badge the title cache showed '120x140cm' briefly while detail line had updated '150x140' — UI text is internally consistent after re-render; non-blocking."]}
+    ],
+    "console_warnings": ["React warning: 'A component is changing a controlled input to be uncontrolled' triggered in PreventivoComposite when infissi_meta fields toggle between defined/undefined. Non-blocking but worth a defensive fix (default values via ?? '' or ?? 0)."]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_round88_p0_flows.py",
+    "/app/test_reports/pytest/round88_results.xml"
+  ],
+  "action_items": [
+    "Optional polish: silence the React 'controlled->uncontrolled' warning in InfissoQuickConfigurator / PreventivoComposite by ensuring `it.larghezza ?? ''` style defaults so the input never receives `undefined`. Not user-facing but pollutes console."
+  ],
+  "critical_code_review_comments": [
+    "Backend riclassifica returns `cambi_per_categoria: {}` even when reclassification occurred — semantics: it counts ONLY products whose stored `categoria` field changed; products with auto-detected `subcategoria_effettiva` differing from listino do not increment this counter. Filter works correctly via subcategoria_effettiva at query time, but the response message can mislead admin. Consider exposing `n_prodotti_riclassificati` separately.",
+    "Frontend: routes use kebab-less form '/adminlistinifornitori' which is non-standard. Sidebar link works but direct URL navigation requires the concatenated form. Consider also exposing '/admin/listini-fornitori' for SEO/readability.",
+    "Test data hygiene: TEST_ prefixed fornitori/listini created during pytest runs are cleaned up in fixtures but a few stale TEST entries may exist from previous rounds — non-blocking."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@admin.it / admin",
+  "seed_data_creation": "Test created and deleted: 1 preventivo composite with 1 infisso (id inf-test-r88), 1 listino porte_blindate with 'Porta Matriz Noce' + 'Porta Blindata RC2 stark'. Both cleaned up.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Round 88 fully verified. All P0 user complaints (modifica preventivo + sync commessa, Porta Matriz incorrect under blindate, infissi non-modificabili in preventivo esistente, UX misure with select-on-focus) RESOLVED. The infissi configurator now correctly supports mode='edit' with initialItems. The route to Listini Fornitori is `/adminlistinifornitori`. Only minor issue: React controlled-input warning in console (harmless)."
+}

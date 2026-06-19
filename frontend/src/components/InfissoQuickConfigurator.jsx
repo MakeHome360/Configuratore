@@ -21,7 +21,7 @@ function resolveTipologiaId(categoria, apertura, tipologie) {
     || tipologie[0]?.id;
 }
 
-export function InfissoQuickConfigurator({ open, onClose, onConfirm }) {
+export function InfissoQuickConfigurator({ open, onClose, onConfirm, initialItems = null, mode = "add" }) {
   const [conf, setConf] = useState({ tipologie: [], materiali: [], vetri: [] });
   const [items, setItems] = useState([]);
 
@@ -29,15 +29,42 @@ export function InfissoQuickConfigurator({ open, onClose, onConfirm }) {
     if (!open) return;
     api.get("/infissi-config").then((r) => {
       setConf(r.data);
-      setItems([{
-        categoria: "finestra", apertura: "battente", ante: 2, hingeSide: "sx",
-        materiale_id: r.data.materiali[0]?.id, vetro_id: r.data.vetri[0]?.id,
-        larghezza: 120, altezza: 140, qty: 1, colore: "bianco",
-        tapparella: false, tapparella_colore: "antracite", tapparella_motorizzata: false,
-        zanzariera: false,
-      }]);
+      // Edit mode: precarica con gli infissi esistenti convertendoli al formato item interno
+      if (initialItems && initialItems.length) {
+        const seeded = initialItems.map((src) => {
+          const meta = src.infisso_meta || src;
+          return {
+            // Conserva id originale per match al confirm
+            __originalId: src.id || null,
+            categoria: meta.categoria || "finestra",
+            apertura: meta.apertura || "battente",
+            ante: meta.ante || 2,
+            hingeSide: meta.hingeSide || "sx",
+            materiale_id: meta.materiale_id || r.data.materiali[0]?.id,
+            vetro_id: meta.vetro_id || r.data.vetri[0]?.id,
+            larghezza: meta.larghezza || 120,
+            altezza: meta.altezza || 140,
+            qty: src.qty || meta.qty || 1,
+            colore: meta.colore || "bianco",
+            tapparella: !!meta.tapparella,
+            tapparella_colore: meta.tapparella_colore || "antracite",
+            tapparella_motorizzata: !!meta.tapparella_motorizzata,
+            zanzariera: !!meta.zanzariera,
+          };
+        });
+        setItems(seeded);
+      } else {
+        setItems([{
+          categoria: "finestra", apertura: "battente", ante: 2, hingeSide: "sx",
+          materiale_id: r.data.materiali[0]?.id, vetro_id: r.data.vetri[0]?.id,
+          larghezza: 120, altezza: 140, qty: 1, colore: "bianco",
+          tapparella: false, tapparella_colore: "antracite", tapparella_motorizzata: false,
+          zanzariera: false,
+        }]);
+      }
     });
-  }, [open]);
+    // eslint-disable-next-line
+  }, [open, initialItems]);
 
   const calcPrice = (it) => {
     const m = conf.materiali.find((x) => x.id === it.materiale_id);
@@ -74,13 +101,17 @@ export function InfissoQuickConfigurator({ open, onClose, onConfirm }) {
       const tip = conf.tipologie.find((x) => x.id === tipologia_id);
       const mat = conf.materiali.find((x) => x.id === it.materiale_id);
       const vet = conf.vetri.find((x) => x.id === it.vetro_id);
+      // Forza min 20cm sui valori finali (anti-zero)
+      const larg = Math.max(20, Number(it.larghezza) || 20);
+      const alt = Math.max(20, Number(it.altezza) || 20);
       return {
-        ...it, tipologia_id,
+        ...it, larghezza: larg, altezza: alt,
+        tipologia_id,
         tipologia_name: tip?.name, materiale_name: mat?.name, vetro_name: vet?.name,
-        price: calcPrice(it),
+        price: calcPrice({ ...it, larghezza: larg, altezza: alt }),
       };
     });
-    onConfirm({ items: enriched, totale });
+    onConfirm({ items: enriched, totale, mode, originalIds: items.map((it) => it.__originalId).filter(Boolean) });
     onClose();
   };
 
@@ -89,7 +120,9 @@ export function InfissoQuickConfigurator({ open, onClose, onConfirm }) {
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose} data-testid="infissi-quick-modal">
       <div className="bg-white rounded-lg w-full max-w-5xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="px-6 py-4 border-b flex justify-between items-center sticky top-0 bg-white z-10">
-          <h2 className="font-semibold text-lg" style={{ fontFamily: "Outfit" }}>Aggiungi Infissi (extra)</h2>
+          <h2 className="font-semibold text-lg" style={{ fontFamily: "Outfit" }}>
+            {mode === "edit" ? "Modifica infisso" : "Aggiungi Infissi (extra)"}
+          </h2>
           <button onClick={onClose}><X className="h-5 w-5" /></button>
         </div>
         <div className="p-6 space-y-3">
@@ -173,9 +206,36 @@ export function InfissoQuickConfigurator({ open, onClose, onConfirm }) {
                 </div>
                 {/* Misure GROSSE */}
                 <div className="grid grid-cols-12 gap-2 items-end bg-amber-50 border border-amber-200 p-3 rounded">
-                  <div className="col-span-4"><Label className="text-sm uppercase font-bold">📏 Larghezza (cm)</Label><Input type="number" min={20} step="1" className="h-11 text-xl font-mono font-extrabold text-center" value={it.larghezza} onChange={(e) => upd(i, "larghezza", Math.max(20, Number(e.target.value) || 20))} /></div>
-                  <div className="col-span-4"><Label className="text-sm uppercase font-bold">📐 Altezza (cm)</Label><Input type="number" min={20} step="1" className="h-11 text-xl font-mono font-extrabold text-center" value={it.altezza} onChange={(e) => upd(i, "altezza", Math.max(20, Number(e.target.value) || 20))} /></div>
-                  <div className="col-span-2"><Label className="text-sm uppercase font-bold">× Qty</Label><Input type="number" min={1} step="1" className="h-11 text-xl font-mono font-extrabold text-center" value={it.qty} onChange={(e) => upd(i, "qty", Math.max(1, Number(e.target.value) || 1))} /></div>
+                  <div className="col-span-4"><Label className="text-sm uppercase font-bold">📏 Larghezza (cm)</Label>
+                    <Input type="number" step="1"
+                      className="h-11 text-xl font-mono font-extrabold text-center"
+                      value={it.larghezza}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => upd(i, "larghezza", e.target.value === "" ? "" : Number(e.target.value))}
+                      onBlur={(e) => { const v = Math.max(20, Number(e.target.value) || 20); upd(i, "larghezza", v); }}
+                      data-testid={`iqc-larg-${i}`}
+                    />
+                  </div>
+                  <div className="col-span-4"><Label className="text-sm uppercase font-bold">📐 Altezza (cm)</Label>
+                    <Input type="number" step="1"
+                      className="h-11 text-xl font-mono font-extrabold text-center"
+                      value={it.altezza}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => upd(i, "altezza", e.target.value === "" ? "" : Number(e.target.value))}
+                      onBlur={(e) => { const v = Math.max(20, Number(e.target.value) || 20); upd(i, "altezza", v); }}
+                      data-testid={`iqc-alt-${i}`}
+                    />
+                  </div>
+                  <div className="col-span-2"><Label className="text-sm uppercase font-bold">× Qty</Label>
+                    <Input type="number" step="1"
+                      className="h-11 text-xl font-mono font-extrabold text-center"
+                      value={it.qty}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => upd(i, "qty", e.target.value === "" ? "" : Number(e.target.value))}
+                      onBlur={(e) => { const v = Math.max(1, Number(e.target.value) || 1); upd(i, "qty", v); }}
+                      data-testid={`iqc-qty-${i}`}
+                    />
+                  </div>
                   <div className="col-span-2 text-right"><div className="text-[10px] uppercase">Prezzo</div><div className="text-lg font-bold font-mono">{fmtEur2(price)}</div></div>
                 </div>
                 {/* Accessori */}
@@ -201,7 +261,9 @@ export function InfissoQuickConfigurator({ open, onClose, onConfirm }) {
           <div className="text-sm">Totale infissi: <span className="font-bold text-lg font-mono">{fmtEur2(totale)}</span></div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose}>Annulla</Button>
-            <Button style={{ background: "var(--brand)", color: "white" }} onClick={confirm} disabled={items.length === 0} data-testid="iqc-confirm-btn">Aggiungi al preventivo</Button>
+            <Button style={{ background: "var(--brand)", color: "white" }} onClick={confirm} disabled={items.length === 0} data-testid="iqc-confirm-btn">
+              {mode === "edit" ? "Salva modifiche" : "Aggiungi al preventivo"}
+            </Button>
           </div>
         </div>
       </div>

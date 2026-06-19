@@ -1,6 +1,61 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 88 — Modifica Preventivo + Sync Commessa, Listini Fornitori Macrocategorie, Infissi Modificabili (Feb 2026)
+
+**Richieste utente** (3 punti P0):
+1. "dall'elenco dei preventivi non posso fare modifica e modificare il preventivo aggiungendo o sottraendo voci. inoltre verifica che il flusso sia corretto e che quindi se modifico un preventivo siamo modificato da tutte le parti, nella commessa ecc ecc"
+2. "nel menù a tendina ci sia la porta matriz sotto alle porte blindate? i listini fornitori devono seguire lo stesso criterio delle macrocategorie del resto del programma."
+3. "gli infissi nel configuratore infissi se modifico il preventivo quelli non posso modificarli ne nelle misure ne posso aggiungere o togliere tapparelle e zanzariere" + UX misure: "partono da 20 cm e per mettere na misura quando seleziono la misura non me la fa mettere tutta subito"
+
+### Backend — Sync Commessa su PUT /api/preventivi/{id} (`server.py`)
+- Dopo l'aggiornamento del preventivo, se esiste una commessa collegata (`commesse.find_one({preventivo_id})`):
+  - Aggiornati `totale`, `cliente`, `ultimo_sync_preventivo`, flag `preventivo_modificato_dopo_creazione=True`.
+  - Se `computo_metrico.auto_from_preventivo=True`, ricalcola gli items dal preventivo aggiornato (items + composite_selections + manual_extras + infissi_extras + listini_selections) e marca `risincronizzato=True`. Le modifiche manuali al computo non vengono sovrascritte (controllo `auto_from_preventivo`).
+- Mantiene il fix R87 `exclude_unset=True` per evitare wipe di dati.
+
+### Backend — Categorizzazione Listini Fornitori (`routes_listini_fornitori.py`)
+- Nuova funzione `_detect_subcategoria(nome, descrizione, categoria_listino)` con 13 regole di matching (porte_blindate, porte_interne, infissi, sanitari, rubinetterie, vasche_box_doccia, termo_arredo, elettrodomestici, parquet_pavimenti, piastrelle, controsoffitti, vernici_pitture, cucina).
+- Logica priorità: "Porta Matriz Noce" in un listino `porte_blindate` → auto-rilevata come `porte_interne` (Matriz è un modello Garofoli interno). "Porta Blindata RC2" → resta `porte_blindate`.
+- Campo `subcategoria_effettiva` salvato per ogni prodotto + override manuale possibile via campo `subcategoria` in ProdottoIn.
+- `cerca_prodotti` ora filtra per `subcategoria_effettiva` di ogni prodotto, non per `categoria` del listino padre → un menù a tendina filtrato per "porte_blindate" NON mostra più la Matriz.
+- Nuovi endpoint:
+  - `POST /api/fornitori-listini/{lid}/riclassifica` (singolo listino).
+  - `POST /api/fornitori-listini-riclassifica-tutti` (one-shot per migrazione storica). Eseguito 1× sui dati esistenti (1 listino, 4 prodotti aggiornati).
+- `list_categorie` ora include sia `n_listini` che `n_prodotti` (counting via `subcategoria_effettiva`).
+
+### Frontend — InfissoQuickConfigurator edit mode (`InfissoQuickConfigurator.jsx`)
+- Props nuove: `initialItems`, `mode` (`"add"` | `"edit"`). In edit mode pre-popola gli items con i dati esistenti (categoria, apertura, ante, misure, materiale, vetro, tapparella/zanzariera).
+- Header e bottone confirm dinamici: "Modifica infisso" / "Salva modifiche" vs "Aggiungi Infissi (extra)" / "Aggiungi al preventivo".
+- UX misure FIX: input Larghezza/Altezza/Qty ora hanno `onFocus={e=>e.target.select()}` (seleziona tutto il valore al click) e validazione min=20 solo `onBlur` (non più al type → utente può scrivere "180" e ottiene 180, non 120180). Stesso fix su Qty (min=1 al blur).
+- Confirm restituisce `mode` e `originalIds` in modo che il parent sostituisca le righe corrette.
+
+### Frontend — PreventivoComposite.jsx — Infissi modificabili in preventivo
+- Nuovo state `infissiEditIds` per modalità edit.
+- Tabella infissi rinnovata: ogni riga mostra
+  - Descrizione + dettagli misura/colore/materiale.
+  - Checkbox **Tapparella** + **Zanzariera** modificabili inline (data-testid `comp-inf-tapp-{id}` / `comp-inf-zanz-{id}`).
+  - Input **Qty** inline (con select-on-focus).
+  - Bottone **✏️ Modifica** (`comp-inf-edit-{id}`): apre l'`InfissoQuickConfigurator` in mode="edit" precaricato sull'infisso → utente può cambiare misure/materiale/vetro/ante e ricalcolare il prezzo.
+  - Bottone **×** rimuovi (`comp-inf-del-{id}`).
+- `onInfissiConfirm` gestisce sia add (append) sia edit (replace by id).
+- Hint UI: "💡 Per modificare misure, materiale, vetro, n° ante o ricalcolare il prezzo automaticamente, usa ✏️ Modifica sulla riga."
+
+### Test
+- `/app/backend/tests/test_round88_p0_flows.py`: 4/4 pytest passano (subcategoria detection via API, PUT no-wipe, sync commessa on PUT, infissi_extras persist).
+- `testing_agent_v3_fork` iteration 27: backend 100%, frontend 100%, no blocker, retest_needed=False. Solo console warning React "controlled→uncontrolled" non-bloccante.
+
+### Endpoints/Schemas modificati (Round 88)
+- `PUT /api/preventivi/{id}` — ora sincronizza commessa collegata (totale + computo_metrico se auto).
+- `POST /api/fornitori-listini/{lid}/riclassifica` (admin).
+- `POST /api/fornitori-listini-riclassifica-tutti` (admin, one-shot).
+- `GET /api/fornitori-listini-prodotti/cerca?categoria=X&strict_categoria=true` — usa subcategoria_effettiva.
+- `GET /api/fornitori-listini-categorie` — ritorna anche `n_prodotti`.
+- DB: ogni prodotto in `fornitori_listini.prodotti[]` ora ha `subcategoria_effettiva` (auto-detect).
+- DB: ogni `commesse` ora può avere `ultimo_sync_preventivo`, `preventivo_modificato_dopo_creazione`.
+
+
+
 ## Round 86 — Extra Manuali + Audit Documenti/Foto + PDF con Dati Aziendali (Feb 2026)
 
 **Richiesta utente** (3 punti):

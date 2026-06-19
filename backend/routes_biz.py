@@ -47,6 +47,22 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
             missing = [dict(v) for v in DEFAULT_VOCI_BACKOFFICE if v.get("id") and v["id"] not in existing_ids]
             if missing:
                 await db.voci_backoffice.insert_many(missing)
+            # R87 MIGRATION: imposta subcategory sulle voci INFISSI esistenti senza il campo
+            # Esterni (configuratore): tutte le voci con "esterni" nel nome o di tipo infissi/tapparelle/zanzariere/pellicolatura
+            await db.voci_backoffice.update_many(
+                {"category": "INFISSI", "subcategory": {"$exists": False},
+                 "$or": [
+                    {"name": {"$regex": "(esterni|tapparell|zanzarier|pellicolatur|griglia)", "$options": "i"}},
+                    {"id": {"$in": ["voce-infissi-pvc", "voce-infissi-alluminio", "voce-infissi-legno",
+                                    "voce-zanzariere", "voce-tapparelle", "voce-griglia-al", "voce-pellicolatura-pvc"]}},
+                 ]},
+                {"$set": {"subcategory": "esterno"}},
+            )
+            # Interni (default per il resto degli INFISSI): porte, pannelli blindata, cornici
+            await db.voci_backoffice.update_many(
+                {"category": "INFISSI", "subcategory": {"$exists": False}},
+                {"$set": {"subcategory": "interno"}},
+            )
         if await db.fasi_commessa.count_documents({}) == 0:
             await db.fasi_commessa.insert_many([dict(f) for f in DEFAULT_FASI_COMMESSA])
         if await db.template_email.count_documents({}) == 0:
@@ -1392,6 +1408,10 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
         grouped: Dict[str, List[Dict[str, Any]]] = {}
         for v in voci:
             cat = v.get("category") or "ALTRO"
+            # R87: per la sezione INFISSI nel composite, FILTRA via gli esterni (sono nel Configuratore Infissi).
+            # Mostriamo solo `subcategory != "esterno"` (porte interne, blindate, accessori interni).
+            if cat == "INFISSI" and (v.get("subcategory") == "esterno"):
+                continue
             # Estrai voci di "demolizione" in una sezione virtuale dedicata
             name_lc = (v.get("name") or "").lower()
             if any(k in name_lc for k in ("demoliz", "smaltim", "rimoz")) and cat == "MURATURA":
@@ -1409,6 +1429,7 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
                 "modificabile_dal_venditore": bool(v.get("modificabile_dal_venditore")),
                 "category": v.get("category"),
                 "cad_category": v.get("cad_category"),
+                "subcategory": v.get("subcategory"),
             })
         # Ordina voci dentro ogni sezione per nome
         for cat in grouped:
@@ -1448,11 +1469,14 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
             ricarico = float(v.get("ricarico") or 0)
             prices[v["id"]] = round(acquisto * ricarico, 2)
         pvc_base = prices.get("voce-infissi-pvc") or 504.0
+        al_base = prices.get("voce-infissi-alluminio") or 828.0
         materiali = [
-            {"id": "mat-pvc",      "name": "PVC bianco",                "multiplier": 1.0, "base_per_mq": pvc_base,                                                    "voce_id": "voce-infissi-pvc"},
-            {"id": "mat-pvc-nog",  "name": "PVC effetto legno",         "multiplier": 1.0, "base_per_mq": round(pvc_base * 1.15, 2),                                   "voce_id": "voce-infissi-pvc",       "variant_factor": 1.15},
-            {"id": "mat-al",       "name": "Alluminio taglio termico",  "multiplier": 1.0, "base_per_mq": prices.get("voce-infissi-alluminio") or 828.0,               "voce_id": "voce-infissi-alluminio"},
-            {"id": "mat-legno-al", "name": "Legno/Alluminio",           "multiplier": 1.0, "base_per_mq": prices.get("voce-infissi-legno") or 1116.0,                  "voce_id": "voce-infissi-legno"},
+            {"id": "mat-pvc",      "name": "PVC bianco",                "multiplier": 1.0, "base_per_mq": pvc_base,                       "voce_id": "voce-infissi-pvc"},
+            {"id": "mat-pvc-nog",  "name": "PVC effetto legno",         "multiplier": 1.0, "base_per_mq": round(pvc_base * 1.15, 2),      "voce_id": "voce-infissi-pvc",       "variant_factor": 1.15},
+            {"id": "mat-pvc-bic",  "name": "PVC bicolore (bianco/RAL)", "multiplier": 1.0, "base_per_mq": round(pvc_base * 1.20, 2),      "voce_id": "voce-infissi-pvc",       "variant_factor": 1.20},
+            {"id": "mat-al",       "name": "Alluminio taglio termico",  "multiplier": 1.0, "base_per_mq": al_base,                        "voce_id": "voce-infissi-alluminio"},
+            {"id": "mat-al-bic",   "name": "Alluminio bicolore (int/ext)", "multiplier": 1.0, "base_per_mq": round(al_base * 1.15, 2),   "voce_id": "voce-infissi-alluminio", "variant_factor": 1.15},
+            {"id": "mat-legno-al", "name": "Legno/Alluminio",           "multiplier": 1.0, "base_per_mq": prices.get("voce-infissi-legno") or 1116.0, "voce_id": "voce-infissi-legno"},
         ]
         return {"tipologie": INFISSI_TIPOLOGIE, "materiali": materiali, "vetri": INFISSI_VETRI}
 

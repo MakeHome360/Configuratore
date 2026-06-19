@@ -76,15 +76,22 @@ DEFAULT_VOCI_BACKOFFICE = [
     {"id": "voce-sanitari", "category": "IMPIANTI", "name": "Sanitari bagno (WC+bidet+lavabo)", "prezzo_acquisto": 500.0, "ricarico": 1.8, "unit": "pz"},
     {"id": "voce-box-doccia", "category": "IMPIANTI", "name": "Box doccia", "prezzo_acquisto": 380.0, "ricarico": 1.8, "unit": "pz"},
     {"id": "voce-mobile-bagno", "category": "IMPIANTI", "name": "Mobile bagno", "prezzo_acquisto": 340.0, "ricarico": 1.8, "unit": "pz"},
-    # INFISSI
-    {"id": "voce-pannello-blinda", "category": "INFISSI", "name": "Pannello porta blindata", "prezzo_acquisto": 750.0, "ricarico": 1.8, "unit": "pz"},
-    {"id": "voce-cornici-porte", "category": "INFISSI", "name": "Posa cornici porte", "prezzo_acquisto": 300.0, "ricarico": 1.8, "unit": "forfait"},
-    {"id": "voce-infissi-pvc", "category": "INFISSI", "name": "Infissi PVC bianchi (esterni)", "prezzo_acquisto": 280.0, "ricarico": 1.8, "unit": "m²"},
-    {"id": "voce-infissi-alluminio", "category": "INFISSI", "name": "Infissi alluminio taglio termico (esterni)", "prezzo_acquisto": 460.0, "ricarico": 1.8, "unit": "m²"},
-    {"id": "voce-infissi-legno", "category": "INFISSI", "name": "Infissi legno/alluminio (esterni)", "prezzo_acquisto": 620.0, "ricarico": 1.8, "unit": "m²"},
-    {"id": "voce-zanzariere", "category": "INFISSI", "name": "Zanzariere POSA INCLUSA", "prezzo_acquisto": 80.0, "ricarico": 1.8, "unit": "m²"},
-    {"id": "voce-tapparelle", "category": "INFISSI", "name": "Tapparelle POSA INCLUSA", "prezzo_acquisto": 120.0, "ricarico": 1.8, "unit": "m²"},
-    {"id": "voce-griglia-al", "category": "INFISSI", "name": "Griglia alluminio sicurezza", "prezzo_acquisto": 2000.0, "ricarico": 1.8, "unit": "pz"},
+    # INFISSI ESTERNI (gestiti dal Configuratore Infissi nel composite, NON dalla sezione voci)
+    {"id": "voce-pannello-blinda", "category": "INFISSI", "subcategory": "interno", "name": "Pannello porta blindata", "prezzo_acquisto": 750.0, "ricarico": 1.8, "unit": "pz"},
+    {"id": "voce-cornici-porte", "category": "INFISSI", "subcategory": "interno", "name": "Posa cornici porte", "prezzo_acquisto": 300.0, "ricarico": 1.8, "unit": "forfait"},
+    {"id": "voce-infissi-pvc", "category": "INFISSI", "subcategory": "esterno", "name": "Infissi PVC bianchi (esterni)", "prezzo_acquisto": 280.0, "ricarico": 1.8, "unit": "m²"},
+    {"id": "voce-infissi-alluminio", "category": "INFISSI", "subcategory": "esterno", "name": "Infissi alluminio taglio termico (esterni)", "prezzo_acquisto": 460.0, "ricarico": 1.8, "unit": "m²"},
+    {"id": "voce-infissi-legno", "category": "INFISSI", "subcategory": "esterno", "name": "Infissi legno/alluminio (esterni)", "prezzo_acquisto": 620.0, "ricarico": 1.8, "unit": "m²"},
+    {"id": "voce-zanzariere", "category": "INFISSI", "subcategory": "esterno", "name": "Zanzariere POSA INCLUSA", "prezzo_acquisto": 80.0, "ricarico": 1.8, "unit": "m²"},
+    {"id": "voce-tapparelle", "category": "INFISSI", "subcategory": "esterno", "name": "Tapparelle POSA INCLUSA", "prezzo_acquisto": 120.0, "ricarico": 1.8, "unit": "m²"},
+    {"id": "voce-griglia-al", "category": "INFISSI", "subcategory": "esterno", "name": "Griglia alluminio sicurezza", "prezzo_acquisto": 2000.0, "ricarico": 1.8, "unit": "pz"},
+    # PORTE INTERNE (R87 nuove)
+    {"id": "voce-porta-interna-laccata", "category": "INFISSI", "subcategory": "interno", "name": "Porta interna laccata bianca (con telaio)", "prezzo_acquisto": 280.0, "ricarico": 1.8, "unit": "pz"},
+    {"id": "voce-porta-interna-rovere", "category": "INFISSI", "subcategory": "interno", "name": "Porta interna in rovere/noce (con telaio)", "prezzo_acquisto": 420.0, "ricarico": 1.8, "unit": "pz"},
+    {"id": "voce-porta-interna-vetro", "category": "INFISSI", "subcategory": "interno", "name": "Porta interna con inserto vetro satinato", "prezzo_acquisto": 520.0, "ricarico": 1.8, "unit": "pz"},
+    {"id": "voce-porta-interna-scorrevole", "category": "INFISSI", "subcategory": "interno", "name": "Porta interna scorrevole esterno muro", "prezzo_acquisto": 580.0, "ricarico": 1.8, "unit": "pz"},
+    {"id": "voce-porta-interna-scrigno", "category": "INFISSI", "subcategory": "interno", "name": "Porta interna scorrevole interno muro (scrigno + porta)", "prezzo_acquisto": 720.0, "ricarico": 1.8, "unit": "pz"},
+    {"id": "voce-posa-porta-interna", "category": "INFISSI", "subcategory": "interno", "name": "Posa porta interna", "prezzo_acquisto": 90.0, "ricarico": 1.8, "unit": "pz"},
     # SERVIZI
     {"id": "voce-cila", "category": "SERVIZI", "name": "Pratica CILA", "prezzo_acquisto": 500.0, "ricarico": 1.8, "unit": "forfait"},
     {"id": "voce-direzione-lavori", "category": "SERVIZI", "name": "Direzione lavori", "prezzo_acquisto": 900.0, "ricarico": 1.8, "unit": "forfait"},
@@ -94,11 +101,11 @@ DEFAULT_VOCI_BACKOFFICE = [
     {"id": "voce-sicurezza", "category": "SERVIZI", "name": "Sicurezza cantiere", "prezzo_acquisto": 450.0, "ricarico": 1.8, "unit": "forfait"},
     # NUOVE VOCI Round 19 — climatizzazione quadri, posa blindata, carta da parati, pellicolatura PVC, punto acqua composito
     {"id": "voce-condiz-quadri", "category": "IMPIANTI", "name": "Climatizzatore quadri-split (4 split + 1 UE)", "prezzo_acquisto": 3300.0, "ricarico": 1.8, "unit": "pz", "cad_category": "CLIMA"},
-    {"id": "voce-posa-porta-blindata", "category": "INFISSI", "name": "Posa porta blindata", "prezzo_acquisto": 250.0, "ricarico": 1.8, "unit": "pz"},
+    {"id": "voce-posa-porta-blindata", "category": "INFISSI", "subcategory": "interno", "name": "Posa porta blindata", "prezzo_acquisto": 250.0, "ricarico": 1.8, "unit": "pz"},
     {"id": "voce-carta-parati-rimoz", "category": "MURATURA", "name": "Rimozione carta da parati", "prezzo_acquisto": 9.0, "ricarico": 1.8, "unit": "m²", "cad_category": "DECORAZIONE"},
     {"id": "voce-carta-parati-posa", "category": "MURATURA", "name": "Posa carta da parati", "prezzo_acquisto": 28.0, "ricarico": 1.8, "unit": "m²", "modificabile_dal_venditore": True, "cad_category": "DECORAZIONE"},
     # Maggiorazione pellicolatura: l'utente può aggiungerla agli infissi PVC. La % si imposta nelle voci backoffice.
-    {"id": "voce-pellicolatura-pvc", "category": "INFISSI", "name": "Pellicolatura infissi PVC (maggiorazione)", "prezzo_acquisto": 0.0, "ricarico": 1.0, "unit": "%", "modificabile_dal_venditore": True, "maggiorazione_pct": 25.0, "note": "Imposta la % di maggiorazione applicata al prezzo degli infissi PVC quando si sceglie pellicolatura"},
+    {"id": "voce-pellicolatura-pvc", "category": "INFISSI", "subcategory": "esterno", "name": "Pellicolatura infissi PVC (maggiorazione)", "prezzo_acquisto": 0.0, "ricarico": 1.0, "unit": "%", "modificabile_dal_venditore": True, "maggiorazione_pct": 25.0, "note": "Imposta la % di maggiorazione applicata al prezzo degli infissi PVC quando si sceglie pellicolatura"},
     # Punto acqua composito (fredda/calda/scarico) — un solo punto contato in qty
     {"id": "voce-punto-acqua-completo", "category": "IMPIANTI", "name": "Punto acqua completo (F+C+S)", "prezzo_acquisto": 80.0, "ricarico": 1.8, "unit": "pz", "cad_category": "TERMO_IDRAULICO"},
     # Round 22 — voci elettriche specifiche (presa TV, dati, deviatore, LED, presa cucina maggiorata)

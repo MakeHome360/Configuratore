@@ -34,6 +34,7 @@ def _cfg() -> Dict[str, Any]:
         "password": os.environ.get("SMTP_PASSWORD", ""),
         "from_email": os.environ.get("SMTP_FROM_EMAIL") or os.environ.get("SMTP_USER", ""),
         "from_name": os.environ.get("SMTP_FROM_NAME") or "Sa di casa",
+        "reply_to_default": os.environ.get("SMTP_REPLY_TO", ""),
         "app_url": os.environ.get("APP_PUBLIC_URL", ""),
     }
 
@@ -67,8 +68,10 @@ async def send_email(
     msg["To"] = ", ".join(recipients)
     if cc:
         msg["Cc"] = ", ".join(cc)
-    if reply_to:
-        msg["Reply-To"] = reply_to
+    # Reply-To: se non specificato dal chiamante, usa quello di default (es. info@sadicasa.it)
+    eff_reply_to = reply_to or c.get("reply_to_default") or ""
+    if eff_reply_to:
+        msg["Reply-To"] = eff_reply_to
     msg["Subject"] = subject
     # Plain text fallback
     msg.set_content(text or _html_to_text(html))

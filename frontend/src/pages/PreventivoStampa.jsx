@@ -96,6 +96,23 @@ export default function PreventivoStampa() {
 
   const totals = useMemo(() => {
     if (!prev) return null;
+    // ---- MODALITÀ BAGNO (R89) ----
+    if (prev.tipo === "bagno") {
+      const manodopera = Number(prev.manodopera_base || 0);
+      const tier = (bathroomTiers || []).find((t) => t.id === prev.bathroom_tier);
+      const tierPrice = tier?.price || 0;
+      const piastrelleTot = (Number(prev.piastrelle_mq || 0)) * (Number(prev.piastrelle_prezzo_mq || 0));
+      const extrasTot = (prev.extra_voci || []).reduce((s, x) => s + (Number(x.prezzo) || 0) * (Number(x.qty) || 1), 0);
+      const subtotal = manodopera + tierPrice + piastrelleTot + extrasTot;
+      const sconto = Number(prev.sconto_eur || 0);
+      const after = subtotal - sconto;
+      const iva = after * ((prev.iva_pct || 10) / 100);
+      const total = after + iva;
+      return {
+        mode: "bagno", manodopera, tier, tierPrice, piastrelleTot, extrasTot,
+        subtotal, sconto, imponibile: after, iva, total, multiplier: 1,
+      };
+    }
     // ---- MODALITÀ COMPOSITE ----
     if (prev.tipo === "composite" || !pkg) {
       const compSel = prev.composite_selections || {};
@@ -180,8 +197,9 @@ export default function PreventivoStampa() {
 
   if (loading) return <div className="p-12 text-center text-zinc-500">Caricamento…</div>;
   if (!prev) return <div className="p-12 text-center text-zinc-500">Preventivo non trovato.</div>;
-  const isComposite = prev.tipo === "composite" || !prev.package_id;
-  if (!isComposite && !pkg) return <div className="p-12 text-center text-zinc-500">Pacchetto non disponibile per questo preventivo.</div>;
+  const isComposite = prev.tipo === "composite" || (!prev.package_id && prev.tipo !== "bagno");
+  const isBagno = prev.tipo === "bagno";
+  if (!isComposite && !isBagno && !pkg) return <div className="p-12 text-center text-zinc-500">Pacchetto non disponibile per questo preventivo.</div>;
 
   const dataDoc = prev.created_at ? new Date(prev.created_at).toLocaleDateString("it-IT", { year: "numeric", month: "long", day: "numeric" }) : new Date().toLocaleDateString("it-IT");
   const dataValidita = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString("it-IT", { year: "numeric", month: "long", day: "numeric" });
@@ -339,8 +357,12 @@ export default function PreventivoStampa() {
             {prev.cliente?.telefono && <div className="text-xs text-zinc-500 mono">{prev.cliente.telefono}</div>}
           </div>
           <div>
-            <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">{isComposite ? "Tipo di preventivo" : "Pacchetto scelto"}</div>
-            {isComposite ? (
+            <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">{isComposite ? "Tipo di preventivo" : (isBagno ? "Tipo di preventivo" : "Pacchetto scelto")}</div>
+            {isBagno ? (
+              <div className="text-lg font-semibold flex items-center gap-2" style={{ fontFamily: "Outfit", color: totals.tier?.color || colorePrimario }}>
+                <Award className="h-5 w-5" /> Ristrutturazione Bagno{totals.tier ? ` · ${totals.tier.name}` : ""}
+              </div>
+            ) : isComposite ? (
               <div className="text-lg font-semibold flex items-center gap-2" style={{ fontFamily: "Outfit", color: colorePrimario }}>
                 <Award className="h-5 w-5" /> Preventivo personalizzato
               </div>
@@ -349,8 +371,10 @@ export default function PreventivoStampa() {
                 <Award className="h-5 w-5" /> {pkg.name}
               </div>
             )}
-            <div className="text-sm text-zinc-600">{prev.mq} m²{!isComposite && ` · finitura ${pkg.tier || "completa"}`}</div>
-            {(totals.multiplier !== 1) && (
+            <div className="text-sm text-zinc-600">
+              {isBagno ? "Chiavi in mano" : (<>{prev.mq} m²{!isComposite && ` · finitura ${pkg.tier || "completa"}`}</>)}
+            </div>
+            {(totals.multiplier !== 1) && !isBagno && (
               <div className="text-[10px] mono text-amber-700 mt-1">
                 {prev.mq < 40 ? "Calcolo a corpo (mq < 40)" : "Maggiorazione mq piccole +10%"}
               </div>
@@ -373,7 +397,107 @@ export default function PreventivoStampa() {
         {/* R87: banner rimosso — nascosto completamente all'utente.
            L'avviso restore è visibile solo nella lista Preventivi (badge admin). */}
 
+        {/* ===== BAGNO BREAKDOWN (R89) ===== */}
+        {isBagno && (
+          <div className="px-12 py-8">
+            <h2 className="text-2xl font-semibold mb-1" style={{ fontFamily: "Outfit", color: colorePrimario }}>
+              Ristrutturazione bagno chiavi in mano
+            </h2>
+            <p className="text-sm text-zinc-600 mb-5">
+              Formula tutto-compreso: manodopera, materiali, sanitari, rubinetterie, piastrelle e finiture.
+            </p>
+            <div className="border border-zinc-200 rounded overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-zinc-50 border-b border-zinc-200 text-[10px] uppercase tracking-widest text-zinc-500">
+                  <tr>
+                    <th className="text-left px-4 py-2">Descrizione</th>
+                    <th className="text-right px-4 py-2 w-32">Totale</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-b border-zinc-100">
+                    <td className="px-4 py-3">
+                      <div className="font-semibold">Manodopera base bagno</div>
+                      <div className="text-[11px] text-zinc-500">
+                        Include: demolizione bagno, impianto idraulico/elettrico, massetto e impermeabilizzazione,
+                        posa piastrelle, pittura pareti/soffitto, installazione sanitari e miscelatori,
+                        smaltimento macerie.
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono">{fmtEuro(totals.manodopera)}</td>
+                  </tr>
+                  {totals.tier && (
+                    <tr className="border-b border-zinc-100">
+                      <td className="px-4 py-3">
+                        <div className="font-semibold" style={{ color: totals.tier.color }}>
+                          Pacchetto sanitari · {totals.tier.name}
+                        </div>
+                        <div className="text-[11px] text-zinc-500 mb-1">{totals.tier.description}</div>
+                        {(totals.tier.included_items || []).length > 0 && (
+                          <ul className="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-1">
+                            {(totals.tier.included_items || []).map((it, i) => (
+                              <li key={i} className="text-[10px] text-zinc-700 flex items-start gap-1">
+                                <span className="text-emerald-500 mt-0.5">✓</span><span>{it}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono">{fmtEuro(totals.tierPrice)}</td>
+                    </tr>
+                  )}
+                  {totals.piastrelleTot > 0 && (
+                    <tr className="border-b border-zinc-100">
+                      <td className="px-4 py-3">
+                        <div className="font-semibold">Piastrelle</div>
+                        <div className="text-[11px] text-zinc-500">
+                          {prev.piastrelle_mq} m² × {fmtEuro(prev.piastrelle_prezzo_mq)}/m²
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono">{fmtEuro(totals.piastrelleTot)}</td>
+                    </tr>
+                  )}
+                  {(prev.extra_voci || []).map((x, i) => (
+                    (Number(x.prezzo) || 0) * (Number(x.qty) || 1) > 0 ? (
+                      <tr key={i} className="border-b border-zinc-100">
+                        <td className="px-4 py-3">
+                          <div className="font-semibold">{x.nome || `Extra ${i + 1}`}</div>
+                          {x.qty > 1 && <div className="text-[11px] text-zinc-500">Qty: {x.qty} × {fmtEuro(x.prezzo)}</div>}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono">{fmtEuro((Number(x.prezzo) || 0) * (Number(x.qty) || 1))}</td>
+                      </tr>
+                    ) : null
+                  ))}
+                  <tr className="bg-zinc-50 font-semibold">
+                    <td className="px-4 py-2 text-right">Subtotale (IVA esclusa)</td>
+                    <td className="px-4 py-2 text-right font-mono">{fmtEuro(totals.subtotal)}</td>
+                  </tr>
+                  {totals.sconto > 0 && (
+                    <tr className="bg-emerald-50 text-emerald-700 font-semibold">
+                      <td className="px-4 py-2 text-right">Sconto commerciale</td>
+                      <td className="px-4 py-2 text-right font-mono">− {fmtEuro(totals.sconto)}</td>
+                    </tr>
+                  )}
+                  <tr className="border-t border-zinc-200">
+                    <td className="px-4 py-2 text-right text-[11px] text-zinc-500">Imponibile</td>
+                    <td className="px-4 py-2 text-right font-mono">{fmtEuro(totals.imponibile)}</td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-2 text-right text-[11px] text-zinc-500">IVA {prev.iva_pct || 10}%</td>
+                    <td className="px-4 py-2 text-right font-mono">{fmtEuro(totals.iva)}</td>
+                  </tr>
+                  <tr className="bg-zinc-900 text-white font-bold text-base">
+                    <td className="px-4 py-3 text-right">TOTALE CHIAVI IN MANO</td>
+                    <td className="px-4 py-3 text-right font-mono">{fmtEuro(totals.total)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* ===== COSA È INCLUSO ===== */}
+        {!isBagno && (
         <div className="px-12 py-8">
           <h2 className="text-2xl font-semibold mb-1" style={{ fontFamily: "Outfit", color: colorePrimario }}>
             {isComposite ? "Lavorazioni e voci selezionate" : `Cosa è incluso nel pacchetto ${pkg.name}`}
@@ -510,6 +634,7 @@ export default function PreventivoStampa() {
             );
           })()}
         </div>
+        )}
 
         {/* ===== BAGNI ===== */}
         {!isComposite && (prev.bathrooms || []).length > 0 && (
@@ -555,6 +680,7 @@ export default function PreventivoStampa() {
         )}
 
         {/* ===== BREAKDOWN TOTALI ===== */}
+        {!isBagno && (
         <div className="px-12 pb-6">
           <div className="bg-zinc-50 border border-zinc-200 rounded p-5">
             <div className="space-y-2 text-sm">
@@ -591,6 +717,7 @@ export default function PreventivoStampa() {
             </div>
           </div>
         </div>
+        )}
 
         {/* ===== PERCHÉ NOI (vendor closing) ===== */}
         <div className="px-12 py-6 bg-zinc-50">

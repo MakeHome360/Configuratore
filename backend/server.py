@@ -2276,6 +2276,10 @@ async def diagnose_email(body: Optional[Dict[str, Any]] = None, user: Dict[str, 
         result["error_type"] = "OTHER"
         result["error_message"] = str(e)
     return result
+
+
+@api.post("/preventivi/{prev_id}/send-email")
+@api.post("/preventivi/{prev_id}/invia-email")
 async def invia_preventivo_email(prev_id: str, body: Optional[Dict[str, Any]] = None, user: Dict[str, Any] = Depends(get_current_user)):
     """Invia al cliente il link al riepilogo stampabile del preventivo con un messaggio personalizzato.
     R87: usa il template professionale `send_preventivo_email` con branding completo."""
@@ -2286,7 +2290,7 @@ async def invia_preventivo_email(prev_id: str, body: Optional[Dict[str, Any]] = 
     cliente = prev.get("cliente") or {}
     body = body or {}
     # R87 fix: il frontend può passare un destinatario custom (es. cliente senza email salvata)
-    to_email = (body.get("destinatario") or cliente.get("email") or "").strip()
+    to_email = (body.get("destinatario") or body.get("to") or cliente.get("email") or "").strip()
     if not to_email:
         raise HTTPException(400, "Manca indirizzo email destinatario")
     # Combina dati azienda da impostazioni (sorgente nuova) + dati_azienda (legacy)

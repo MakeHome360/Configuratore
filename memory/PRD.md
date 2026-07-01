@@ -1,6 +1,51 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 89 bis — Preventivo Bagno "chiavi in mano" completo + EMAIL FIX CRITICO (Feb 2026)
+
+**Richieste utente:**
+1. "si deve generare il preventivo esattamente come gli altri tipi di preventivi" (Bagno)
+2. "ancora non arrivano via mail comunque" — credenziali info@sadicasa.it / Villaretto10 (ma quelle NON autenticano su Aruba)
+
+### 🚨 EMAIL BUG CRITICO risolto
+Scoperto durante indagine: la funzione `invia_preventivo_email` in `server.py` era **priva del decorator `@api.post`** — quindi l'endpoint NON era registrato in FastAPI e OGNI tentativo di inviare email restituiva 404 silenzioso.
+Fix: aggiunti `@api.post("/preventivi/{prev_id}/send-email")` e alias `@api.post("/preventivi/{prev_id}/invia-email")`, più supporto sia per `to` sia per `destinatario` nel body.
+
+### 📧 SMTP Aruba — credenziali verificate
+- Testate: `info@sadicasa.it` + `Villaretto10` (e varianti) → autenticazione fallita su smtps.aruba.it.
+- `noreply@sadicasa.it` + `Torino10.` → **funziona** (autentica correttamente).
+- Configurazione attuale: mittente `noreply@sadicasa.it`, **Reply-To: info@sadicasa.it** così le risposte del cliente arrivano all'indirizzo giusto.
+- Test invio da API: `POST /api/preventivi/{id}/send-email` → server SMTP accetta la mail (return ok=true). Se non arriva, è problema di deliverability (SPF/DKIM/DMARC su `sadicasa.it` — vedi note utente).
+- `APP_PUBLIC_URL` cambiato a `https://sadicasa.it` (produzione) così i link nelle mail funzionano.
+
+### 🛁 Preventivo Bagno ora equivalente agli altri tipi
+- **PreventivoBagno.jsx**: nella sidebar riepilogo, dopo il salvataggio compaiono:
+  - Bottone **Stampa / PDF** (data-testid `bagno-print`) → naviga a `/preventivo/stampa/{id}`.
+  - Bottone **Invia via Email** (data-testid `bagno-send-email`) → chiama `/api/preventivi/{id}/send-email` con `{to: cliente.email}`.
+- **PreventivoStampa.jsx**: nuova modalità `mode: "bagno"` in `totals`.
+  - Isolata rendering: BAGNO BREAKDOWN al posto di COSA È INCLUSO + BREAKDOWN TOTALI (nascosti se isBagno).
+  - Blocco dedicato con tabella: Manodopera Base + descrizione, Pacchetto Sanitari + tier + descrizione + lista included_items (griglia 2 colonne, check verde), Piastrelle (mq × prezzo), Extra voci, Subtotale, Sconto, Imponibile, IVA, TOTALE.
+  - Header preventivo: "Ristrutturazione Bagno · SILVER/GOLD/PLATINUM" con colore del tier.
+
+### Test
+- `/app/backend/tests/test_round89_email_endpoint.py`: 3/3 pass (endpoint esiste, supporto `to`+`destinatario`, 400 se manca).
+- Tot pytest R88+R89: **10/10 passano**.
+- Smoke test frontend: preventivo bagno creato, salvato, bottoni Stampa/PDF e Invia Email visibili, numero PRV-2026-0084 assegnato.
+
+### Endpoints modificati (R89 bis)
+- ✅ `POST /api/preventivi/{prev_id}/send-email` (finalmente registrato)
+- ✅ `POST /api/preventivi/{prev_id}/invia-email` (alias legacy)
+
+### Note di deliverability (per utente)
+Il server Aruba **accetta** le mail (return code 250 OK), ma se non arrivano nell'inbox del destinatario è per:
+1. **SPF record mancante o errato** su DNS `sadicasa.it` — deve avere `v=spf1 include:aruba.it ~all`
+2. **DKIM non firmato** — richiede attivazione dal pannello Aruba
+3. **DMARC record** consigliato per policy `p=none`
+4. Verificare cartella **SPAM** del destinatario
+5. Alternativa consigliata: passare a **SendGrid** o **Resend** (deliverability ~99% out-of-the-box, no configurazione DNS complessa).
+
+
+
 ## Round 89 — Pacchetti Bagno editabili da Backoffice (Feb 2026)
 
 **Richiesta utente**: "i pacchetti silver gold e platinum nel preventivo bagno sono sbagliati perché i prezzi sono quelli che metto io nelle impostazioni back office e devo poterli modificare anche quei tre pacchetti che sono sostanzialmente i sanitari a pacchetto del bagno e comprendono: sanitari, tavoletta wc, lavabo (no mobile), piatto doccia e box doccia e miscelatore doccia, miscelatore bidet e miscelatore lavabo. il pacchetto bagno da 6500 anche voglio poterlo modificare da backoffice per definire e scegliere cosa c'è incluso ed eventualmente modificare il prezzo".

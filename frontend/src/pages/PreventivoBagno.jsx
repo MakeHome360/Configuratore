@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Trash2, Plus, Save } from "lucide-react";
+import { Trash2, Plus, Save, Printer, Mail } from "lucide-react";
 import { toast } from "sonner";
 
 export default function PreventivoBagno() {
@@ -185,6 +185,35 @@ export default function PreventivoBagno() {
               <Button className="w-full" onClick={save} data-testid="bagno-save" style={{ background: "var(--brand)", color: "white" }}>
                 <Save className="h-4 w-4 mr-2" /> Salva Preventivo
               </Button>
+              {!isNew && (
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => nav(`/preventivo/stampa/${id}`)}
+                    data-testid="bagno-print"
+                  >
+                    <Printer className="h-4 w-4 mr-2" /> Stampa / PDF
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={async () => {
+                      const email = cliente.email;
+                      if (!email) return toast.error("Manca l'email del cliente");
+                      try {
+                        await api.post(`/preventivi/${id}/send-email`, { to: email });
+                        toast.success(`Email inviata a ${email} (controlla anche SPAM)`);
+                      } catch (e) {
+                        toast.error("Errore invio email: " + (e?.response?.data?.detail || e?.message));
+                      }
+                    }}
+                    data-testid="bagno-send-email"
+                  >
+                    <Mail className="h-4 w-4 mr-2" /> Invia via Email
+                  </Button>
+                </div>
+              )}
               {numero && <div className="text-xs text-center text-zinc-500">{numero}</div>}
             </div>
           </div>

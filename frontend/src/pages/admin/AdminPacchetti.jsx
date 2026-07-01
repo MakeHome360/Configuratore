@@ -39,7 +39,10 @@ export default function AdminPacchetti() {
         <div className="flex gap-2 mb-5 border-b border-zinc-200">
           <button onClick={() => setTab("pacchetti")} className={`px-4 py-2 text-sm border-b-2 ${tab === "pacchetti" ? "border-zinc-900 font-semibold" : "border-transparent text-zinc-500"}`}>Gestione Pacchetti</button>
           <button onClick={() => setTab("voci")} className={`px-4 py-2 text-sm border-b-2 ${tab === "voci" ? "border-zinc-900 font-semibold" : "border-transparent text-zinc-500"}`}>Voci Incluse</button>
+          <button onClick={() => setTab("bagno")} data-testid="tab-pacchetti-bagno" className={`px-4 py-2 text-sm border-b-2 ${tab === "bagno" ? "border-zinc-900 font-semibold" : "border-transparent text-zinc-500"}`}>Pacchetti Bagno (Silver/Gold/Platinum)</button>
         </div>
+
+        {tab === "bagno" && <BagnoConfigEditor />}
 
         {tab === "pacchetti" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -482,3 +485,205 @@ function VociIncluseTab({ packages, voci, reload }) {
     </div>
   );
 }
+
+// =====================================================================
+// BagnoConfigEditor — R89: pacchetti bagno (Silver/Gold/Platinum) + manodopera €6500 editabili
+// =====================================================================
+function BagnoConfigEditor() {
+  const [cfg, setCfg] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    const { data } = await api.get("/bagno-config");
+    // Assicura included_items per ogni tier
+    const tiers = (data.tiers || []).map((t) => ({ ...t, included_items: t.included_items || [] }));
+    setCfg({
+      tiers,
+      manodopera_base: data.manodopera_base || 6500,
+      manodopera_description: data.manodopera_description || "",
+      manodopera_included_items: data.manodopera_included_items || [],
+    });
+  };
+  useEffect(() => { load(); }, []);
+
+  if (!cfg) return <div className="text-center py-12 text-zinc-500">Caricamento configurazione…</div>;
+
+  const updateTier = (idx, field, value) => {
+    const next = [...cfg.tiers];
+    next[idx] = { ...next[idx], [field]: value };
+    setCfg({ ...cfg, tiers: next });
+  };
+  const addTierItem = (idx) => {
+    const next = [...cfg.tiers];
+    next[idx] = { ...next[idx], included_items: [...(next[idx].included_items || []), ""] };
+    setCfg({ ...cfg, tiers: next });
+  };
+  const updateTierItem = (idx, itIdx, value) => {
+    const next = [...cfg.tiers];
+    const items = [...(next[idx].included_items || [])];
+    items[itIdx] = value;
+    next[idx] = { ...next[idx], included_items: items };
+    setCfg({ ...cfg, tiers: next });
+  };
+  const removeTierItem = (idx, itIdx) => {
+    const next = [...cfg.tiers];
+    next[idx] = { ...next[idx], included_items: (next[idx].included_items || []).filter((_, i) => i !== itIdx) };
+    setCfg({ ...cfg, tiers: next });
+  };
+
+  const addManodoperaItem = () => setCfg({ ...cfg, manodopera_included_items: [...cfg.manodopera_included_items, ""] });
+  const updateManodoperaItem = (i, v) => {
+    const items = [...cfg.manodopera_included_items];
+    items[i] = v;
+    setCfg({ ...cfg, manodopera_included_items: items });
+  };
+  const removeManodoperaItem = (i) => setCfg({ ...cfg, manodopera_included_items: cfg.manodopera_included_items.filter((_, j) => j !== i) });
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.put("/bagno-config", cfg);
+      toast.success("Configurazione bagno salvata. I prezzi si applicano immediatamente ai nuovi Preventivi Bagno.");
+      load();
+    } catch (e) {
+      toast.error("Errore salvataggio: " + (e?.response?.data?.detail || e?.message || "sconosciuto"));
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Manodopera base */}
+      <div className="bg-white border-2 border-amber-200 rounded-lg p-5" data-testid="bagno-cfg-manodopera">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-lg">🛠 Manodopera Base bagno</h3>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-500">Prezzo fisso:</span>
+            <Input
+              type="number" min={0} step="100"
+              className="w-32 h-9 text-right font-mono font-bold text-lg"
+              value={cfg.manodopera_base}
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => setCfg({ ...cfg, manodopera_base: Math.max(0, Number(e.target.value) || 0) })}
+              data-testid="bagno-cfg-manodopera-price"
+            /> €
+          </div>
+        </div>
+        <Label className="text-xs">Descrizione (visibile in preventivo)</Label>
+        <Input
+          value={cfg.manodopera_description}
+          onChange={(e) => setCfg({ ...cfg, manodopera_description: e.target.value })}
+          className="mb-3" data-testid="bagno-cfg-manodopera-desc"
+        />
+        <div className="mt-3">
+          <div className="flex items-center justify-between mb-2">
+            <Label className="text-sm font-semibold">Cosa include la manodopera</Label>
+            <Button size="sm" variant="outline" onClick={addManodoperaItem} data-testid="bagno-cfg-manodopera-add-item">
+              <Plus className="h-3 w-3 mr-1" /> Aggiungi voce
+            </Button>
+          </div>
+          <div className="space-y-1.5">
+            {cfg.manodopera_included_items.map((it, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="text-zinc-400 text-xs w-5">✓</span>
+                <Input value={it} onChange={(e) => updateManodoperaItem(i, e.target.value)} className="h-8 text-sm" data-testid={`bagno-cfg-manodopera-item-${i}`} />
+                <button onClick={() => removeManodoperaItem(i)} className="p-1 rounded hover:bg-rose-50">
+                  <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                </button>
+              </div>
+            ))}
+            {cfg.manodopera_included_items.length === 0 && <div className="text-xs text-zinc-400 italic">Nessuna voce inclusa</div>}
+          </div>
+        </div>
+      </div>
+
+      {/* Tiers cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {cfg.tiers.map((t, idx) => (
+          <div key={t.id} className="bg-white border-2 rounded-lg p-4" style={{ borderColor: t.color || "#94A3B8" }} data-testid={`bagno-cfg-tier-${t.id}`}>
+            {/* Header */}
+            <div className="flex items-center justify-between mb-3 pb-3 border-b" style={{ borderColor: t.color }}>
+              <Input
+                value={t.name}
+                onChange={(e) => updateTier(idx, "name", e.target.value.toUpperCase())}
+                className="h-9 font-bold text-lg uppercase"
+                style={{ color: t.color, borderColor: t.color }}
+                data-testid={`bagno-cfg-tier-name-${t.id}`}
+              />
+              <input
+                type="color"
+                value={t.color || "#94A3B8"}
+                onChange={(e) => updateTier(idx, "color", e.target.value)}
+                className="w-8 h-8 rounded cursor-pointer ml-2"
+                title="Colore identificativo"
+              />
+            </div>
+            {/* Price */}
+            <Label className="text-xs uppercase text-zinc-500">Prezzo</Label>
+            <div className="flex items-center gap-2 mb-3">
+              <Input
+                type="number" min={0} step="100"
+                className="h-11 text-2xl font-mono font-extrabold text-right"
+                value={t.price}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => updateTier(idx, "price", Math.max(0, Number(e.target.value) || 0))}
+                data-testid={`bagno-cfg-tier-price-${t.id}`}
+              />
+              <span className="text-lg font-semibold">€</span>
+            </div>
+            {/* Description */}
+            <Label className="text-xs">Descrizione riepilogo</Label>
+            <Textarea
+              rows={2}
+              value={t.description || ""}
+              onChange={(e) => updateTier(idx, "description", e.target.value)}
+              className="mb-3 text-xs"
+              data-testid={`bagno-cfg-tier-desc-${t.id}`}
+            />
+            {/* Included items */}
+            <div className="flex items-center justify-between mb-2">
+              <Label className="text-sm font-semibold">Cosa è incluso</Label>
+              <Button size="sm" variant="outline" onClick={() => addTierItem(idx)} data-testid={`bagno-cfg-tier-add-item-${t.id}`}>
+                <Plus className="h-3 w-3" />
+              </Button>
+            </div>
+            <div className="space-y-1">
+              {(t.included_items || []).map((it, itIdx) => (
+                <div key={itIdx} className="flex items-center gap-1">
+                  <span className="text-emerald-500 text-xs">✓</span>
+                  <Input
+                    value={it}
+                    onChange={(e) => updateTierItem(idx, itIdx, e.target.value)}
+                    className="h-7 text-[11px]"
+                    data-testid={`bagno-cfg-tier-item-${t.id}-${itIdx}`}
+                  />
+                  <button onClick={() => removeTierItem(idx, itIdx)} className="p-0.5 rounded hover:bg-rose-50">
+                    <Trash2 className="h-3 w-3 text-rose-500" />
+                  </button>
+                </div>
+              ))}
+              {(t.included_items || []).length === 0 && <div className="text-[10px] text-zinc-400 italic pl-3">Nessuna voce</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Save bar */}
+      <div className="sticky bottom-0 bg-white border-t border-zinc-200 p-4 -mx-4 -mb-4 flex items-center justify-between">
+        <div className="text-xs text-zinc-500">
+          I prezzi qui impostati verranno usati nei nuovi Preventivi Bagno.
+          <br />I preventivi già salvati mantengono il prezzo storicizzato al momento del salvataggio.
+        </div>
+        <Button
+          onClick={save}
+          disabled={saving}
+          data-testid="bagno-cfg-save"
+          style={{ background: "var(--brand)", color: "white" }}
+        >
+          <Save className="h-4 w-4 mr-2" />
+          {saving ? "Salvataggio…" : "Salva configurazione bagno"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+

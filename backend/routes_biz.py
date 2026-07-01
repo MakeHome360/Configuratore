@@ -24,6 +24,29 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# Item base inclusi in ciascun tier bagno (sanitari + rubinetteria completa)
+_SANITARI_TIER_BASE = [
+    "Vaso WC sospeso",
+    "Tavoletta WC soft-close",
+    "Bidet sospeso",
+    "Lavabo (no mobile)",
+    "Piatto doccia",
+    "Box doccia in cristallo",
+    "Miscelatore doccia",
+    "Miscelatore bidet",
+    "Miscelatore lavabo",
+]
+
+def _default_included_items(tier_name: str) -> List[str]:
+    """Ritorna gli item inclusi in un tier bagno (identici per Silver/Gold/Platinum, cambia la gamma qualitativa)."""
+    suffix = {
+        "SILVER": " (linea Standard)",
+        "GOLD": " (linea Premium)",
+        "PLATINUM": " (linea Luxury)",
+    }.get(tier_name.upper(), "")
+    return [f"{it}{suffix}" for it in _SANITARI_TIER_BASE]
+
+
 def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog=None, compute_expires_at=None):
     r = APIRouter()
     # Fallback defaults if deps not provided (keeps backward compat)
@@ -1482,7 +1505,76 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
 
     @r.get("/bagno-config")
     async def bagno_conf(user=Depends(get_current_user)):
-        return {"tiers": BATHROOM_TIERS, "manodopera_base": BATHROOM_MANODOPERA_BASE}
+        # Configurazione dinamica letta da DB (editabile via /adminpacchetti tab "Pacchetti Bagno")
+        doc = await db.bathroom_config.find_one({"id": "global"}, {"_id": 0})
+        if doc:
+            return {
+                "tiers": doc.get("tiers") or BATHROOM_TIERS,
+                "manodopera_base": doc.get("manodopera_base") if doc.get("manodopera_base") is not None else BATHROOM_MANODOPERA_BASE,
+                "manodopera_included_items": doc.get("manodopera_included_items") or [],
+                "manodopera_description": doc.get("manodopera_description") or "Manodopera + materiali di consumo bagno",
+            }
+        # Fallback: seed defaults al primo accesso
+        default = {
+            "id": "global",
+            "tiers": [
+                {**t, "included_items": _default_included_items(t.get("name", "").upper())}
+                for t in BATHROOM_TIERS
+            ],
+            "manodopera_base": BATHROOM_MANODOPERA_BASE,
+            "manodopera_description": "Manodopera completa bagno + materiali di consumo",
+            "manodopera_included_items": [
+                "Demolizione bagno esistente",
+                "Sostituzione impianto idraulico",
+                "Sostituzione impianto elettrico bagno",
+                "Massetto e impermeabilizzazione",
+                "Posa piastrelle pavimento e rivestimento",
+                "Rasatura e pittura pareti/soffitto",
+                "Installazione sanitari e miscelatori",
+                "Smaltimento macerie",
+            ],
+            "updated_at": now_iso(),
+        }
+        await db.bathroom_config.insert_one(default.copy())
+        default.pop("_id", None)
+        return {
+            "tiers": default["tiers"],
+            "manodopera_base": default["manodopera_base"],
+            "manodopera_included_items": default["manodopera_included_items"],
+            "manodopera_description": default["manodopera_description"],
+        }
+
+    class BagnoConfigTierIn(BaseModel):
+        model_config = ConfigDict(extra="allow")
+        id: str
+        name: str
+        price: float
+        color: Optional[str] = "#94A3B8"
+        description: Optional[str] = ""
+        included_items: Optional[List[str]] = None
+
+    class BagnoConfigIn(BaseModel):
+        model_config = ConfigDict(extra="allow")
+        tiers: List[BagnoConfigTierIn]
+        manodopera_base: float
+        manodopera_description: Optional[str] = ""
+        manodopera_included_items: Optional[List[str]] = None
+
+    @r.put("/bagno-config")
+    async def update_bagno_config(body: BagnoConfigIn, user=Depends(get_current_user)):
+        if user.get("role") != "admin":
+            raise HTTPException(403, "Solo admin può modificare la configurazione bagno")
+        payload = body.model_dump()
+        payload["id"] = "global"
+        payload["updated_at"] = now_iso()
+        await db.bathroom_config.update_one({"id": "global"}, {"$set": payload}, upsert=True)
+        # Audit
+        try:
+            await audit_log(db, user, "bathroom_config_update", "bathroom_config", "global",
+                            {"tiers_count": len(body.tiers), "manodopera_base": body.manodopera_base})
+        except Exception:
+            pass
+        return {"ok": True, **payload}
 
     # ---------- Commesse ----------
     def _build_allegato_a_from_preventivo(prev: dict) -> dict:

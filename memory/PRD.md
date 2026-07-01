@@ -1,6 +1,39 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 89 — Pacchetti Bagno editabili da Backoffice (Feb 2026)
+
+**Richiesta utente**: "i pacchetti silver gold e platinum nel preventivo bagno sono sbagliati perché i prezzi sono quelli che metto io nelle impostazioni back office e devo poterli modificare anche quei tre pacchetti che sono sostanzialmente i sanitari a pacchetto del bagno e comprendono: sanitari, tavoletta wc, lavabo (no mobile), piatto doccia e box doccia e miscelatore doccia, miscelatore bidet e miscelatore lavabo. il pacchetto bagno da 6500 anche voglio poterlo modificare da backoffice per definire e scegliere cosa c'è incluso ed eventualmente modificare il prezzo".
+
+### Backend — Configurazione bagno editabile (`routes_biz.py` + `server.py`)
+- Nuova collection MongoDB `bathroom_config` (single doc con `id="global"`).
+- Auto-seed al primo GET: tiers Silver/Gold/Platinum + manodopera_base 6500 + description + included_items pre-popolati con i 9 sanitari base (Vaso WC, Tavoletta soft-close, Bidet, Lavabo no mobile, Piatto doccia, Box doccia in cristallo, Miscelatore doccia, Miscelatore bidet, Miscelatore lavabo — con suffisso "linea Standard/Premium/Luxury").
+- `GET /api/bagno-config` ora legge da DB (con auto-seed fallback).
+- `PUT /api/bagno-config` (admin only): salva tiers[], manodopera_base, manodopera_description, manodopera_included_items. Con audit_log.
+- `GET /api/packages/bathroom-tiers` ora legge da DB.
+- Sync col computo metrico (server.py:2478): logica upgrade bagni ora usa `bathroom_config` (con fallback su `bathroom_tiers` collection e hardcoded).
+
+### Frontend — Nuovo tab admin "Pacchetti Bagno" in `AdminPacchetti.jsx`
+- Terzo tab "Pacchetti Bagno (Silver/Gold/Platinum)" (data-testid `tab-pacchetti-bagno`).
+- **Sezione Manodopera Base**: input prezzo (default 6500) + descrizione + lista dinamica "Cosa include la manodopera" (aggiungi/rimuovi voce).
+- **3 Card Tier** (Silver/Gold/Platinum): ognuna con
+  - Input nome + color picker.
+  - Input prezzo (data-testid `bagno-cfg-tier-price-{id}`) grande e mono-font.
+  - Textarea descrizione riepilogo.
+  - Lista dinamica "Cosa è incluso" (data-testid `bagno-cfg-tier-item-{id}-{i}`) con aggiungi/rimuovi.
+- Bottone Save sticky in basso: PUT /api/bagno-config, feedback toast.
+- I preventivi salvati mantengono i prezzi storicizzati; i nuovi preventivi usano i valori aggiornati.
+
+### Frontend — `PreventivoBagno.jsx` aggiornato
+- Card Manodopera ora mostra la descrizione custom + lista degli included_items (griglia 2 colonne, check verde).
+- Card tier Silver/Gold/Platinum ora mostra la lista `included_items` (primi 6 + counter "…e altri N").
+
+### Test
+- `/app/backend/tests/test_round89_bagno_config.py`: 3/3 pass (GET default + auto-seed, PUT updates prices/items, sync con `/packages/bathroom-tiers`).
+- Screenshot admin verifica UI editor + campo input reattivo (7000 digitato → mostra 7000).
+
+
+
 ## Round 88 — Modifica Preventivo + Sync Commessa, Listini Fornitori Macrocategorie, Infissi Modificabili (Feb 2026)
 
 **Richieste utente** (3 punti P0):

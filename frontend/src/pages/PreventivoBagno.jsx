@@ -13,7 +13,7 @@ export default function PreventivoBagno() {
   const { id } = useParams();
   const isNew = !id || id === "new";
   const nav = useNavigate();
-  const [config, setConfig] = useState({ tiers: [], manodopera_base: 6500 });
+  const [config, setConfig] = useState({ tiers: [], manodopera_base: 6500, manodopera_description: "", manodopera_included_items: [] });
   const [cliente, setCliente] = useState({ nome: "", telefono: "", email: "", indirizzo: "" });
   const [tier, setTier] = useState(null);
   const [piastrelleMq, setPiastrelleMq] = useState(0);
@@ -88,9 +88,27 @@ export default function PreventivoBagno() {
             </Section>
 
             <Section title="Manodopera Base">
-              <div className="flex items-center justify-between p-3 bg-zinc-50 rounded">
-                <div><div className="font-medium">Incluso materiali di consumo</div><div className="text-xs text-zinc-500">Fisso</div></div>
-                <div className="font-bold">{fmtEur(config.manodopera_base)}</div>
+              <div className="p-3 bg-zinc-50 rounded">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <div className="font-medium">{config.manodopera_description || "Incluso materiali di consumo"}</div>
+                    <div className="text-xs text-zinc-500">Prezzo fisso</div>
+                  </div>
+                  <div className="font-bold text-lg">{fmtEur(config.manodopera_base)}</div>
+                </div>
+                {(config.manodopera_included_items || []).length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-zinc-200">
+                    <div className="text-[10px] uppercase text-zinc-500 mb-1 font-semibold">Cosa include</div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-0.5">
+                      {config.manodopera_included_items.map((it, i) => (
+                        <div key={i} className="text-[11px] text-zinc-700 flex items-start gap-1">
+                          <span className="text-emerald-500 mt-0.5">✓</span>
+                          <span>{it}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </Section>
 
@@ -104,7 +122,23 @@ export default function PreventivoBagno() {
                       <div className="font-bold text-lg" style={{ color: t.color }}>{t.name}</div>
                       <div className="font-bold">{fmtEur(t.price)}</div>
                     </div>
-                    <div className="text-xs text-zinc-600 leading-snug">{t.description}</div>
+                    {t.description && <div className="text-xs text-zinc-600 leading-snug mb-2">{t.description}</div>}
+                    {(t.included_items || []).length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-zinc-200">
+                        <div className="text-[9px] uppercase text-zinc-500 mb-1 font-semibold">Incluso ({(t.included_items || []).length})</div>
+                        <ul className="space-y-0.5">
+                          {(t.included_items || []).slice(0, 6).map((it, i) => (
+                            <li key={i} className="text-[10px] text-zinc-700 flex items-start gap-1">
+                              <span className="text-emerald-500 mt-0.5">✓</span>
+                              <span>{it}</span>
+                            </li>
+                          ))}
+                          {(t.included_items || []).length > 6 && (
+                            <li className="text-[9px] text-zinc-400 italic">…e altri {(t.included_items || []).length - 6}</li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
                   </button>
                 ))}
               </div>

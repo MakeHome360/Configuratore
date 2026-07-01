@@ -1521,6 +1521,9 @@ async def list_packages(user: Dict[str, Any] = Depends(get_current_user)):
 
 @api.get("/packages/bathroom-tiers")
 async def bathroom_tiers(user: Dict[str, Any] = Depends(get_current_user)):
+    doc = await db.bathroom_config.find_one({"id": "global"}, {"_id": 0})
+    if doc and doc.get("tiers"):
+        return doc["tiers"]
     return BATHROOM_TIERS
 
 
@@ -2475,7 +2478,12 @@ async def _auto_populate_commessa_from_preventivo(prev_id: str, user: Dict[str, 
     # 2b) UPGRADE TIER BAGNI: per ogni bagno con tier != silver, aggiungi voce computo con la differenza
     bathrooms = prev.get("bathrooms") or []
     if bathrooms:
-        tiers = await db.bathroom_tiers.find({}, {"_id": 0}).sort("price", 1).to_list(20)
+        # Legge da bathroom_config (nuovo, editabile via /adminpacchetti) con fallback su vecchia bathroom_tiers e infine hardcoded
+        bcfg = await db.bathroom_config.find_one({"id": "global"}, {"_id": 0})
+        if bcfg and bcfg.get("tiers"):
+            tiers = sorted(bcfg["tiers"], key=lambda t: t.get("price", 0))
+        else:
+            tiers = await db.bathroom_tiers.find({}, {"_id": 0}).sort("price", 1).to_list(20)
         if not tiers:
             # Fallback: prezzi default dei tier hardcoded in packages_seed
             tiers = [{"id": "bagno-silver", "name": "SILVER", "price": 3500.0},

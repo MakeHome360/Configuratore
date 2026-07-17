@@ -78,7 +78,7 @@ export default function PreventivoBagno() {
           <div className="flex items-center gap-3">
             {!isNew && (
               <>
-                <Button variant="outline" size="sm" onClick={() => nav(`/preventivo/stampa/${id}`)} data-testid="bagno-print-top">
+                <Button variant="outline" size="sm" onClick={() => nav(`/preventivi/${id}/stampa`)} data-testid="bagno-print-top">
                   <Printer className="h-4 w-4 mr-1" /> Stampa/PDF
                 </Button>
                 <Button variant="outline" size="sm" onClick={async () => {
@@ -213,7 +213,7 @@ export default function PreventivoBagno() {
                   variant="outline"
                   className="w-full"
                   disabled={isNew}
-                  onClick={() => nav(`/preventivo/stampa/${id}`)}
+                  onClick={() => nav(`/preventivi/${id}/stampa`)}
                   data-testid="bagno-print"
                   title={isNew ? "Salva prima di stampare" : "Anteprima e stampa PDF"}
                 >

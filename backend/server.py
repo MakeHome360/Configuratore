@@ -14,7 +14,7 @@ from typing import List, Optional, Any, Dict
 
 import bcrypt
 import jwt
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Header
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
@@ -2303,6 +2303,73 @@ async def diagnose_email(body: Optional[Dict[str, Any]] = None, user: Dict[str, 
         result["error_type"] = "OTHER"
         result["error_message"] = str(e)
     return result
+
+
+@api.get("/preventivi/{prev_id}/pdf")
+async def preventivo_pdf(prev_id: str, token: Optional[str] = None, authorization: Optional[str] = Header(None)):
+    """R89 quater: genera PDF server-side via weasyprint (elimina bug html2canvas: prezzi mancanti, testi troncati, logo doppio).
+    Accetta token via query string (per download <a href>) o via Authorization header.
+    """
+    # Auth: prima da header, poi da query string
+    jwt_token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        jwt_token = authorization.split(" ", 1)[1].strip()
+    elif token:
+        jwt_token = token
+    if not jwt_token:
+        raise HTTPException(401, "Non autenticato — passa ?token=<JWT> o Authorization header")
+    try:
+        payload = jwt.decode(jwt_token, jwt_secret(), algorithms=[JWT_ALGO])
+        uid = payload.get("sub") or payload.get("user_id")
+        user = await db.users.find_one({"id": uid}, {"_id": 0})
+        if not user:
+            raise HTTPException(401, "Utente non trovato")
+    except Exception as e:
+        raise HTTPException(401, f"Token non valido: {e}")
+    prev = await db.preventivi.find_one({"id": prev_id}, {"_id": 0})
+    if not prev:
+        raise HTTPException(404, "Preventivo non trovato")
+    # Dati azienda combinati
+    imp = await db.impostazioni.find_one({}, {"_id": 0}) or {}
+    da = await db.dati_azienda.find_one({}, {"_id": 0}) or {}
+    azienda = {**da, **imp}
+    # Bathroom tier (solo per tipo=bagno)
+    bathroom_tier = None
+    if (prev.get("tipo") or "").lower() == "bagno" and prev.get("bathroom_tier"):
+        # Legge da bagno-config (voci_backoffice source of truth)
+        bcfg_doc = await db.bathroom_config.find_one({"id": "global"}, {"_id": 0}) or {}
+        meta_tiers = {t.get("id"): t for t in (bcfg_doc.get("tiers") or [])}
+        # Prezzi live da voci_backoffice
+        tier_kw = {"bagno-silver": "Silver", "bagno-gold": "Gold", "bagno-platinum": "Platinum"}
+        kw = tier_kw.get(prev["bathroom_tier"])
+        if kw:
+            v = await db.voci_backoffice.find_one({"name": {"$regex": rf"Pacchetto\s+{kw}", "$options": "i"}}, {"_id": 0})
+            if v:
+                m = meta_tiers.get(prev["bathroom_tier"], {})
+                bathroom_tier = {
+                    "id": prev["bathroom_tier"],
+                    "name": m.get("name") or kw.upper(),
+                    "price": float(v.get("prezzo_rivendita") or 0),
+                    "color": m.get("color") or "#94A3B8",
+                    "description": m.get("description") or v.get("name") or "",
+                    "included_items": m.get("included_items") or [],
+                }
+    try:
+        from pdf_generator import render_preventivo_pdf
+        pdf_bytes = render_preventivo_pdf(prev, azienda, bathroom_tier)
+    except Exception as e:
+        logger.exception("[PDF] errore generazione")
+        raise HTTPException(500, f"Errore generazione PDF: {e}")
+    filename = f"Preventivo_{prev.get('numero') or prev_id[:8]}_{(prev.get('cliente') or {}).get('nome', 'cliente').replace(' ', '_')}.pdf"
+    from fastapi.responses import Response
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "X-Preventivo-Numero": prev.get("numero") or "",
+        },
+    )
 
 
 @api.post("/preventivi/{prev_id}/send-email")

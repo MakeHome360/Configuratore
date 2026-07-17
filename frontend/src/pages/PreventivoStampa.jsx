@@ -234,58 +234,23 @@ export default function PreventivoStampa() {
             <Send className="h-4 w-4 mr-2" />
             {emailSending ? "Invio…" : "Invia al cliente"}
           </Button>
-          <Button onClick={async () => {
-            // R89 quater: PDF download compatibile iOS Safari.
-            // TRUCCO iOS: window.open() DEVE essere chiamato sincronicamente nel click handler
-            // (user gesture), altrimenti Safari blocca la nuova tab. Poi popolo la URL con il blob.
-            const node = document.getElementById("print-area");
-            if (!node) { toast.error("Errore: area di stampa non trovata"); return; }
-            const filename = `Preventivo_${prev.numero || id}_${(prev.cliente?.nome || "cliente").replace(/\s+/g, "_")}.pdf`;
+          <Button onClick={() => {
+            // R89 quater: PDF vero generato dal backend (weasyprint) — fine dei bug html2canvas + iOS-compat nativo.
+            const token = localStorage.getItem("ristruttura_token") || "";
+            const url = `${process.env.REACT_APP_BACKEND_URL}/api/preventivi/${id}/pdf?token=${encodeURIComponent(token)}`;
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-
-            // Su iOS apro subito la nuova tab (about:blank) come user gesture — evita popup blocker
-            let popupWin = null;
-            if (isIOS) {
-              popupWin = window.open("", "_blank");
-              if (popupWin && popupWin.document) {
-                popupWin.document.write(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>${filename}</title><style>body{margin:0;font-family:-apple-system,sans-serif;background:#f4f4f5;color:#18181b;text-align:center;padding:40px 20px}.wrap{max-width:400px;margin:0 auto;background:white;padding:30px 24px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.1)}.spinner{width:44px;height:44px;border:4px solid #e4e4e7;border-top-color:#14b8a6;border-radius:50%;animation:s 1s linear infinite;margin:0 auto 16px}@keyframes s{to{transform:rotate(360deg)}}h1{font-size:18px;margin:0 0 8px}p{font-size:14px;color:#71717a;margin:4px 0}</style></head><body><div class="wrap"><div class="spinner"></div><h1>Generazione PDF in corso…</h1><p>Attendi qualche secondo</p><p style="font-size:12px;margin-top:14px">${filename}</p></div></body></html>`);
-              }
+            // Su iOS Safari: navigazione diretta → Safari mostra il PDF con "Condividi → Salva su File" nativo
+            // Su desktop: apre in nuova scheda dove il browser scarica automaticamente o mostra il PDF
+            const win = window.open(url, "_blank");
+            if (!win) {
+              // Fallback popup bloccato: link cliccabile in dialog
+              const container = document.createElement("div");
+              container.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px";
+              container.innerHTML = `<div style="background:white;padding:24px;border-radius:12px;max-width:340px;text-align:center;font-family:-apple-system,sans-serif"><div style="font-size:16px;font-weight:600;margin-bottom:12px">📄 PDF pronto</div><p style="font-size:13px;color:#71717a;margin-bottom:18px">Il tuo browser ha bloccato l'apertura automatica. Tap qui:</p><a href="${url}" target="_blank" style="display:block;background:#059669;color:white;padding:14px 20px;border-radius:8px;text-decoration:none;font-weight:600;margin-bottom:10px">Apri PDF</a><button id="pdf-close" style="background:transparent;border:1px solid #e4e4e7;padding:8px 16px;border-radius:8px;color:#71717a;cursor:pointer">Annulla</button></div>`;
+              document.body.appendChild(container);
+              document.getElementById("pdf-close").onclick = () => container.remove();
             }
-
-            toast.info("Generazione PDF in corso (5-10 sec)…");
-            try {
-              const opt = {
-                filename,
-                margin: 0,
-                image: { type: "jpeg", quality: 0.95 },
-                html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: "#ffffff" },
-                jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-                pagebreak: { mode: ["css", "legacy"] },
-              };
-              if (isIOS) {
-                const blob = await html2pdf().set(opt).from(node).outputPdf("blob");
-                const url = URL.createObjectURL(blob);
-                if (popupWin && !popupWin.closed) {
-                  // Sostituisco lo spinner con il PDF vero
-                  popupWin.location.href = url;
-                  toast.success("PDF pronto nella nuova scheda. Tap su Condividi → Salva su File.", { duration: 8000 });
-                } else {
-                  // Fallback: popup bloccato — mostro anchor visibile
-                  const linkId = `pdf-download-${Date.now()}`;
-                  const container = document.createElement("div");
-                  container.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px";
-                  container.innerHTML = `<div style="background:white;padding:24px;border-radius:12px;max-width:340px;text-align:center;font-family:-apple-system,sans-serif"><div style="font-size:16px;font-weight:600;margin-bottom:12px">PDF pronto</div><p style="font-size:13px;color:#71717a;margin-bottom:18px">Il tuo browser ha bloccato la nuova scheda. Tap sul bottone qui sotto per aprire il PDF.</p><a id="${linkId}" href="${url}" target="_blank" download="${filename}" style="display:block;background:#059669;color:white;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600;margin-bottom:10px">Apri PDF</a><button id="${linkId}-close" style="background:transparent;border:1px solid #e4e4e7;padding:8px 16px;border-radius:8px;color:#71717a;cursor:pointer">Annulla</button></div>`;
-                  document.body.appendChild(container);
-                  document.getElementById(`${linkId}-close`).onclick = () => container.remove();
-                }
-              } else {
-                await html2pdf().set(opt).from(node).save();
-                toast.success(`PDF "${filename}" scaricato nei tuoi Download`);
-              }
-            } catch (e) {
-              if (popupWin && !popupWin.closed) popupWin.close();
-              toast.error("Errore generazione PDF: " + e.message);
-            }
+            toast.success(isIOS ? "PDF aperto. Tap su Condividi → Salva su File per salvarlo." : "PDF aperto in una nuova scheda", { duration: 6000 });
           }} className="bg-emerald-600 hover:bg-emerald-700" data-testid="print-btn">
             <Printer className="h-4 w-4 mr-2" /> Scarica PDF
           </Button>

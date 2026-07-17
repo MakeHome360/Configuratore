@@ -104,6 +104,25 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
                 await db.packages.insert_one(doc)
         if await db.optional_pkg.count_documents({}) == 0:
             await db.optional_pkg.insert_many([dict(o) for o in DEFAULT_OPTIONAL])
+        # R89 ter: ensure voce "Manodopera Bagno" esiste (usata dal preventivo Bagno + tab admin)
+        existing_man = await db.voci_backoffice.find_one({"name": {"$regex": r"^\s*Manodopera\s+Bagno", "$options": "i"}})
+        if not existing_man:
+            await db.voci_backoffice.insert_one({
+                "id": "voce-manodopera-bagno",
+                "category": "IMPIANTI",
+                "name": "Manodopera Bagno",
+                "unit": "forfait",
+                "prezzo_acquisto": 3000,
+                "ricarico": 2.166667,
+                "margine_eur": 3500,
+                "margine_pct": 53.8,
+                "prezzo_rivendita": 6500,
+                "cad_category": "SANITARI",
+                "cad_kind": "san.manodopera",
+                "modificabile_dal_venditore": False,
+                "soglia_inclusa": None,
+            })
+            print("[SEED] Inserita voce 'Manodopera Bagno' @ €6.500")
 
     # ---------- Packages CRUD ----------
     @r.post("/packages")
@@ -1512,10 +1531,30 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
     ]
 
     async def _load_bagno_from_voci() -> Dict[str, Any]:
-        """Costruisce la config bagno leggendo da voci_backoffice (source of truth)."""
-        # Manodopera
+        """Costruisce la config bagno leggendo da voci_backoffice (source of truth).
+        Safety net: se la voce 'Manodopera Bagno' non esiste, la crea con €6.500 (idempotente).
+        """
+        # Manodopera — safety net: crea al volo se mancante
         v_man = await db.voci_backoffice.find_one(_VOCE_MANODOPERA_MATCH, {"_id": 0})
-        manodopera_price = float((v_man or {}).get("prezzo_rivendita") or 0)
+        if not v_man:
+            new_voce = {
+                "id": "voce-manodopera-bagno",
+                "category": "IMPIANTI",
+                "name": "Manodopera Bagno",
+                "unit": "forfait",
+                "prezzo_acquisto": 3000,
+                "ricarico": 2.166667,
+                "margine_eur": 3500,
+                "margine_pct": 53.8,
+                "prezzo_rivendita": 6500,
+                "cad_category": "SANITARI",
+                "cad_kind": "san.manodopera",
+                "modificabile_dal_venditore": False,
+                "soglia_inclusa": None,
+            }
+            await db.voci_backoffice.insert_one(new_voce)
+            v_man = new_voce
+        manodopera_price = float((v_man or {}).get("prezzo_rivendita") or 6500)
         manodopera_voce_id = (v_man or {}).get("id")
         # Metadati aggiuntivi (description, included_items) restano su bathroom_config
         meta = await db.bathroom_config.find_one({"id": "global"}, {"_id": 0}) or {}

@@ -1503,55 +1503,69 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
         ]
         return {"tipologie": INFISSI_TIPOLOGIE, "materiali": materiali, "vetri": INFISSI_VETRI}
 
+    # ── R89 bis: voci_backoffice come SORGENTE UNICA DI VERITÀ per prezzi bagno ──
+    _VOCE_MANODOPERA_MATCH = {"name": {"$regex": r"^\s*Manodopera\s+Bagno", "$options": "i"}}
+    _VOCE_TIER_MATCHES = [
+        ("bagno-silver", "SILVER", "#94A3B8", {"name": {"$regex": r"Pacchetto\s+Silver", "$options": "i"}}),
+        ("bagno-gold", "GOLD", "#F59E0B", {"name": {"$regex": r"Pacchetto\s+Gold", "$options": "i"}}),
+        ("bagno-platinum", "PLATINUM", "#0A0A0A", {"name": {"$regex": r"Pacchetto\s+Platinum", "$options": "i"}}),
+    ]
+
+    async def _load_bagno_from_voci() -> Dict[str, Any]:
+        """Costruisce la config bagno leggendo da voci_backoffice (source of truth)."""
+        # Manodopera
+        v_man = await db.voci_backoffice.find_one(_VOCE_MANODOPERA_MATCH, {"_id": 0})
+        manodopera_price = float((v_man or {}).get("prezzo_rivendita") or 0)
+        manodopera_voce_id = (v_man or {}).get("id")
+        # Metadati aggiuntivi (description, included_items) restano su bathroom_config
+        meta = await db.bathroom_config.find_one({"id": "global"}, {"_id": 0}) or {}
+        # Tiers dalle voci_backoffice
+        tiers = []
+        meta_tiers = {t.get("id"): t for t in (meta.get("tiers") or [])}
+        for tier_id, tier_label, tier_color, match in _VOCE_TIER_MATCHES:
+            v = await db.voci_backoffice.find_one(match, {"_id": 0})
+            if not v:
+                continue
+            m = meta_tiers.get(tier_id, {})
+            tiers.append({
+                "id": tier_id,
+                "name": m.get("name") or tier_label,
+                "price": float(v.get("prezzo_rivendita") or 0),
+                "color": m.get("color") or tier_color,
+                "description": m.get("description") or v.get("name") or "",
+                "included_items": m.get("included_items") or [],
+                "voce_id": v.get("id"),  # riferimento per il PUT
+                "voce_name": v.get("name"),
+            })
+        return {
+            "tiers": tiers,
+            "manodopera_base": manodopera_price,
+            "manodopera_voce_id": manodopera_voce_id,
+            "manodopera_description": meta.get("manodopera_description") or (v_man or {}).get("name") or "Manodopera bagno",
+            "manodopera_included_items": meta.get("manodopera_included_items") or [
+                "Demolizione bagno esistente", "Sostituzione impianto idraulico",
+                "Sostituzione impianto elettrico bagno", "Massetto e impermeabilizzazione",
+                "Posa piastrelle pavimento e rivestimento", "Rasatura e pittura pareti/soffitto",
+                "Installazione sanitari e miscelatori", "Smaltimento macerie",
+            ],
+        }
+
     @r.get("/bagno-config")
     async def bagno_conf(user=Depends(get_current_user)):
-        # Configurazione dinamica letta da DB (editabile via /adminpacchetti tab "Pacchetti Bagno")
-        doc = await db.bathroom_config.find_one({"id": "global"}, {"_id": 0})
-        if doc:
-            return {
-                "tiers": doc.get("tiers") or BATHROOM_TIERS,
-                "manodopera_base": doc.get("manodopera_base") if doc.get("manodopera_base") is not None else BATHROOM_MANODOPERA_BASE,
-                "manodopera_included_items": doc.get("manodopera_included_items") or [],
-                "manodopera_description": doc.get("manodopera_description") or "Manodopera + materiali di consumo bagno",
-            }
-        # Fallback: seed defaults al primo accesso
-        default = {
-            "id": "global",
-            "tiers": [
-                {**t, "included_items": _default_included_items(t.get("name", "").upper())}
-                for t in BATHROOM_TIERS
-            ],
-            "manodopera_base": BATHROOM_MANODOPERA_BASE,
-            "manodopera_description": "Manodopera completa bagno + materiali di consumo",
-            "manodopera_included_items": [
-                "Demolizione bagno esistente",
-                "Sostituzione impianto idraulico",
-                "Sostituzione impianto elettrico bagno",
-                "Massetto e impermeabilizzazione",
-                "Posa piastrelle pavimento e rivestimento",
-                "Rasatura e pittura pareti/soffitto",
-                "Installazione sanitari e miscelatori",
-                "Smaltimento macerie",
-            ],
-            "updated_at": now_iso(),
-        }
-        await db.bathroom_config.insert_one(default.copy())
-        default.pop("_id", None)
-        return {
-            "tiers": default["tiers"],
-            "manodopera_base": default["manodopera_base"],
-            "manodopera_included_items": default["manodopera_included_items"],
-            "manodopera_description": default["manodopera_description"],
-        }
+        """Ritorna la configurazione bagno leggendo prezzi da voci_backoffice (source of truth).
+        Metadati (descrizioni, colori, included_items) sono su `bathroom_config`.
+        """
+        return await _load_bagno_from_voci()
 
     class BagnoConfigTierIn(BaseModel):
         model_config = ConfigDict(extra="allow")
         id: str
         name: str
-        price: float
+        price: float  # → aggiorna prezzo_rivendita su voci_backoffice
         color: Optional[str] = "#94A3B8"
         description: Optional[str] = ""
         included_items: Optional[List[str]] = None
+        voce_id: Optional[str] = None  # se assente, matcha per name
 
     class BagnoConfigIn(BaseModel):
         model_config = ConfigDict(extra="allow")
@@ -1559,22 +1573,85 @@ def build_biz_router(db, get_current_user, hash_password=None, seed_user_catalog
         manodopera_base: float
         manodopera_description: Optional[str] = ""
         manodopera_included_items: Optional[List[str]] = None
+        manodopera_voce_id: Optional[str] = None
+
+    async def _set_voce_prezzo(voce_match: Dict[str, Any], new_price: float):
+        """Aggiorna il prezzo effettivo di una voce backoffice.
+        Poiché prezzo_rivendita è ricalcolato al GET come prezzo_acquisto*ricarico,
+        aggiorniamo `ricarico` per conservare il margine sul prezzo_acquisto esistente.
+        Se prezzo_acquisto è 0, forziamo prezzo_acquisto=new_price con ricarico=1.
+        """
+        v = await db.voci_backoffice.find_one(voce_match, {"_id": 0})
+        if not v:
+            return None
+        pa = float(v.get("prezzo_acquisto") or 0)
+        upd = {"prezzo_rivendita": float(new_price), "updated_at": now_iso()}
+        if pa > 0:
+            upd["ricarico"] = round(float(new_price) / pa, 6)
+        else:
+            upd["prezzo_acquisto"] = float(new_price)
+            upd["ricarico"] = 1.0
+        await db.voci_backoffice.update_one({"id": v["id"]}, {"$set": upd})
+        return v["id"]
 
     @r.put("/bagno-config")
     async def update_bagno_config(body: BagnoConfigIn, user=Depends(get_current_user)):
+        """Aggiorna:
+        1) i prezzi_rivendita su voci_backoffice (source of truth) — aggiorna il `ricarico` per mantenere il prezzo_acquisto
+        2) i metadati (descrizioni, colori, included_items) su bathroom_config
+        3) sincronizza gli optional composite 'opt-bagno-silver/gold/platinum' con lo stesso prezzo tier
+        Solo admin.
+        """
         if user.get("role") != "admin":
             raise HTTPException(403, "Solo admin può modificare la configurazione bagno")
-        payload = body.model_dump()
-        payload["id"] = "global"
-        payload["updated_at"] = now_iso()
-        await db.bathroom_config.update_one({"id": "global"}, {"$set": payload}, upsert=True)
-        # Audit
+        # 1) Update voci_backoffice: manodopera
+        await _set_voce_prezzo(_VOCE_MANODOPERA_MATCH, float(body.manodopera_base or 0))
+        # 2) Update voci_backoffice: tiers
+        for t in body.tiers:
+            match = None
+            if t.voce_id:
+                match = {"id": t.voce_id}
+            else:
+                for tid, _, _, m in _VOCE_TIER_MATCHES:
+                    if tid == t.id:
+                        match = m
+                        break
+            if not match:
+                continue
+            await _set_voce_prezzo(match, float(t.price or 0))
+        # 3) Save metadata in bathroom_config
+        meta = {
+            "id": "global",
+            "tiers": [{
+                "id": t.id, "name": t.name, "price": float(t.price or 0),
+                "color": t.color, "description": t.description or "",
+                "included_items": t.included_items or [],
+            } for t in body.tiers],
+            "manodopera_base": float(body.manodopera_base or 0),
+            "manodopera_description": body.manodopera_description or "",
+            "manodopera_included_items": body.manodopera_included_items or [],
+            "updated_at": now_iso(),
+        }
+        await db.bathroom_config.update_one({"id": "global"}, {"$set": meta}, upsert=True)
+        # 4) Sync optional composite (bagni aggiuntivi) — allinea prezzi al tier
+        tier_price_map = {t.id: float(t.price or 0) for t in body.tiers}
+        for tid in ["bagno-silver", "bagno-gold", "bagno-platinum"]:
+            price = tier_price_map.get(tid, 0)
+            if price > 0:
+                await db.optional_pkg.update_one(
+                    {"id": f"opt-{tid}"},
+                    {"$set": {
+                        "price_listino": price,
+                        "price_scontato": price,  # niente sconto: prezzo unico coerente
+                    }},
+                )
         try:
             await audit_log(db, user, "bathroom_config_update", "bathroom_config", "global",
                             {"tiers_count": len(body.tiers), "manodopera_base": body.manodopera_base})
         except Exception:
             pass
-        return {"ok": True, **payload}
+        # Re-read fresh
+        return {"ok": True, **(await _load_bagno_from_voci())}
 
     # ---------- Commesse ----------
     def _build_allegato_a_from_preventivo(prev: dict) -> dict:

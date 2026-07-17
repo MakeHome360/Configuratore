@@ -1521,9 +1521,36 @@ async def list_packages(user: Dict[str, Any] = Depends(get_current_user)):
 
 @api.get("/packages/bathroom-tiers")
 async def bathroom_tiers(user: Dict[str, Any] = Depends(get_current_user)):
-    doc = await db.bathroom_config.find_one({"id": "global"}, {"_id": 0})
-    if doc and doc.get("tiers"):
-        return doc["tiers"]
+    """R89 bis: source of truth = voci_backoffice."""
+    # Delega a routes_biz._load_bagno_from_voci per coerenza (evita duplicazione logica)
+    try:
+        import routes_biz  # noqa
+        # Cerca tier directly con match name
+        tier_matches = [
+            ("bagno-silver", "SILVER", "#94A3B8", "Silver"),
+            ("bagno-gold", "GOLD", "#F59E0B", "Gold"),
+            ("bagno-platinum", "PLATINUM", "#0A0A0A", "Platinum"),
+        ]
+        out = []
+        meta = await db.bathroom_config.find_one({"id": "global"}, {"_id": 0}) or {}
+        meta_tiers = {t.get("id"): t for t in (meta.get("tiers") or [])}
+        for tier_id, tier_label, tier_color, kw in tier_matches:
+            v = await db.voci_backoffice.find_one({"name": {"$regex": rf"Pacchetto\s+{kw}", "$options": "i"}}, {"_id": 0})
+            if not v:
+                continue
+            m = meta_tiers.get(tier_id, {})
+            out.append({
+                "id": tier_id,
+                "name": m.get("name") or tier_label,
+                "price": float(v.get("prezzo_rivendita") or 0),
+                "color": m.get("color") or tier_color,
+                "description": m.get("description") or v.get("name") or "",
+                "included_items": m.get("included_items") or [],
+            })
+        if out:
+            return out
+    except Exception:
+        pass
     return BATHROOM_TIERS
 
 

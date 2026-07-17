@@ -1,6 +1,36 @@
 # Ristruttura.CAD / Configuratore — Product Requirements Document
 
 
+## Round 89 ter — Bagno Config: voci_backoffice come SORGENTE UNICA DI VERITÀ (Feb 2026)
+
+**Bug scoperto**: nel R89 avevo creato una tabella `bathroom_config` separata con prezzi €3500/5500/9000, ma i prezzi VERI del bagno erano in `voci_backoffice` (Silver €1.900, Gold €3.500, Platinum €5.000). Il preventivo Bagno usava la prima, il composite usava la seconda → prezzi incoerenti + admin non poteva modificarli davvero.
+
+### Fix radicale — voci_backoffice come source of truth
+- Aggiunta voce `Manodopera Bagno` (id `voce-manodopera-bagno`, prezzo €6.500) in `voci_backoffice` (se non esisteva).
+- `GET /api/bagno-config` ora legge in tempo reale i `prezzo_rivendita` dalle voci: "Pacchetto Silver/Gold/Platinum" + "Manodopera Bagno". Restituisce anche `voce_id` per il PUT.
+- `PUT /api/bagno-config` ora aggiorna le voci_backoffice:
+  - Aggiorna `ricarico` (non `prezzo_rivendita` diretto, perché quest'ultimo è ricalcolato al volo come `prezzo_acquisto × ricarico`).
+  - Sincronizza `optional_pkg` (opt-bagno-silver/gold/platinum) con lo stesso prezzo tier.
+  - Metadati (descrizioni, colori, included_items) restano su `bathroom_config`.
+- `GET /api/packages/bathroom-tiers` (usato nel composite) ora legge dalle stesse voci_backoffice → **stessi prezzi ovunque**.
+
+### UI
+- **AdminPacchetti tab "Pacchetti Bagno"**: banner verde "Prezzi sincronizzati con Voci Backoffice" spiega chiaramente che le modifiche impattano il preventivo Bagno, il composite (bagni aggiuntivi) e sono riservate all'admin.
+- **Preventivo Bagno**: bottoni **Stampa/PDF** + **Invia via Email** ora SEMPRE visibili (nella sidebar riepilogo E nell'header in alto), disabilitati con hint "💡 Salva il preventivo per abilitare Stampa/PDF ed Email" quando `isNew`, attivi dopo salvataggio.
+
+### Test — 10/10 pytest passano
+- `/app/backend/tests/test_round89ter_bagno_source_of_truth.py`:
+  - `test_bagno_config_prices_come_from_voci_backoffice`: match esatto tra bagno-config e voci_backoffice
+  - `test_bagno_config_put_updates_voci_backoffice`: PUT aggiorna il ricarico → prezzo_rivendita cambia
+  - `test_bagno_config_syncs_composite_optionals`: sync automatico verso optional_pkg
+- Screenshot: Preventivo bagno GOLD salvato → €10.000 imponibile + €1.000 IVA = **€11.000** (6500 manodopera + 3500 tier).
+
+### Endpoints modificati
+- `GET /api/bagno-config` — ora restituisce anche `voce_id` per ogni tier + `manodopera_voce_id`.
+- `PUT /api/bagno-config` — accetta `voce_id` opzionale nei tier, aggiorna voci_backoffice tramite ricalcolo ricarico, sincronizza optional_pkg.
+
+
+
 ## Round 89 bis — Preventivo Bagno "chiavi in mano" completo + EMAIL FIX CRITICO (Feb 2026)
 
 **Richieste utente:**

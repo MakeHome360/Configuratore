@@ -552,6 +552,22 @@ function BagnoConfigEditor() {
 
   return (
     <div className="space-y-6">
+      {/* Banner: source of truth */}
+      <div className="bg-emerald-50 border-2 border-emerald-300 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <div className="text-2xl">✅</div>
+          <div className="flex-1">
+            <div className="font-bold text-emerald-800 mb-1">Prezzi sincronizzati con Voci Backoffice</div>
+            <p className="text-xs text-emerald-700 leading-relaxed">
+              I prezzi qui impostati aggiornano direttamente le voci in <strong>Voci Backoffice</strong>:
+              "Pacchetto Silver/Gold/Platinum" e "Manodopera Bagno". Gli stessi prezzi vengono usati anche
+              nel <strong>preventivo composite</strong> (bagni aggiuntivi) e in tutti i preventivi Bagno.
+              I venditori non possono modificarli — solo tu da qui.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Manodopera base */}
       <div className="bg-white border-2 border-amber-200 rounded-lg p-5" data-testid="bagno-cfg-manodopera">
         <div className="flex items-center justify-between mb-3">

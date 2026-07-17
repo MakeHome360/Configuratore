@@ -74,7 +74,30 @@ export default function PreventivoBagno() {
   return (
     <div>
       <PageHeader title="Preventivo Solo Bagno" subtitle="Ristrutturazione bagno chiavi in mano"
-        actions={<div className="text-right"><div className="text-xs text-zinc-500">Totale IVA Inclusa</div><div className="text-2xl font-bold" data-testid="totale-bagno">{fmtEur2(totale)}</div></div>} />
+        actions={
+          <div className="flex items-center gap-3">
+            {!isNew && (
+              <>
+                <Button variant="outline" size="sm" onClick={() => nav(`/preventivo/stampa/${id}`)} data-testid="bagno-print-top">
+                  <Printer className="h-4 w-4 mr-1" /> Stampa/PDF
+                </Button>
+                <Button variant="outline" size="sm" onClick={async () => {
+                  const email = cliente.email;
+                  if (!email) return toast.error("Manca l'email del cliente");
+                  try {
+                    await api.post(`/preventivi/${id}/send-email`, { to: email });
+                    toast.success(`Email inviata a ${email} (controlla anche SPAM)`);
+                  } catch (e) {
+                    toast.error("Errore invio email: " + (e?.response?.data?.detail || e?.message));
+                  }
+                }} data-testid="bagno-send-email-top">
+                  <Mail className="h-4 w-4 mr-1" /> Invia Email
+                </Button>
+              </>
+            )}
+            <div className="text-right"><div className="text-xs text-zinc-500">Totale IVA Inclusa</div><div className="text-2xl font-bold" data-testid="totale-bagno">{fmtEur2(totale)}</div></div>
+          </div>
+        } />
       <Page>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <div className="lg:col-span-2 space-y-5">
@@ -183,35 +206,42 @@ export default function PreventivoBagno() {
               <Row label="TOTALE IVA INCLUSA" value={fmtEur2(totale)} bold big />
               <Field label="Note"><Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} /></Field>
               <Button className="w-full" onClick={save} data-testid="bagno-save" style={{ background: "var(--brand)", color: "white" }}>
-                <Save className="h-4 w-4 mr-2" /> Salva Preventivo
+                <Save className="h-4 w-4 mr-2" /> {isNew ? "Salva Preventivo" : "Aggiorna Preventivo"}
               </Button>
-              {!isNew && (
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => nav(`/preventivo/stampa/${id}`)}
-                    data-testid="bagno-print"
-                  >
-                    <Printer className="h-4 w-4 mr-2" /> Stampa / PDF
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={async () => {
-                      const email = cliente.email;
-                      if (!email) return toast.error("Manca l'email del cliente");
-                      try {
-                        await api.post(`/preventivi/${id}/send-email`, { to: email });
-                        toast.success(`Email inviata a ${email} (controlla anche SPAM)`);
-                      } catch (e) {
-                        toast.error("Errore invio email: " + (e?.response?.data?.detail || e?.message));
-                      }
-                    }}
-                    data-testid="bagno-send-email"
-                  >
-                    <Mail className="h-4 w-4 mr-2" /> Invia via Email
-                  </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  disabled={isNew}
+                  onClick={() => nav(`/preventivo/stampa/${id}`)}
+                  data-testid="bagno-print"
+                  title={isNew ? "Salva prima di stampare" : "Anteprima e stampa PDF"}
+                >
+                  <Printer className="h-4 w-4 mr-2" /> Stampa / PDF
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  disabled={isNew}
+                  onClick={async () => {
+                    const email = cliente.email;
+                    if (!email) return toast.error("Manca l'email del cliente");
+                    try {
+                      await api.post(`/preventivi/${id}/send-email`, { to: email });
+                      toast.success(`Email inviata a ${email} (controlla anche SPAM)`);
+                    } catch (e) {
+                      toast.error("Errore invio email: " + (e?.response?.data?.detail || e?.message));
+                    }
+                  }}
+                  data-testid="bagno-send-email"
+                  title={isNew ? "Salva prima di inviare" : "Invia email al cliente"}
+                >
+                  <Mail className="h-4 w-4 mr-2" /> Invia via Email
+                </Button>
+              </div>
+              {isNew && (
+                <div className="text-[10px] text-center text-amber-600 italic mt-1">
+                  💡 Salva il preventivo per abilitare Stampa/PDF ed Email
                 </div>
               )}
               {numero && <div className="text-xs text-center text-zinc-500">{numero}</div>}

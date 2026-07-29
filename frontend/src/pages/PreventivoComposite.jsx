@@ -52,7 +52,7 @@ export default function PreventivoComposite() {
   // Round 86: Voci extra manuali del venditore (non legate a sezioni)
   const [manualExtras, setManualExtras] = useState([]);
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
-  const [manualForm, setManualForm] = useState({ name: "", category: "EXTRA", unit: "pz", qty: 1, price: 0, save_to_backoffice: true });
+  const [manualForm, setManualForm] = useState({ name: "", category: "EXTRA", unit: "pz", qty: 1, price: 0, prezzo_acquisto: null, ricarico: null, save_to_backoffice: true });
   const [manualSimilar, setManualSimilar] = useState([]);
   const userRole = (user?.role || "").toLowerCase();
   const userLevel = (user?.venditore_level || "").toLowerCase();
@@ -224,33 +224,47 @@ export default function PreventivoComposite() {
   // Subtotale voci manuali (Round 86)
   const totaleManuali = useMemo(() => manualExtras.reduce((s, m) => s + ((Number(m.qty) || 0) * (Number(m.price) || 0)), 0), [manualExtras]);
 
-  // Costo diretto reale = sommatoria di prezzi_acquisto (voci) + netti listini + stima infissi (price/1.6) + manuali (price/1.5 fallback)
-  const costoDirettoReale = useMemo(() => {
-    let tot = 0;
+  // Costo diretto reale = sommatoria di prezzi_acquisto reali (voci + listini + infissi + manuali).
+  // Se prezzo_acquisto non è impostato, usa il fallback price/1.6 (marginalità stimata).
+  const costoDirettoBreakdown = useMemo(() => {
+    let voci_bo = 0, listini = 0, infissi = 0, manuali = 0;
+    let manuali_stimati = false;
     sections.forEach((s) => {
       s.voci.forEach((v) => {
         const sel = selections[v.id];
         if (sel && sel.qty > 0) {
-          const cost = Number(v.prezzo_acquisto) || (Number(v.price) || 0) / 1.6;
-          tot += (sel.qty || 0) * cost;
+          const pa = Number(v.prezzo_acquisto) || 0;
+          const cost = pa > 0 ? pa : (Number(v.price) || 0) / 1.6;
+          voci_bo += (sel.qty || 0) * cost;
         }
       });
     });
     listiniSelections.forEach((p) => {
       const qty = parseFloat(p.qty) || 0;
       const netto = Number(p.prezzo_netto) || Number(p.netto) || (Number(p.prezzo_rivendita) || 0) / 1.6;
-      tot += qty * netto;
+      listini += qty * netto;
     });
     infissiExtras.forEach((i) => {
-      const cost = Number(i.prezzo_acquisto) || (Number(i.price) || 0) / 1.6;
-      tot += cost;
+      const pa = Number(i.prezzo_acquisto) || 0;
+      const cost = pa > 0 ? pa : (Number(i.price) || 0) / 1.6;
+      infissi += cost;
     });
     manualExtras.forEach((m) => {
-      const cost = (Number(m.price) || 0) / 1.5;
-      tot += (Number(m.qty) || 0) * cost;
+      const pa = Number(m.prezzo_acquisto) || 0;
+      if (pa <= 0 && (Number(m.price) || 0) > 0) manuali_stimati = true;
+      const cost = pa > 0 ? pa : (Number(m.price) || 0) / 1.5;
+      manuali += (Number(m.qty) || 0) * cost;
     });
-    return Math.round(tot);
+    return {
+      voci_bo: Math.round(voci_bo),
+      listini: Math.round(listini),
+      infissi: Math.round(infissi),
+      manuali: Math.round(manuali),
+      manuali_stimati,
+      totale: Math.round(voci_bo + listini + infissi + manuali),
+    };
   }, [sections, selections, listiniSelections, infissiExtras, manualExtras]);
+  const costoDirettoReale = costoDirettoBreakdown.totale;
 
   const sicurezzaAmt = (totaleVoci + totaleListini + totaleManuali) * (sicurezzaPct / 100);
   const direzioneAmt = (totaleVoci + totaleListini + totaleManuali) * (direzionePct / 100);
@@ -592,7 +606,7 @@ export default function PreventivoComposite() {
               <>
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold">Voci extra manuali</h3>
-                  <Button size="sm" onClick={() => { setManualForm({ name: "", category: "EXTRA", unit: "pz", qty: 1, price: 0, save_to_backoffice: canSaveToBackoffice }); setManualSimilar([]); setManualDialogOpen(true); }} data-testid="comp-add-manual-btn" style={{ background: "var(--brand)", color: "white" }}>
+                  <Button size="sm" onClick={() => { setManualForm({ name: "", category: "EXTRA", unit: "pz", qty: 1, price: 0, prezzo_acquisto: null, ricarico: null, save_to_backoffice: canSaveToBackoffice }); setManualSimilar([]); setManualDialogOpen(true); }} data-testid="comp-add-manual-btn" style={{ background: "var(--brand)", color: "white" }}>
                     <Plus className="h-4 w-4 mr-1" />Aggiungi voce manuale
                   </Button>
                 </div>
@@ -605,24 +619,92 @@ export default function PreventivoComposite() {
                 ) : (
                   <table className="w-full text-sm">
                     <thead className="bg-zinc-50 text-xs uppercase text-zinc-500">
-                      <tr><th className="px-3 py-2 text-left">Descrizione</th><th className="px-3 py-2 text-left w-32">Categoria</th><th className="px-3 py-2 text-right w-20">Qty</th><th className="px-3 py-2 text-right w-16">U.M.</th><th className="px-3 py-2 text-right w-28">Prezzo €</th><th className="px-3 py-2 text-right w-28">Totale</th><th className="w-10"></th></tr>
+                      <tr>
+                        <th className="px-3 py-2 text-left">Descrizione</th>
+                        <th className="px-3 py-2 text-left w-28">Categoria</th>
+                        <th className="px-3 py-2 text-right w-20">Qty</th>
+                        <th className="px-3 py-2 text-right w-14">U.M.</th>
+                        <th className="px-3 py-2 text-right w-24 bg-amber-50">Prezzo acquisto</th>
+                        <th className="px-3 py-2 text-right w-16 bg-amber-50">Ricarico</th>
+                        <th className="px-3 py-2 text-right w-24">Prezzo vendita</th>
+                        <th className="px-3 py-2 text-right w-24">Totale</th>
+                        <th className="w-8"></th>
+                      </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-100">
-                      {manualExtras.map((m, i) => (
+                      {manualExtras.map((m, i) => {
+                        const pa = Number(m.prezzo_acquisto) || 0;
+                        const ric = Number(m.ricarico) || 0;
+                        // Se prezzo_acquisto+ricarico impostati, il prezzo di vendita si calcola live (se l'utente non l'ha già impostato manualmente)
+                        return (
                         <tr key={i} data-testid={`comp-manual-row-${i}`}>
                           <td className="px-3 py-2">
                             <div>{m.name}</div>
                             {m.saved_to_backoffice && <div className="text-[9px] text-emerald-700">✓ Salvata nelle Voci Backoffice</div>}
+                            {pa > 0 && (Number(m.price) || 0) > 0 && (
+                              <div className="text-[9px] text-emerald-600 mono">
+                                Margine unitario: {fmtEur2((Number(m.price) || 0) - pa)} ({(((Number(m.price) - pa) / (Number(m.price) || 1)) * 100).toFixed(1)}%)
+                              </div>
+                            )}
                           </td>
                           <td className="px-3 py-2 text-xs">{m.category || "—"}</td>
-                          <td className="px-3 py-2 text-right"><Input type="number" min={0} step="0.01" value={m.qty} onChange={(e) => setManualExtras(manualExtras.map((x, j) => j === i ? { ...x, qty: parseFloat(e.target.value) || 0 } : x))} className="h-7 w-20 text-right text-xs mono" /></td>
+                          <td className="px-3 py-2 text-right">
+                            <Input type="number" min={0} step="0.01" value={m.qty}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setManualExtras(manualExtras.map((x, j) => j === i ? { ...x, qty: parseFloat(e.target.value) || 0 } : x))}
+                              className="h-7 w-16 text-right text-xs mono"
+                              data-testid={`comp-manual-qty-${i}`} />
+                          </td>
                           <td className="px-3 py-2 text-right text-xs">{m.unit || "pz"}</td>
-                          <td className="px-3 py-2 text-right"><Input type="number" min={0} step="0.01" value={m.price} onChange={(e) => setManualExtras(manualExtras.map((x, j) => j === i ? { ...x, price: parseFloat(e.target.value) || 0 } : x))} className="h-7 w-24 text-right text-xs mono" /></td>
+                          <td className="px-3 py-2 text-right bg-amber-50/40">
+                            <Input type="number" min={0} step="0.01" value={m.prezzo_acquisto ?? ""}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => {
+                                const npa = parseFloat(e.target.value) || 0;
+                                setManualExtras(manualExtras.map((x, j) => {
+                                  if (j !== i) return x;
+                                  const next = { ...x, prezzo_acquisto: npa };
+                                  // Se c'è un ricarico impostato, ricalcola prezzo vendita
+                                  if ((Number(x.ricarico) || 0) > 0 && npa > 0) {
+                                    next.price = Math.round(npa * Number(x.ricarico) * 100) / 100;
+                                  }
+                                  return next;
+                                }));
+                              }}
+                              className="h-7 w-20 text-right text-xs mono"
+                              placeholder="—"
+                              data-testid={`comp-manual-pacq-${i}`} />
+                          </td>
+                          <td className="px-3 py-2 text-right bg-amber-50/40">
+                            <Input type="number" min={0} step="0.01" value={m.ricarico ?? ""}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => {
+                                const nric = parseFloat(e.target.value) || 0;
+                                setManualExtras(manualExtras.map((x, j) => {
+                                  if (j !== i) return x;
+                                  const next = { ...x, ricarico: nric };
+                                  if ((Number(x.prezzo_acquisto) || 0) > 0 && nric > 0) {
+                                    next.price = Math.round(Number(x.prezzo_acquisto) * nric * 100) / 100;
+                                  }
+                                  return next;
+                                }));
+                              }}
+                              className="h-7 w-14 text-right text-xs mono"
+                              placeholder="—"
+                              data-testid={`comp-manual-ric-${i}`} />
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <Input type="number" min={0} step="0.01" value={m.price}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setManualExtras(manualExtras.map((x, j) => j === i ? { ...x, price: parseFloat(e.target.value) || 0 } : x))}
+                              className="h-7 w-20 text-right text-xs mono font-semibold"
+                              data-testid={`comp-manual-price-${i}`} />
+                          </td>
                           <td className="px-3 py-2 text-right font-mono font-bold">{fmtEur2((m.qty || 0) * (m.price || 0))}</td>
                           <td className="px-3 py-2 text-right"><button onClick={() => setManualExtras(manualExtras.filter((_, j) => j !== i))} className="text-rose-600 text-xs" data-testid={`comp-manual-del-${i}`}>×</button></td>
                         </tr>
-                      ))}
-                      <tr className="bg-emerald-50 font-bold"><td colSpan={5} className="px-3 py-2 text-right">Subtotale voci manuali</td><td className="px-3 py-2 text-right font-mono">{fmtEur2(manualExtras.reduce((s, x) => s + (Number(x.qty) || 0) * (Number(x.price) || 0), 0))}</td><td></td></tr>
+                      );})}
+                      <tr className="bg-emerald-50 font-bold"><td colSpan={7} className="px-3 py-2 text-right">Subtotale voci manuali</td><td className="px-3 py-2 text-right font-mono">{fmtEur2(manualExtras.reduce((s, x) => s + (Number(x.qty) || 0) * (Number(x.price) || 0), 0))}</td><td></td></tr>
                     </tbody>
                   </table>
                 )}
@@ -759,7 +841,7 @@ export default function PreventivoComposite() {
         <div className="mt-3"><Label className="text-xs">Note</Label><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></div>
         {/* Widget marginalità live (solo admin/responsabili) */}
         <div className="bg-white border border-zinc-200 rounded-lg p-4 mt-3">
-          <MarginalitaWidget totaleIvaEscl={imponibile} ricaricoDefault={1.8} costiDirettiOverride={costoDirettoReale} />
+          <MarginalitaWidget totaleIvaEscl={imponibile} ricaricoDefault={1.8} costiDirettiOverride={costoDirettoReale} breakdown={costoDirettoBreakdown} />
         </div>
         {/* Modalità di pagamento (preset admin / personalizzata) */}
         <div className="bg-white border border-zinc-200 rounded-lg p-4 mt-3">
@@ -824,7 +906,63 @@ export default function PreventivoComposite() {
               </div>
               <div><Label className="text-xs">Quantità</Label><Input type="number" min="0" step="0.01" value={manualForm.qty} onChange={(e) => setManualForm({ ...manualForm, qty: parseFloat(e.target.value) || 0 })} data-testid="comp-manual-qty" /></div>
             </div>
-            <div><Label className="text-xs">Prezzo unitario €</Label><Input type="number" min="0" step="0.01" value={manualForm.price} onChange={(e) => setManualForm({ ...manualForm, price: parseFloat(e.target.value) || 0 })} data-testid="comp-manual-price" /></div>
+            {/* R89 quinquies: prezzo di acquisto + ricarico per marginalità reale */}
+            <div className="bg-amber-50 border-2 border-amber-200 rounded p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-bold text-amber-800">💰 Calcolo margine (opzionale)</span>
+                <span className="text-[10px] text-amber-600 italic">— utile per la marginalità interna</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <Label className="text-[10px]">Prezzo di acquisto €</Label>
+                  <Input type="number" min="0" step="0.01" value={manualForm.prezzo_acquisto ?? ""}
+                    placeholder="es. 100"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => {
+                      const pa = parseFloat(e.target.value) || 0;
+                      const next = { ...manualForm, prezzo_acquisto: pa };
+                      // Auto-calcola prezzo vendita se ricarico è impostato
+                      if ((Number(manualForm.ricarico) || 0) > 0 && pa > 0) {
+                        next.price = Math.round(pa * Number(manualForm.ricarico) * 100) / 100;
+                      }
+                      setManualForm(next);
+                    }}
+                    data-testid="comp-manual-dlg-pacq" />
+                </div>
+                <div>
+                  <Label className="text-[10px]">Ricarico (es. 1.8)</Label>
+                  <Input type="number" min="0" step="0.01" value={manualForm.ricarico ?? ""}
+                    placeholder="es. 1.8"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => {
+                      const ric = parseFloat(e.target.value) || 0;
+                      const next = { ...manualForm, ricarico: ric };
+                      if ((Number(manualForm.prezzo_acquisto) || 0) > 0 && ric > 0) {
+                        next.price = Math.round(Number(manualForm.prezzo_acquisto) * ric * 100) / 100;
+                      }
+                      setManualForm(next);
+                    }}
+                    data-testid="comp-manual-dlg-ric" />
+                </div>
+                <div>
+                  <Label className="text-[10px] text-emerald-700 font-semibold">Margine unit.</Label>
+                  <div className="h-10 flex items-center justify-end px-2 bg-white border border-emerald-200 rounded font-mono text-emerald-700 font-bold text-sm">
+                    {(() => {
+                      const pa = Number(manualForm.prezzo_acquisto) || 0;
+                      const pv = Number(manualForm.price) || 0;
+                      if (pa <= 0 || pv <= 0) return "—";
+                      const m = pv - pa;
+                      const pct = ((m / pv) * 100).toFixed(1);
+                      return `${fmtEur2(m)} (${pct}%)`;
+                    })()}
+                  </div>
+                </div>
+              </div>
+              <div className="text-[10px] text-amber-700 mt-1.5 italic">
+                💡 Se compili prezzo acquisto + ricarico, il prezzo di vendita si aggiorna automaticamente. Puoi comunque forzare manualmente il prezzo qui sotto.
+              </div>
+            </div>
+            <div><Label className="text-xs">Prezzo unitario di vendita €</Label><Input type="number" min="0" step="0.01" value={manualForm.price} onChange={(e) => setManualForm({ ...manualForm, price: parseFloat(e.target.value) || 0 })} data-testid="comp-manual-price" /></div>
             <div className="text-sm font-bold text-right">Totale: {fmtEur2((Number(manualForm.qty) || 0) * (Number(manualForm.price) || 0))}</div>
             {canSaveToBackoffice ? (
               <label className="flex items-center gap-2 bg-emerald-50 border border-emerald-300 rounded p-2 cursor-pointer">
@@ -850,13 +988,19 @@ export default function PreventivoComposite() {
               if (canSaveToBackoffice && manualForm.save_to_backoffice) {
                 try {
                   const rivendita = Number(manualForm.price) || 0;
-                  const acquisto = Math.round((rivendita / 1.8) * 100) / 100;
+                  // R89 quinquies: se l'utente ha inserito prezzo_acquisto + ricarico reali, usali. Altrimenti calcolo stimato.
+                  const acquisto = Number(manualForm.prezzo_acquisto) > 0
+                    ? Number(manualForm.prezzo_acquisto)
+                    : Math.round((rivendita / 1.8) * 100) / 100;
+                  const ricarico = Number(manualForm.ricarico) > 0
+                    ? Number(manualForm.ricarico)
+                    : (acquisto > 0 ? Math.round((rivendita / acquisto) * 100) / 100 : 1.8);
                   const { data: newVoce } = await api.post("/voci-backoffice", {
                     name: manualForm.name.trim(),
                     category: manualForm.category || "EXTRA",
                     unit: manualForm.unit,
                     prezzo_acquisto: acquisto,
-                    ricarico: 1.8,
+                    ricarico: ricarico,
                     prezzo_rivendita: rivendita,
                     modificabile_dal_venditore: true,
                     cad_category: null,
@@ -871,6 +1015,8 @@ export default function PreventivoComposite() {
                 unit: manualForm.unit,
                 qty: Number(manualForm.qty) || 0,
                 price: Number(manualForm.price) || 0,
+                prezzo_acquisto: Number(manualForm.prezzo_acquisto) || null,
+                ricarico: Number(manualForm.ricarico) || null,
                 manual: true,
                 saved_to_backoffice,
                 voce_id_bo,

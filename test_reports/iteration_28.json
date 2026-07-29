@@ -1,0 +1,35 @@
+{
+  "summary": "Round 89 quinquies — Marginalità interna reale con PA/ricarico. FULL BACKEND + FRONTEND E2E VERIFIED. Backend 6/6 pytest pass (composite-sections restituisce prezzo_acquisto per 100% delle voci, POST /api/marginalita/calcola usa correttamente i costi_diretti custom nel calcolo di margine/provvigione/utile, preventivo composite persiste manual_extras con prezzo_acquisto e ricarico su POST e li conserva su PUT parziale + GET). Frontend E2E: login admin → apertura preventivo composite PRV-2026-0083 → tab Voci extra manuali → dialog Aggiungi voce manuale mostra la sezione '💰 Calcolo margine (opzionale)' con 3 campi (PA, Ricarico, Margine unit live). Compilando PA=100 e Ricarico=2, il prezzo di vendita si auto-compila a 200 e Margine unit mostra '€ 100,00 (50.0%)'. La riga aggiunta compare con colonne PREZZO ACQUISTO=100, RICARICO=2, PREZZO VENDITA=200, TOTALE=200€ e sottotitolo verde 'Margine unitario: € 100,00 (50.0%)'. Modifica inline PA 100→80 aggiorna automaticamente Prezzo Vendita a 160 (80×2). MarginalitaWidget: toggle 'Vedi dettaglio ▸' apre il pannello 'Dettaglio costi diretti' che mostra 'Voci manuali (⚠ stimato)' 33.413€ in arancione + box amber '💡 Compila prezzo di acquisto e ricarico nelle voci manuali per un margine reale'. Tutti i data-testid attesi dal review sono presenti: comp-manual-dialog, comp-manual-dlg-pacq, comp-manual-dlg-ric, comp-manual-price, comp-manual-pacq-{i}, comp-manual-ric-{i}, comp-manual-price-{i}, marg-toggle, marg-breakdown-toggle, marg-breakdown.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Preventivo Composite editor (top right)", "issues": ["Toast persistente ⚠ 'Discrepanza totale: salvato €64.627,2 vs ricalcolato €64.152' compare all'apertura di preventivi salvati con dati stampati storicamente (pre-esistente, non introdotto in questa round). Utile per l'admin ma può disturbare. Considerare un dismiss button."]}
+    ],
+    "console_warnings": [
+      "Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent} (accessibilità Radix Dialog — non bloccante, presente su comp-manual-dialog).",
+      "3 richieste 401 sulla pagina /login prima del submit (chiamate /api/auth/me eseguite prima del login — comportamento atteso ma rumoroso in console)."
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_round89quinquies_marginalita.py",
+    "/app/test_reports/pytest/round89quinquies.xml"
+  ],
+  "action_items": [
+    "(Opzionale, accessibilità) Aggiungere `aria-describedby` o `<DialogDescription>` al DialogContent di comp-manual-dialog per silenziare il warning Radix."
+  ],
+  "critical_code_review_comments": [
+    "Semantica di `manuali_stimati`: attualmente il flag è true se ANCHE UNA SOLA voce manuale non ha `prezzo_acquisto`. Il totale mostrato nel breakdown come 'Voci manuali (⚠ stimato)' aggrega però tutti i costi delle manuali (sia reali che stimate). Considerare uno split: 'Voci manuali (reale)' + 'Voci manuali (stimate)' per maggiore chiarezza quando l'utente ne compila solo una parte.",
+    "Preventivo /api/preventivi accetta correttamente extra fields (`manual_extras`, `composite_selections`, `listini_selections`, `infissi_extras`) via `extra='allow'` in PreventivoIn — ma NON è validato lo schema minimo di ogni manual_extra (name/qty/price obbligatori). Un futuro utente potrebbe inviare voci malformate. Aggiungere una Pydantic BaseModel per ManualExtra sarebbe più sicuro.",
+    "Backend endpoint POST /api/marginalita/calcola: default provvigione_semplice=3% è hardcoded se impostazioni non presenti. In produzione conviene forzare `ensure_global_seeds` a runtime prima del calcolo (già fatto). OK.",
+    "Frontend PreventivoComposite.jsx supera 1000 linee — considerare splitting in sotto-componenti (ManualExtrasSection, InfissiSection, ListiniSection) per manutenibilità."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "100% (tutti i 9 scenari del review verificati)"},
+  "test_credentials": "admin@admin.it / admin",
+  "seed_data_creation": "Test backend crea 1 preventivo composite con 2 manual_extras (uno con PA=100/ric=2, uno senza PA) e lo elimina in teardown_class. Test frontend aggiunge 1 riga manuale sul preventivo esistente PRV-2026-0083 (Test CAD Baseline) — la riga rimane nel preventivo ma NON è stato cliccato 'Salva Preventivo' quindi non è persistita nel DB (modifica in-memory). Per un cleanup completo il main agent può opzionalmente aprire quel preventivo e rimuovere la voce TEST_R89quinquies se persistita.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Round 89 quinquies completamente verificato end-to-end. Il fix della marginalità interna reale funziona correttamente sia lato backend (persistenza + calcolo) sia lato frontend (dialog, auto-calc, tabella inline editable, breakdown widget). Data-testid nuovi introdotti: comp-manual-dlg-pacq, comp-manual-dlg-ric, comp-manual-pacq-{i}, comp-manual-ric-{i}, marg-breakdown-toggle, marg-breakdown. Il test frontend usa il preventivo composite reale 714a816c-a922-4178-b008-0ca66b4588d5 (PRV-2026-0083) — ha un baseline con voce manuale 'Smaltimento poltrona 50000' senza PA. Il warning 'Discrepanza totale' che compare in questa pagina è pre-esistente da round precedenti (audit differenze salvato vs ricalcolato) e non è correlato a questo fix."
+}

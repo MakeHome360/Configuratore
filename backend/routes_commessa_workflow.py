@@ -932,13 +932,18 @@ def build_commessa_workflow_router(db, get_current_user):
         ext = (file.filename.rsplit(".", 1)[-1] if "." in file.filename else "bin").lower()
         fid = uuid.uuid4().hex
         safe_name = f"{fid}.{ext}"
-        path = os.path.join(UPLOADS_DIR, safe_name)
-        with open(path, "wb") as f:
-            f.write(content)
+        # R89 sexies+: Emergent Object Storage (con fallback locale per il preview)
+        from object_storage import save_upload
+        _res = save_upload(content, safe_name, file.content_type or "application/octet-stream",
+                           subdir=f"uploads/commesse/{commessa_id}", fallback_dir=UPLOADS_DIR)
+        path = _res.get("path")
+        _url = _res.get("url") or f"/api/uploads/{safe_name}"
         meta = {
             "id": fid, "name": file.filename, "size": len(content),
             "content_type": file.content_type or "application/octet-stream",
-            "url": f"/api/uploads/{safe_name}",
+            "url": _url,
+            "storage_backend": _res.get("storage_backend"),
+            "storage_path": path,
             "commessa_id": commessa_id, "tipo": tipo,
             "uploaded_at": NOW(), "uploaded_by": user.get("id"),
         }
@@ -1182,9 +1187,12 @@ def build_commessa_workflow_router(db, get_current_user):
         ext = (file.filename.rsplit(".", 1)[-1] if "." in file.filename else "bin").lower()
         fid = UID()
         safe_name = f"tpl-{fid}.{ext}"
-        path = os.path.join(UPLOADS_DIR, safe_name)
-        with open(path, "wb") as f:
-            f.write(content)
+        # R89 sexies+: Emergent Object Storage (fallback locale)
+        from object_storage import save_upload
+        _res = save_upload(content, safe_name, file.content_type or "application/octet-stream",
+                           subdir="templates", fallback_dir=UPLOADS_DIR)
+        path = _res.get("path")
+        _url = _res.get("url") or f"/api/uploads/{safe_name}"
         meta = {
             "id": fid,
             "nome": nome,

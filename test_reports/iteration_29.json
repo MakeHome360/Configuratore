@@ -1,0 +1,24 @@
+{
+  "summary": "R89 sexies verified: (a) backend email endpoint sends PDF attachment (mock captures attachments list with mime_type=application/pdf and content starting with %PDF-), (b) frontend PreventivoStampa page renders iframe pointing to backend PDF endpoint (same source as download/attachment). Backend 7/7 pytest pass. Frontend E2E confirmed iframe src -> /api/preventivi/{id}/pdf?token=..., PDF fetched with HTTP 200 and %PDF- magic bytes, email dialog opens and closes on successful send (POST /api/preventivi/{id}/invia-email returns ok=true).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_round89sex_email_pdf_attachment.py",
+    "/app/backend/tests/test_round89quater_pdf_backend.py",
+    "/app/backend/tests/test_round89_email_endpoint.py",
+    "/app/test_reports/pytest/r89sex.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "PreventivoStampa.jsx is ~960 lines; still holds legacy hidden HTML rendering. Consider removing entirely once no legacy consumer exists (currently kept as fallback for #print-area references) to reduce bundle size.",
+    "Email deliverability (SPAM/SPF/DKIM on sadicasa.it) is out of scope — codice invia PDF correttamente; user should verify DNS records on the production domain."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% (E2E iframe + email flow)"},
+  "test_credentials": "admin@admin.it / admin",
+  "seed_data_creation": "Created and deleted test preventivo bagno-gold during E2E test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "R89 sexies unifies preview via backend weasyprint PDF (iframe). Backend send-email now attaches PDF (attachments list with mime_type=application/pdf). Frontend uses POST /api/preventivi/{id}/invia-email (legacy alias, also /send-email exists). Both aliases confirmed working.",
+  "rca of the issue": "N/A — fix verified working end-to-end. User-reported divergence between preview and download is resolved by rendering the same backend PDF in iframe. Email attachment (missing PDF) is fixed by the new attachments parameter in email_service.send_email + auto pdf generation inside send_preventivo_email."
+}

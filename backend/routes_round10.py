@@ -3,6 +3,7 @@ Round 10: Portale Cliente con utenza temporanea + firma elettronica OTP,
 Dashboard Subappaltatori, Gestore Cantieri, Venditori filtrati.
 """
 import os
+import logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 import uuid
@@ -10,6 +11,8 @@ import secrets
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, EmailStr
+
+logger = logging.getLogger(__name__)
 
 
 def now_iso():

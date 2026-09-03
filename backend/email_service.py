@@ -51,9 +51,11 @@ async def send_email(
     text: Optional[str] = None,
     reply_to: Optional[str] = None,
     cc: Optional[List[str]] = None,
+    attachments: Optional[List[Dict[str, Any]]] = None,
 ) -> bool:
     """Invia una mail. Ritorna True se accettata dal server SMTP, False altrimenti.
-    Non solleva: gli errori vengono solo loggati."""
+    Non solleva: gli errori vengono solo loggati.
+    attachments: [{filename, content: bytes, mime_type}]"""
     c = _cfg()
     if not is_email_enabled():
         logger.warning("[EMAIL] SMTP non configurato — skip invio a %s (subject=%s)", to, subject)
@@ -76,6 +78,14 @@ async def send_email(
     # Plain text fallback
     msg.set_content(text or _html_to_text(html))
     msg.add_alternative(html, subtype="html")
+    # R89 sexies: attachments (PDF preventivo)
+    if attachments:
+        for att in attachments:
+            content = att.get("content") or b""
+            filename = att.get("filename") or "allegato.bin"
+            mime = att.get("mime_type") or "application/octet-stream"
+            maintype, _, subtype = mime.partition("/")
+            msg.add_attachment(content, maintype=maintype or "application", subtype=subtype or "octet-stream", filename=filename)
 
     try:
         if c["use_ssl"]:
@@ -193,6 +203,8 @@ async def send_preventivo_email(
     azienda: Dict[str, Any],
     incaricato: Dict[str, Any],
     custom_message: str = "",
+    pdf_bytes: Optional[bytes] = None,
+    bathroom_tier: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """Email professionale al cliente con riepilogo preventivo, dati incaricato e link al PDF.
     Tipo documento configurabile in futuro (preventivo/fattura/contratto)."""
@@ -295,11 +307,27 @@ async def send_preventivo_email(
     </table>
     """
     subject = f"Preventivo {numero} — {nome_azienda}"
+    # R89 sexies: allega il PDF generato via weasyprint (stessa fonte usata da GET /api/preventivi/{id}/pdf)
+    attachments = None
+    if pdf_bytes is None:
+        try:
+            from pdf_generator import render_preventivo_pdf
+            pdf_bytes = render_preventivo_pdf(preventivo, azienda, bathroom_tier)
+        except Exception as e:
+            logger.exception("[EMAIL PREVENTIVO] errore generazione PDF allegato: %s", e)
+    if pdf_bytes:
+        safe_name = (nome_completo or "cliente").replace(" ", "_")
+        attachments = [{
+            "filename": f"Preventivo_{numero}_{safe_name}.pdf",
+            "content": pdf_bytes,
+            "mime_type": "application/pdf",
+        }]
     return await send_email(
         to=to,
         subject=subject,
         html=_wrap(body, f"Preventivo n. {numero}", azienda),
         reply_to=incaricato_email or azienda.get("email_principale") or azienda.get("email"),
+        attachments=attachments,
     )
 
 

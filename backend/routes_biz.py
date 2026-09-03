@@ -5,12 +5,15 @@ Attached to the existing `api` router in server.py.
 """
 import secrets
 import uuid
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel, ConfigDict, EmailStr
 from audit import audit_log
+
+logger = logging.getLogger(__name__)
 
 from packages_seed import (
     DEFAULT_VOCI_BACKOFFICE, DEFAULT_FASI_COMMESSA, DEFAULT_TEMPLATE_EMAIL,

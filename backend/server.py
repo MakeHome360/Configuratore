@@ -2393,6 +2393,25 @@ async def invia_preventivo_email(prev_id: str, body: Optional[Dict[str, Any]] = 
     azienda = {**da, **imp}
     incaricato = await db.users.find_one({"id": prev.get("user_id")}, {"_id": 0}) or {}
     custom = body.get("messaggio") or body.get("custom_message") or ""
+    # R89 sexies: prepara bathroom_tier per PDF allegato (source of truth = voci_backoffice)
+    bathroom_tier = None
+    if (prev.get("tipo") or "").lower() == "bagno" and prev.get("bathroom_tier"):
+        bcfg_doc = await db.bathroom_config.find_one({"id": "global"}, {"_id": 0}) or {}
+        meta_tiers = {t.get("id"): t for t in (bcfg_doc.get("tiers") or [])}
+        tier_kw = {"bagno-silver": "Silver", "bagno-gold": "Gold", "bagno-platinum": "Platinum"}
+        kw = tier_kw.get(prev["bathroom_tier"])
+        if kw:
+            v = await db.voci_backoffice.find_one({"name": {"$regex": rf"Pacchetto\s+{kw}", "$options": "i"}}, {"_id": 0})
+            if v:
+                m = meta_tiers.get(prev["bathroom_tier"], {})
+                bathroom_tier = {
+                    "id": prev["bathroom_tier"],
+                    "name": m.get("name") or kw.upper(),
+                    "price": float(v.get("prezzo_rivendita") or 0),
+                    "color": m.get("color") or "#94A3B8",
+                    "description": m.get("description") or v.get("name") or "",
+                    "included_items": m.get("included_items") or [],
+                }
     try:
         from email_service import send_preventivo_email
         ok = await send_preventivo_email(
@@ -2401,6 +2420,7 @@ async def invia_preventivo_email(prev_id: str, body: Optional[Dict[str, Any]] = 
             azienda=azienda,
             incaricato=incaricato,
             custom_message=custom,
+            bathroom_tier=bathroom_tier,
         )
         # Traccia invio anche se SMTP ritorna False (così sai che è stato tentato)
         await db.preventivi.update_one(

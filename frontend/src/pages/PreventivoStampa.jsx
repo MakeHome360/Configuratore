@@ -257,8 +257,22 @@ export default function PreventivoStampa() {
         </div>
       </div>
 
-      {/* Foglio A4 */}
-      <div className="max-w-[210mm] mx-auto bg-white shadow-2xl my-6 print:shadow-none print:my-0 print:max-w-full" id="print-area">
+      {/* Foglio A4 — R89 sexies: anteprima UNIFICATA con PDF backend (iframe) — anteprima = PDF scaricato SEMPRE */}
+      <div className="max-w-[210mm] mx-auto my-6 print:my-0 print:max-w-full">
+        <iframe
+          title="Anteprima preventivo PDF"
+          src={`${process.env.REACT_APP_BACKEND_URL}/api/preventivi/${id}/pdf?token=${encodeURIComponent(localStorage.getItem("ristruttura_token") || "")}#toolbar=0&navpanes=0`}
+          className="w-full bg-white shadow-2xl print:shadow-none"
+          style={{ height: "297mm", minHeight: "1120px", border: "none" }}
+          data-testid="preventivo-preview-iframe"
+        />
+        <div className="max-w-[210mm] mx-auto px-2 py-1 text-[10px] text-zinc-500 italic text-center print:hidden">
+          💡 Questa è esattamente l'anteprima del PDF che verrà scaricato/inviato al cliente.
+        </div>
+      </div>
+
+      {/* Vecchio rendering HTML mantenuto come fallback nascosto per compatibilità con eventuali funzioni legacy */}
+      <div className="hidden" id="print-area" aria-hidden="true">
         {/* ===== CARTA INTESTATA ===== */}
         <div className="px-12 pt-10 pb-6 border-b-4" style={{ borderColor: colorePrimario }}>
           <div className="flex items-start justify-between gap-6">

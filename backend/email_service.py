@@ -1,32 +1,34 @@
 """
-Servizio email centralizzato — SMTP Aruba (o qualsiasi server SMTP).
+Servizio email centralizzato — Resend (primario) con fallback SMTP Aruba.
 
 Tutte le funzioni sono asincrone e non bloccanti.
 In caso di errore, viene loggato ma NON sollevato: l'email è "best-effort" e non blocca i flussi business (registrazione, sconto, ecc.).
 
 Variabili d'ambiente richieste (in /app/backend/.env):
-- SMTP_HOST           (es. smtps.aruba.it)
-- SMTP_PORT           (es. 465)
-- SMTP_USE_SSL        (true/false — true per porta 465, false per 587)
-- SMTP_USER           (es. noreply@sadicasa.it)
-- SMTP_PASSWORD       (password della casella)
-- SMTP_FROM_EMAIL     (mittente visibile)
-- SMTP_FROM_NAME      (nome mittente, es. "Sa di casa")
+- RESEND_API_KEY      (chiave API Resend — se presente viene usato Resend come provider primario)
+- RESEND_FROM_EMAIL   (mittente Resend, es. noreply@sadicasa.it — deve essere su dominio verificato)
+- RESEND_FROM_NAME    (nome mittente Resend)
+- RESEND_FALLBACK_FROM (mittente di fallback se il dominio non è verificato, es. onboarding@resend.dev)
+- SMTP_HOST/USER/PASSWORD/... (fallback SMTP se Resend non disponibile)
 - APP_PUBLIC_URL      (URL pubblico per i link nelle email)
 """
 import os
+import base64
 import logging
+import asyncio
 from email.message import EmailMessage
 from email.utils import formataddr
 from typing import List, Optional, Dict, Any
 
 import aiosmtplib
+import requests
 
 logger = logging.getLogger(__name__)
 
 
 def _cfg() -> Dict[str, Any]:
     return {
+        # SMTP fallback
         "host": os.environ.get("SMTP_HOST", ""),
         "port": int(os.environ.get("SMTP_PORT") or 465),
         "use_ssl": (os.environ.get("SMTP_USE_SSL") or "true").lower() == "true",
@@ -36,12 +38,87 @@ def _cfg() -> Dict[str, Any]:
         "from_name": os.environ.get("SMTP_FROM_NAME") or "Sa di casa",
         "reply_to_default": os.environ.get("SMTP_REPLY_TO", ""),
         "app_url": os.environ.get("APP_PUBLIC_URL", ""),
+        # Resend (primary)
+        "resend_key": os.environ.get("RESEND_API_KEY", ""),
+        "resend_from_email": os.environ.get("RESEND_FROM_EMAIL") or os.environ.get("SMTP_FROM_EMAIL", ""),
+        "resend_from_name": os.environ.get("RESEND_FROM_NAME") or os.environ.get("SMTP_FROM_NAME", "Sa di casa"),
+        "resend_fallback_from": os.environ.get("RESEND_FALLBACK_FROM", "onboarding@resend.dev"),
     }
 
 
 def is_email_enabled() -> bool:
     c = _cfg()
-    return bool(c["host"] and c["user"] and c["password"])
+    return bool(c["resend_key"]) or bool(c["host"] and c["user"] and c["password"])
+
+
+def _resend_send_sync(cfg: Dict[str, Any], recipients: List[str], subject: str, html: str,
+                      text: Optional[str], reply_to: Optional[str], cc: Optional[List[str]],
+                      attachments: Optional[List[Dict[str, Any]]]) -> bool:
+    """Invio via Resend HTTP API. Se il dominio custom non è verificato (403/422 dominio),
+    ritenta con il mittente di fallback (onboarding@resend.dev)."""
+    key = cfg["resend_key"]
+    from_name = cfg["resend_from_name"]
+    from_email = cfg["resend_from_email"]
+    fallback_from = cfg["resend_fallback_from"]
+    eff_reply_to = reply_to or cfg.get("reply_to_default") or ""
+
+    def _payload(sender: str) -> Dict[str, Any]:
+        p = {
+            "from": f"{from_name} <{sender}>" if from_name else sender,
+            "to": recipients,
+            "subject": subject,
+            "html": html,
+        }
+        if text:
+            p["text"] = text
+        if cc:
+            p["cc"] = cc
+        if eff_reply_to:
+            p["reply_to"] = eff_reply_to
+        if attachments:
+            p["attachments"] = [{
+                "filename": a.get("filename") or "allegato.bin",
+                "content": base64.b64encode(a.get("content") or b"").decode("ascii"),
+                "content_type": a.get("mime_type") or "application/octet-stream",
+            } for a in attachments]
+        return p
+
+    def _try(sender: str) -> Optional[requests.Response]:
+        try:
+            r = requests.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json=_payload(sender), timeout=30,
+            )
+            return r
+        except Exception as e:
+            logger.warning(f"[RESEND] request exception ({sender}): {e}")
+            return None
+
+    r = _try(from_email)
+    if r is not None and r.ok:
+        logger.info(f"[RESEND] email OK a {recipients} (from={from_email}, id={r.json().get('id','?')})")
+        return True
+    if r is not None:
+        try:
+            err = r.json()
+        except Exception:
+            err = {"raw": r.text[:200]}
+        logger.warning(f"[RESEND] {r.status_code} da {from_email}: {err}")
+        # Se il dominio non è verificato, ritenta col fallback sender
+        should_fallback = (r.status_code in (403, 422)) and fallback_from and fallback_from != from_email
+        if should_fallback:
+            r2 = _try(fallback_from)
+            if r2 is not None and r2.ok:
+                logger.info(f"[RESEND] email OK con fallback {fallback_from} → {recipients}")
+                return True
+            if r2 is not None:
+                try:
+                    err2 = r2.json()
+                except Exception:
+                    err2 = {"raw": r2.text[:200]}
+                logger.warning(f"[RESEND] fallback {fallback_from} {r2.status_code}: {err2}")
+    return False
 
 
 async def send_email(
@@ -64,6 +141,21 @@ async def send_email(
     recipients = [to] if isinstance(to, str) else list(to)
     if not recipients:
         return False
+
+    # R89 septies: Resend primario, SMTP fallback
+    if c.get("resend_key"):
+        try:
+            ok = await asyncio.to_thread(
+                _resend_send_sync, c, recipients, subject, html, text, reply_to, cc, attachments,
+            )
+            if ok:
+                return True
+            logger.warning("[EMAIL] Resend fallito, tento fallback SMTP…")
+        except Exception as e:
+            logger.warning(f"[EMAIL] Resend exception, tento SMTP: {e}")
+        # se Resend è configurato ma SMTP non lo è → fine
+        if not (c["host"] and c["user"] and c["password"]):
+            return False
 
     msg = EmailMessage()
     msg["From"] = formataddr((c["from_name"], c["from_email"]))

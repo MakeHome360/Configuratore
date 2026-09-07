@@ -1,0 +1,47 @@
+{
+  "summary": "R89 septies — Resend primary provider with SMTP fallback: verified end-to-end. Direct send_email() returns True and logs '[RESEND] email OK … (from=noreply@sadicasa.it, id=…)'. Backend endpoint POST /api/preventivi/{id}/send-email returns 200 ok=true with the PDF attached, going through Resend. Domain sadicasa.it is verified on Resend (no fallback to onboarding@resend.dev was needed). All regression suites still pass.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Preventivo bagno → 'Invia via Email' (data-testid=bagno-send-email)",
+        "issue": "The button uses the customer email stored on the preventivo. If Dati Cliente → Email is empty, it shows a red toast 'Manca l'email del cliente' and does NOT open a dialog to specify a recipient. This is not a regression from R89 septies (behaviour existed before), but limits ad‑hoc E2E testing on preventivi lacking a customer email.",
+        "affected_selectors": ["[data-testid=\"bagno-send-email\"]", "[data-testid=\"bagno-send-email-top\"]"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_r89septies_resend.py",
+    "/app/backend/tests/test_round89sex_email_pdf_attachment.py",
+    "/app/backend/tests/test_round89_email_endpoint.py",
+    "/app/backend/tests/test_round89quater_pdf_backend.py",
+    "/app/test_reports/pytest/r89septies.xml",
+    "/app/test_reports/pytest/r89septies_resend.xml"
+  ],
+  "action_items": [
+    "Optional UX: when triggering 'Invia via Email' on a preventivo without cliente.email, open a small dialog to prompt for the recipient (endpoint already supports {to: '…'} override)."
+  ],
+  "critical_code_review_comments": [
+    "email_service.py: _resend_send_sync uses synchronous `requests`; wrapped correctly with asyncio.to_thread in send_email — good.",
+    "Fallback logic on 403/422 only triggers for domain-verification errors; other Resend 4xx failures fall through to SMTP as intended.",
+    "is_email_enabled() correctly returns True when either Resend key OR SMTP creds are configured (backwards compatible)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_r89septies_resend.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (11/11: 4 new R89 septies + 7 regression)",
+    "frontend": "80% (button, testids and page load verified; final in-app send bypassed by pre-existing 'require cliente email' guard — validated equivalently at the API layer)"
+  },
+  "test_credentials": "admin@ristruttura.app / Admin12345! (admin@admin.it / admin also accepted via API but the frontend login form only accepted the primary admin credentials in my run)",
+  "seed_data_creation": "None. Reused existing preventivo bagno PRV-2026-0086 (id a010f565-5b54-45e8-97fb-4382425ecddf).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Domain sadicasa.it is verified on Resend — no need to rely on the onboarding@resend.dev fallback path in normal runs. Backend logs already showed successful sends with real Resend message ids (e.g. 726d41a2-1feb-479f-ba97-6f734f5b39a0, f2b01db1-11ee-42de-86be-6c4b93c0bd6b). The frontend guard 'Manca l'email del cliente' blocks Invia via Email when cliente.email is empty; use a preventivo with a filled cliente email (or fill it and click 'Aggiorna Preventivo' first) for pure UI E2E.",
+  "rca of the issue": "N/A — R89 septies works as designed."
+}

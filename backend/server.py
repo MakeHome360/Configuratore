@@ -1714,11 +1714,14 @@ async def update_preventivo(prev_id: str, body: PreventivoIn, user: Dict[str, An
     # passati dal frontend (es. PUT con solo {cliente: {...}} non azzera mq/voci/totali!).
     update_doc = {**body.model_dump(exclude_unset=True, exclude_none=False), "updated_at": datetime.now(timezone.utc).isoformat()}
     update_doc.pop("id", None)
-    # Se il preventivo era accettato e l'utente lo modifica, richiede NUOVA accettazione (torna a bozza)
+    # R89 octies: NON riportare a bozza automaticamente un preventivo accettato durante un update.
+    # Il preventivo resta accettato; la "data ultima modifica" viene mostrata nel PDF e nella UI.
+    # Solo se l'utente cambia esplicitamente lo stato (via PATCH /preventivi/{id}/stato) si può tornare a bozza.
     existing = await db.preventivi.find_one({"id": prev_id, "user_id": user["id"]}, {"_id": 0})
     if existing and existing.get("stato") == "accettato":
-        update_doc["stato"] = "bozza"
-        update_doc["needs_reacceptance"] = True
+        # Marca solo come "modificato dopo accettazione" per tracciare, ma non forza cambio stato
+        update_doc["modificato_dopo_accettazione"] = True
+        update_doc.setdefault("ultima_modifica_post_accept", datetime.now(timezone.utc).isoformat())
     # R87 PROTEZIONE: snapshot della versione precedente prima di sovrascrivere (recoverable).
     if existing:
         try:

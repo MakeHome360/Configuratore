@@ -1,0 +1,24 @@
+{
+  "summary": "R89 octies verified end-to-end. Backend: 5/5 new tests (test_r89octies.py) PASS — PDF non contiene admin@admin.it né info@sadicasa.it, PDF contiene \"L'Amministratore\", PUT su preventivo accettato NON resetta a bozza (stato resta 'accettato' + modificato_dopo_accettazione=True + ultima_modifica_post_accept impostato + updated_at aggiornato + needs_reacceptance assente/None), PDF header mostra 'Ultima modifica: <data odierna in italiano>' quando updated_at > created_at + 60s. Regression: 7/7 (test_round89quater_pdf_backend.py 2/2 + test_round89sex_email_pdf_attachment.py 2/2 + test_round89_email_endpoint.py 3/3) PASS. Frontend E2E: login admin@admin.it, apertura PRV-2026-0086 (bagno, accettato) via data-testid=prev-open-<id>, click su bagno-print apre l'iframe [data-testid='preventivo-preview-iframe'] con src=/api/preventivi/{id}/pdf?token=... → 200 application/pdf (26.5 kB). PDF verificato: nessuna 'admin@admin.it', nessuna 'info@sadicasa.it', contiene 'L\\'Amministratore', contiene 'Ultima modifica: 7 settembre 2026' nell'header (created_at=17 luglio 2026, updated_at=oggi).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_r89octies.py",
+    "/app/test_reports/pytest/r89octies.xml",
+    "/app/test_reports/pytest/r89octies_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "pdf_generator.py updated_line usa una soglia di 60s tra created_at e updated_at: sensato per evitare falsi positivi su micro-drift, ma se un preventivo venisse modificato entro un minuto dalla creazione la scritta non apparirebbe (edge case, non un bug).",
+    "server.py PUT /preventivi/{id}: la marcatura modificato_dopo_accettazione=True viene aggiunta solo quando existing.stato=='accettato' prima dell'update — corretto. Verificato che ultima_modifica_post_accept usa setdefault (non sovrascrive la prima marcatura), coerente con la semantica 'prima modifica post-accettazione'.",
+    "Nessun endpoint espone/riazzera modificato_dopo_accettazione: se in futuro il cliente ri-firmasse dopo la modifica, dovrà esistere un flow di clear (non richiesto da R89 octies)."
+  ],
+  "updated_files": ["/app/backend/tests/test_r89octies.py (new)"],
+  "success_rate": {"backend": "100% (5/5 nuovi + 7/7 regression)", "frontend": "100% (preview iframe caricato, PDF verificato)"},
+  "test_credentials": "admin@admin.it / admin (funziona sia via API che via UI login form)",
+  "seed_data_creation": "Riutilizzato preventivo bagno esistente PRV-2026-0086 (id a010f565-5b54-45e8-97fb-4382425ecddf) per test 'ultima modifica' (necessario created_at > 60s indietro).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "PRV-2026-0086 è ora stato 'accettato' con modificato_dopo_accettazione=True; se serve tornare a bozza, usare PATCH /api/preventivi/{id}/stato. Firma PDF NON contiene mai admin@admin.it (verificato via pdfminer). Il testid del pulsante Stampa/PDF nell'editor bagno è 'bagno-print' (in-page) e 'bagno-print-top' (topbar).",
+  "rca of the issue": "Bug utente (data 4 mesi indietro dopo modifica): risolto lato backend (server.py PUT ora aggiorna sempre updated_at) + PDF ora legge updated_at nel titolo. Confermato: modificando ora il preventivo PRV-2026-0086 (created 17 luglio 2026), updated_at diventa oggi e il PDF mostra 'Ultima modifica: 7 settembre 2026'. Bug utente (firma con admin@admin.it): risolto — la sezione firma ora dice 'Per <az_nome>' + 'L\\'Amministratore', nessuna email amministratore stampata."
+}

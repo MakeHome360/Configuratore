@@ -253,14 +253,21 @@ def build_preventivo_html(
     az_cf = _esc(dati_azienda.get("cf") or "")
     az_rea = _esc(dati_azienda.get("rea") or "")
 
-    # Email di firma: SOLO info@... o email azienda. Mai admin@admin.it
-    email_firma = az_email if "@" in az_email and "admin" not in az_email.lower() else "info@sadicasa.it"
-
     # Cliente
     cli_nome = _esc(cliente.get("nome") or "—")
     cli_ind = _esc(cliente.get("indirizzo") or "")
     cli_email = _esc(cliente.get("email") or "")
     cli_tel = _esc(cliente.get("telefono") or "")
+
+    # R89 octies: data ultima modifica (se != creazione, la mostriamo nell'header)
+    updated_at_iso = prev.get("updated_at") or now_iso
+    updated_line = ""
+    try:
+        d_upd = datetime.fromisoformat(str(updated_at_iso).replace("Z", "+00:00"))
+        if abs((d_upd - d_emesso).total_seconds()) > 60:
+            updated_line = f' · <span style="color:#f59e0b;font-weight:600">Ultima modifica: <b>{_fmt_date_ita(d_upd.isoformat())}</b></span>'
+    except Exception:
+        pass
 
     html_doc = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><style>{CSS}</style></head><body>
@@ -283,7 +290,7 @@ def build_preventivo_html(
 <div class="title-block">
   <div class="kicker">Proposta di ristrutturazione</div>
   <h1>Preventivo {numero}</h1>
-  <div class="dates">Emesso il <b>{_fmt_date_ita(now_iso)}</b> · Valido fino al <b>{_fmt_date_ita(d_validita.isoformat())}</b></div>
+  <div class="dates">Emesso il <b>{_fmt_date_ita(now_iso)}</b> · Valido fino al <b>{_fmt_date_ita(d_validita.isoformat())}</b>{updated_line}</div>
 </div>
 
 <div class="info-grid">
@@ -347,7 +354,7 @@ def build_preventivo_html(
   </div>
   <div>
     <div class="lbl">Per {az_nome}</div>
-    <div class="name">{email_firma}</div>
+    <div class="name">L'Amministratore</div>
     <div class="placeholder">Timbro e firma</div>
   </div>
 </div>
